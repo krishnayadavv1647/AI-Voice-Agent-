@@ -51,6 +51,8 @@ const agentSchema = new mongoose.Schema(
     callerIdNumber: String,
     telephonyProvider: String,
     dograhStatus: String,
+    dograhError: String,
+    dograhRawResponse: { type: mongoose.Schema.Types.Mixed },
     status: { type: String, enum: ["Draft", "Active", "Paused", "Connected"], default: "Draft" },
     shareableLink: String,
     embedCode: String,

@@ -1,6 +1,6 @@
-import { Cable, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Cable, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
@@ -25,9 +25,24 @@ function workflowName(workflow) {
   return workflow.name || workflow.workflow_name || workflow.title || workflow.workflowName || "Untitled workflow";
 }
 
+function formatDuration(call) {
+  if (typeof call.durationSeconds === "number") {
+    const minutes = Math.floor(call.durationSeconds / 60);
+    const seconds = call.durationSeconds % 60;
+    return minutes ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  }
+
+  return call.duration || "Pending";
+}
+
+function isFinalCallStatus(status) {
+  return ["completed", "failed", "ended", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
+}
+
 export default function AgentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [data, setData] = useState(null);
   const [calls, setCalls] = useState([]);
   const [workflows, setWorkflows] = useState([]);
@@ -35,11 +50,15 @@ export default function AgentDetails() {
   const [debugResponse, setDebugResponse] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [warning, setWarning] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [callLoading, setCallLoading] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const [selectedCall, setSelectedCall] = useState(null);
+  const [runSyncForm, setRunSyncForm] = useState({ workflowId: "", runId: "", callLogId: "" });
+  const pollingRef = useRef(null);
   const [connectForm, setConnectForm] = useState({
     dograhWorkflowId: "",
     dograhWorkflowUuid: "",
@@ -62,7 +81,13 @@ export default function AgentDetails() {
   }
 
   useEffect(() => {
+    if (location.state?.notice) setNotice(location.state.notice);
+    if (location.state?.warning) setWarning(location.state.warning);
     load();
+
+    return () => {
+      if (pollingRef.current) window.clearInterval(pollingRef.current);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -128,12 +153,94 @@ export default function AgentDetails() {
         body: { phoneNumber }
       });
       setDebugResponse(result);
-      setNotice(type === "test" ? "Test call triggered through Dograh." : "Outbound call triggered through Dograh.");
+      if (result.callLog) {
+        setCalls((current) => [result.callLog, ...current.filter((call) => call._id !== result.callLog._id)]);
+      }
+      setNotice(type === "test" ? "Call started through Dograh." : "Outbound call started through Dograh.");
       await load();
+      startCallPolling(result.callLog?._id);
     } catch (err) {
       setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
     } finally {
       setCallLoading(false);
+    }
+  }
+
+  function startCallPolling(callLogId) {
+    if (pollingRef.current) window.clearInterval(pollingRef.current);
+
+    let attempts = 0;
+    pollingRef.current = window.setInterval(async () => {
+      attempts += 1;
+
+      try {
+        const latestCalls = await api(`/agents/${id}/calls`);
+        setCalls(latestCalls);
+        const watchedCall = latestCalls.find((call) => call._id === callLogId) || latestCalls[0];
+
+        if (attempts >= 12 || isFinalCallStatus(watchedCall?.status)) {
+          window.clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      } catch {
+        if (attempts >= 12) {
+          window.clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      }
+    }, 5000);
+  }
+
+  async function syncCall(callId) {
+    setError("");
+    setNotice("");
+    try {
+      const result = await api(`/calls/${callId}/sync`, { method: "POST" });
+      const updatedCall = result.callLog || result;
+      setCalls((current) => current.map((call) => call._id === updatedCall._id ? updatedCall : call));
+      setSelectedCall((current) => current?._id === updatedCall._id ? updatedCall : current);
+      setNotice("Call log synced from Dograh.");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    }
+  }
+
+  async function extractLead(callId) {
+    setError("");
+    setNotice("");
+    try {
+      const result = await api(`/calls/${callId}/extract-lead`, { method: "POST" });
+      const updatedCall = result.callLog || result;
+      setCalls((current) => current.map((call) => call._id === updatedCall._id ? updatedCall : call));
+      setSelectedCall((current) => current?._id === updatedCall._id ? updatedCall : current);
+      setNotice(result.lead ? "Lead extracted from transcript." : "No lead extracted from transcript.");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    }
+  }
+
+  async function syncByRun(event) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await api("/calls/sync-by-run", {
+        method: "POST",
+        body: {
+          workflowId: runSyncForm.workflowId,
+          runId: runSyncForm.runId,
+          callLogId: runSyncForm.callLogId || undefined
+        }
+      });
+
+      setDebugResponse(result);
+      setNotice("Dograh run fetched and saved.");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
     }
   }
 
@@ -173,6 +280,23 @@ export default function AgentDetails() {
     load();
   }
 
+  async function retryDograhWorkflowCreation() {
+    setError("");
+    setWarning("");
+    setNotice("");
+    setCallLoading(true);
+    try {
+      const result = await api(`/agents/${id}/create-dograh-workflow`, { method: "POST" });
+      setDebugResponse(result);
+      setNotice(result.dograhCreated ? "Dograh workflow created successfully." : result.warning || "Dograh workflow response did not include a workflow UUID.");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    } finally {
+      setCallLoading(false);
+    }
+  }
+
   const connected = Boolean(agent?.dograhWorkflowUuid);
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
 
@@ -185,6 +309,7 @@ export default function AgentDetails() {
       />
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      {warning && <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">{warning}</div>}
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
 
       {agent && (
@@ -196,6 +321,7 @@ export default function AgentDetails() {
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
+                <button className="btn-secondary" disabled={callLoading} onClick={retryDograhWorkflowCreation}><RefreshCw size={16} />Retry Dograh Workflow Creation</button>
                 <button className="btn-secondary" onClick={() => action("publish")}><Play size={16} />Publish</button>
                 <button className="btn-secondary text-rose-600" onClick={removeAgent}><Trash2 size={16} />Delete</button>
               </div>
@@ -208,6 +334,11 @@ export default function AgentDetails() {
                 <Info label="Contact" value={agent.contactNumber} />
                 <Info label="Dograh Connection" value={connected ? "Connected" : "Not connected"} />
               </div>
+              {!connected && (
+                <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+                  Create or connect Dograh workflow first.
+                </p>
+              )}
             </div>
 
             <div id="message-test" className="card">
@@ -256,27 +387,44 @@ export default function AgentDetails() {
                 <button className="btn-secondary" onClick={load}><RefreshCw size={16} />Refresh</button>
               </div>
               <div className="overflow-auto">
-                <table className="table w-full min-w-[840px]">
+                <table className="table w-full min-w-[1120px]">
                   <thead>
-                    <tr><th>Caller</th><th>Calling Number</th><th>Status</th><th>Duration</th><th>Summary</th><th>Transcript</th><th>Recording</th><th>Created</th></tr>
+                    <tr><th>Date</th><th>Caller Number</th><th>Calling Number</th><th>Run ID</th><th>Status</th><th>Duration</th><th>Lead Captured</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {calls.map((call) => (
                       <tr key={call._id}>
+                        <td>{new Date(call.createdAt).toLocaleString()}</td>
                         <td>{call.callerNumber || "-"}</td>
                         <td>{call.callingNumber || "-"}</td>
-                        <td>{call.status || "-"}</td>
-                        <td>{call.duration || 0}s</td>
-                        <td>{call.summary || "-"}</td>
-                        <td>{call.transcript || "-"}</td>
-                        <td>{call.recordingUrl ? <a className="text-brand-700" href={call.recordingUrl} target="_blank">Open</a> : "-"}</td>
-                        <td>{new Date(call.createdAt).toLocaleString()}</td>
+                        <td>{call.dograhRunId || "Missing"}</td>
+                        <td><StatusBadge status={call.status || "pending"} /></td>
+                        <td>{formatDuration(call)}</td>
+                        <td>{call.leadCaptured ? "Yes" : "No"}</td>
+                        <td>
+                          <div className="flex flex-wrap gap-2">
+                            <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                            <button className="btn-secondary px-3 py-1.5 text-xs" disabled={!call.dograhRunId} title={!call.dograhRunId ? "Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping." : "Sync from Dograh"} onClick={() => syncCall(call._id)}><RefreshCw size={14} />Sync</button>
+                            {call.recordingUrl && <a className="btn-secondary px-3 py-1.5 text-xs" href={call.recordingUrl} target="_blank">Recording</a>}
+                          </div>
+                          {!call.dograhRunId && <p className="mt-1 text-xs text-amber-700">Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping.</p>}
+                        </td>
                       </tr>
                     ))}
                     {!calls.length && <tr><td colSpan="8" className="text-center text-slate-500">No calls yet.</td></tr>}
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            <div className="card">
+              <h2 className="mb-3 font-bold text-ink">Debug: Fetch Dograh Run</h2>
+              <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={syncByRun}>
+                <input placeholder="Workflow ID" value={runSyncForm.workflowId} onChange={(event) => setRunSyncForm((current) => ({ ...current, workflowId: event.target.value }))} />
+                <input placeholder="Run ID, for example 528264" value={runSyncForm.runId} onChange={(event) => setRunSyncForm((current) => ({ ...current, runId: event.target.value }))} />
+                <input placeholder="Call Log ID optional" value={runSyncForm.callLogId} onChange={(event) => setRunSyncForm((current) => ({ ...current, callLogId: event.target.value }))} />
+                <button className="btn-primary"><RefreshCw size={16} />Fetch</button>
+              </form>
             </div>
 
             {debugResponse && (
@@ -302,6 +450,12 @@ export default function AgentDetails() {
               <Info label="Caller ID Number" value={agent.callerIdNumber} />
               <Info label="Telephony Provider" value={agent.telephonyProvider} />
               <Info label="Dograh Status" value={agent.dograhStatus} />
+              <Info label="Dograh Error" value={agent.dograhError} />
+              {agent.dograhStatus === "failed" && (
+                <button className="btn-secondary mt-2 w-full" disabled={callLoading} onClick={retryDograhWorkflowCreation}>
+                  <RefreshCw size={16} />Retry Dograh Workflow Creation
+                </button>
+              )}
             </div>
 
             <div className="card">
@@ -358,6 +512,77 @@ export default function AgentDetails() {
           </form>
         </div>
       )}
+
+      {selectedCall && (
+        <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-slate-900/40 p-4" onClick={() => setSelectedCall(null)}>
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-6 shadow-soft" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-ink">Call Details</h2>
+                <p className="text-sm text-slate-500">{agent.agentName} call record from Dograh.</p>
+              </div>
+              <button type="button" className="rounded-lg border border-slate-200 p-2" onClick={() => setSelectedCall(null)}><X size={18} /></button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Info label="Agent" value={agent.agentName} />
+              <Info label="Status" value={selectedCall.status} />
+              <Info label="Caller Number" value={selectedCall.callerNumber} />
+              <Info label="Calling Number" value={selectedCall.callingNumber} />
+              <Info label="Duration" value={formatDuration(selectedCall)} />
+              <Info label="Dograh Run ID" value={selectedCall.dograhRunId} />
+              <Info label="Dograh Workflow ID" value={selectedCall.dograhWorkflowId} />
+              <Info label="Dograh Workflow UUID" value={selectedCall.dograhWorkflowUuid} />
+              <Info label="Start Time" value={selectedCall.startedAt ? new Date(selectedCall.startedAt).toLocaleString() : ""} />
+              <Info label="End Time" value={selectedCall.endedAt ? new Date(selectedCall.endedAt).toLocaleString() : ""} />
+            </div>
+
+            {selectedCall.recordingUrl && (
+              <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Recording</p>
+                <audio className="w-full" controls src={selectedCall.recordingUrl} />
+                <a className="mt-2 inline-block text-sm font-semibold text-brand-700" href={selectedCall.recordingUrl} target="_blank">Open recording</a>
+              </div>
+            )}
+
+            {selectedCall.transcriptUrl && (
+              <div className="mt-4 rounded-lg border border-slate-200 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase text-slate-500">Transcript Link</p>
+                <a className="text-sm font-semibold text-brand-700" href={selectedCall.transcriptUrl} target="_blank">Open transcript</a>
+              </div>
+            )}
+
+            <DetailBlock title="Summary" value={selectedCall.summary || "No summary from Dograh"} />
+            <DetailBlock title="Transcript" value={selectedCall.transcript} />
+            <DetailBlock title="Lead Data" value={selectedCall.leadData ? JSON.stringify(selectedCall.leadData, null, 2) : "No extracted lead data returned by Dograh."} pre />
+            {!selectedCall.leadData && (
+              <button
+                className="btn-secondary mt-4"
+                onClick={() => extractLead(selectedCall._id)}
+              >
+                Extract Lead
+              </button>
+            )}
+
+            <details className="mt-4 rounded-lg border border-slate-200 p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">Raw debug data</summary>
+              <pre className="mt-3 max-h-80 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">
+                {JSON.stringify({
+                  rawDograhPayload: selectedCall.rawDograhPayload,
+                  rawWebhookPayload: selectedCall.rawWebhookPayload,
+                  rawRunDetails: selectedCall.rawRunDetails
+                }, null, 2)}
+              </pre>
+            </details>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => extractLead(selectedCall._id)}>Extract Lead</button>
+              <button className="btn-secondary" onClick={() => syncCall(selectedCall._id)}><RefreshCw size={16} />Sync</button>
+              <button className="btn-primary" onClick={() => setSelectedCall(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -377,6 +602,19 @@ function Info({ label, value }) {
     <div className="mb-3">
       <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
       <p className="break-words text-sm text-slate-700">{value || "Not provided"}</p>
+    </div>
+  );
+}
+
+function DetailBlock({ title, value, pre = false }) {
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 p-4">
+      <p className="mb-2 text-xs font-semibold uppercase text-slate-500">{title}</p>
+      {pre ? (
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{value || "Not provided"}</pre>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm text-slate-700">{value || "Not provided"}</p>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import express from "express";
 import {
   connectDograhWorkflow,
+  createDograhWorkflowForAgent,
   createAgent,
   getAgent,
   listAgentCalls,
@@ -24,6 +25,7 @@ router.post("/:id/test", testAgent);
 router.post("/:id/publish", publishAgent);
 router.post("/:id/pause", pauseAgent);
 router.post("/:id/connect-dograh", connectDograhWorkflow);
+router.post("/:id/create-dograh-workflow", createDograhWorkflowForAgent);
 router.post("/:id/test-call", triggerTestCall);
 router.post("/:id/outbound-call", triggerOutboundCall);
 router.get("/:id/calls", listAgentCalls);

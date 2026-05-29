@@ -96,8 +96,18 @@ export default function CreateAgent() {
     }
     setLoading(true);
     try {
-      const agent = await api("/agents", { method: "POST", body: form });
-      navigate(`/agents/${agent._id}`);
+      const result = await api("/agents", { method: "POST", body: form });
+      const agent = result.agent || result;
+      navigate(`/agents/${agent._id}`, {
+        state: {
+          notice: result.dograhCreated
+            ? "Agent created and Dograh workflow created successfully."
+            : null,
+          warning: result.dograhCreated === false
+            ? result.warning || "Agent created locally but Dograh workflow creation failed."
+            : null
+        }
+      });
     } catch (err) {
       setError(err.message);
     } finally {

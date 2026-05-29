@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.tmp-vite-build/
 .npm-cache/
 .env
 backend/.env

@@ -4,11 +4,14 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import {
+  createDograhWorkflowFromDefinition,
+  resolveDograhWorkflowFields,
   triggerDograhOutboundCallByWorkflow,
   triggerDograhTestCallByWorkflow,
 } from "../services/dograh.service.js";
 import { generateAgentTextReply } from "../services/gemini.service.js";
 import { generateSystemPrompt } from "../services/promptGenerator.js";
+import { extractCallFields, extractRunId } from "../services/callLogMapper.js";
 
 function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -34,10 +37,18 @@ function assertE164(value, fieldName) {
   }
 }
 
+function getDograhWebhookUrl() {
+  const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
+  return `${backendUrl.replace(/\/$/, "")}/api/webhooks/dograh`;
+}
+
 function dograhCallPayload(agent, phoneNumber) {
+  const webhookUrl = getDograhWebhookUrl();
+
   return {
     phone_number: phoneNumber,
     calling_number: agent.callerIdNumber,
+    webhook_url: webhookUrl,
 
     initial_context: {
       businessName: agent.businessName,
@@ -50,19 +61,9 @@ function dograhCallPayload(agent, phoneNumber) {
       localAgentId: agent._id.toString(),
       userId: agent.userId.toString(),
       dograhWorkflowUuid: agent.dograhWorkflowUuid,
+      webhookUrl,
     },
   };
-}
-
-function extractRunId(response) {
-  return (
-    response?.run_id ||
-    response?.runId ||
-    response?.id ||
-    response?.data?.run_id ||
-    response?.data?.runId ||
-    response?.run?.id
-  );
 }
 
 export const createAgent = asyncHandler(async (req, res) => {
@@ -72,9 +73,59 @@ export const createAgent = asyncHandler(async (req, res) => {
 
   const agent = new Agent({ ...req.body, userId: req.user._id });
   agent.systemPrompt = generateSystemPrompt(agent);
+
+  agent.callerIdNumber =
+    req.body.callerIdNumber ||
+    process.env.DEFAULT_CALLER_ID_NUMBER ||
+    agent.callerIdNumber;
+
+  agent.connectedPhoneNumber =
+    req.body.connectedPhoneNumber ||
+    process.env.DEFAULT_CALLER_ID_NUMBER ||
+    agent.connectedPhoneNumber;
+
+  agent.telephonyProvider =
+    req.body.telephonyProvider ||
+    process.env.DEFAULT_TELEPHONY_PROVIDER ||
+    agent.telephonyProvider ||
+    "twilio";
+
   await agent.save();
 
-  res.status(201).json(agent);
+  try {
+    const dograhResponse = await createDograhWorkflowFromDefinition(agent);
+    const { dograhWorkflowId, dograhWorkflowUuid, dograhWorkflowName } =
+      await resolveDograhWorkflowFields(dograhResponse);
+
+    agent.dograhWorkflowId = dograhWorkflowId;
+    agent.dograhWorkflowUuid = dograhWorkflowUuid;
+    agent.dograhWorkflowName = dograhWorkflowName || agent.agentName;
+    agent.dograhStatus = dograhWorkflowUuid ? "created" : "created_missing_uuid";
+    agent.dograhError = undefined;
+    agent.dograhRawResponse = dograhResponse;
+    agent.status = dograhWorkflowUuid ? "Connected" : "Draft";
+
+    await agent.save();
+
+    return res.status(201).json({
+      agent,
+      dograhCreated: Boolean(dograhWorkflowUuid),
+      dograhResponse,
+      warning: dograhWorkflowUuid ? null : "Dograh workflow created but workflow UUID was not found in response."
+    });
+  } catch (error) {
+    agent.dograhStatus = "failed";
+    agent.dograhError = error.message;
+    agent.status = "Draft";
+    await agent.save();
+
+    return res.status(201).json({
+      agent,
+      dograhCreated: false,
+      warning: "Agent created locally but Dograh workflow creation failed.",
+      error: error.message
+    });
+  }
 });
 
 export const listAgents = asyncHandler(async (req, res) => {
@@ -193,6 +244,84 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   res.json(agent);
 });
 
+export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+
+  if (!agent.dograhWorkflowUuid && agent.dograhRawResponse) {
+    const { dograhWorkflowId, dograhWorkflowUuid, dograhWorkflowName } =
+      await resolveDograhWorkflowFields(agent.dograhRawResponse);
+
+    if (dograhWorkflowUuid) {
+      agent.dograhWorkflowId = dograhWorkflowId || agent.dograhWorkflowId;
+      agent.dograhWorkflowUuid = dograhWorkflowUuid;
+      agent.dograhWorkflowName = dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
+      agent.dograhStatus = "created";
+      agent.dograhError = undefined;
+      agent.status = "Connected";
+      await agent.save();
+
+      return res.json({
+        agent,
+        dograhCreated: true,
+        dograhResponse: agent.dograhRawResponse,
+        warning: null
+      });
+    }
+  }
+
+  if (!agent.systemPrompt) {
+    agent.systemPrompt = generateSystemPrompt(agent);
+    await agent.save();
+  }
+
+  agent.callerIdNumber =
+    agent.callerIdNumber ||
+    process.env.DEFAULT_CALLER_ID_NUMBER;
+
+  agent.connectedPhoneNumber =
+    agent.connectedPhoneNumber ||
+    process.env.DEFAULT_CALLER_ID_NUMBER;
+
+  agent.telephonyProvider =
+    agent.telephonyProvider ||
+    process.env.DEFAULT_TELEPHONY_PROVIDER ||
+    "twilio";
+
+  try {
+    const dograhResponse = await createDograhWorkflowFromDefinition(agent);
+    const { dograhWorkflowId, dograhWorkflowUuid, dograhWorkflowName } =
+      await resolveDograhWorkflowFields(dograhResponse);
+
+    agent.dograhWorkflowId = dograhWorkflowId;
+    agent.dograhWorkflowUuid = dograhWorkflowUuid;
+    agent.dograhWorkflowName = dograhWorkflowName || agent.agentName;
+    agent.dograhStatus = dograhWorkflowUuid ? "created" : "created_missing_uuid";
+    agent.dograhError = undefined;
+    agent.dograhRawResponse = dograhResponse;
+    agent.status = dograhWorkflowUuid ? "Connected" : "Draft";
+
+    await agent.save();
+
+    return res.json({
+      agent,
+      dograhCreated: Boolean(dograhWorkflowUuid),
+      dograhResponse,
+      warning: dograhWorkflowUuid ? null : "Dograh workflow created but workflow UUID was not found in response."
+    });
+  } catch (error) {
+    agent.dograhStatus = "failed";
+    agent.dograhError = error.message;
+    agent.status = "Draft";
+    await agent.save();
+
+    return res.status(502).json({
+      agent,
+      dograhCreated: false,
+      error: error.message
+    });
+  }
+});
+
 async function triggerCall(req, res, trigger) {
   if (!process.env.DOGRAH_BASE_URL) {
     throw new ApiError(
@@ -238,18 +367,39 @@ async function triggerCall(req, res, trigger) {
   const payload = dograhCallPayload(agent, phoneNumber);
   const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload);
   const dograhRunId = extractRunId(dograhResponse);
+  const responseFields = extractCallFields(dograhResponse);
+
+  console.log("Dograh trigger response:", JSON.stringify(dograhResponse, null, 2));
+  console.log("Auto extracted dograhRunId:", dograhRunId);
+  if (!dograhRunId) {
+    console.warn("Dograh run ID missing in trigger response. CallLog will be created, but manual sync needs a run ID.");
+  }
 
   const callLog = await CallLog.create({
     userId: req.user._id,
     agentId: agent._id,
     dograhWorkflowId: agent.dograhWorkflowId,
     dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId,
+    dograhRunId: dograhRunId ? String(dograhRunId) : null,
     callerNumber: phoneNumber,
     callingNumber: agent.callerIdNumber,
-    status: "pending",
+    status: dograhResponse?.status || dograhResponse?.data?.status || "initiated",
+    callDirection: "outbound",
+    source: "dograh",
+    duration: null,
+    durationSeconds: null,
+    summary: null,
+    transcript: null,
     rawDograhPayload: dograhResponse,
-    startedAt: new Date(),
+    startedAt: responseFields.startedAt || new Date(),
+  });
+
+  console.log("Dograh call triggered:", {
+    localAgentId: agent._id.toString(),
+    dograhWorkflowUuid: agent.dograhWorkflowUuid,
+    dograhRunId,
+    callerNumber: phoneNumber,
+    callingNumber: agent.callerIdNumber
   });
 
   res.status(202).json({ dograhResponse, callLog });
