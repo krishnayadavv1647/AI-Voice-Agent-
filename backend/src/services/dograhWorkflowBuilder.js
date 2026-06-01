@@ -41,6 +41,34 @@ function isHealthcareBusiness(agent) {
   );
 }
 
+function usesHindiVoice(agent) {
+  const language = String(agent.language || "").toLowerCase();
+  return language.includes("hindi") || language.includes("hinglish");
+}
+
+function buildPronunciationRules(agent) {
+  if (!usesHindiVoice(agent)) return "";
+
+  return `
+Voice Pronunciation Rules:
+- Hindi/Hinglish responses me Hindi words Devanagari script me likho.
+- Short and clear sentences use karo.
+- Long mixed Hindi-English paragraphs mat banao.
+- Business name and location clearly pronounce karo.
+- Reply short rakho.
+- Ek baar me ek hi question pucho.
+
+Example Hindi replies:
+- नमस्ते, ${value(agent.businessName)} में आपका स्वागत है।
+- बिलकुल, कितने गेस्ट हैं?
+- किस तारीख के लिए बुकिंग चाहिए?
+- किस टाइम के लिए बुकिंग चाहिए?
+- आपका नाम क्या है?
+- आपका फोन नंबर क्या है?
+- टीम चेक करके कन्फर्म करेगी।
+`;
+}
+
 function buildBusTicketRules(agent) {
   if (!isBusTicketBusiness(agent)) return "";
 
@@ -147,6 +175,8 @@ ${buildHealthcareRules(agent)}
 
 ${buildBusTicketRules(agent)}
 
+${buildPronunciationRules(agent)}
+
 Stay strictly within this business category. Do not switch to another business type. If the business is bus ticket booking, only talk about bus routes, tickets, travel, passengers, fares, seats, boarding, dropping, cancellation, refund, and booking support.
 `;
 }
@@ -199,7 +229,11 @@ export function buildDograhWorkflowDefinition(agent) {
   const endNodeId = `end-${localId}`;
 
   const globalPrompt = buildGlobalPrompt(agent);
-  const startPrompt = "Greet the caller politely and ask how you can help today.";
+  const startPrompt = hasText(agent.greetingMessage)
+    ? String(agent.greetingMessage).trim()
+    : usesHindiVoice(agent)
+    ? `नमस्ते, ${value(agent.businessName)} में आपका स्वागत है। बताइए, मैं आपकी कैसे मदद कर सकता हूँ?`
+    : "Greet the caller politely and ask how you can help today.";
   const agentPrompt = buildAgentPrompt(agent);
   console.log("AUTO DOGRAH AGENT PROMPT:", agentPrompt);
   const endPrompt = "Thank the caller and end the call politely after the request is handled or callback details are collected.";
@@ -232,9 +266,9 @@ export function buildDograhWorkflowDefinition(agent) {
           name: agent.agentName || "Main Agent",
           prompt: agentPrompt,
           add_global_prompt: true,
-          allow_interrupt: true,
+          allow_interrupt: agent.allowInterruption !== false,
           wait_for_user_response: true,
-          ...buildExtractionData()
+          ...(agent.leadCaptureEnabled === false ? { extraction_enabled: false } : buildExtractionData())
         }
       },
       {

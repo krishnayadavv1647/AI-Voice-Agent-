@@ -1,4 +1,4 @@
-import { Cable, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Cable, Edit, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -255,12 +255,12 @@ export default function AgentDetails() {
     setChatMessages((current) => [...current, { role: "user", text }]);
 
     try {
-      const result = await api(`/agents/${id}/test`, {
+      const result = await api(`/agents/${id}/test-chat`, {
         method: "POST",
         body: { message: text }
       });
 
-      setChatMessages((current) => [...current, { role: "assistant", text: result.response }]);
+      setChatMessages((current) => [...current, { role: "assistant", text: result.response || result.reply }]);
     } catch (err) {
       setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
       setChatMessages((current) => [...current, { role: "assistant", text: "Message failed. Check backend Gemini configuration and try again.", error: true }]);
@@ -271,8 +271,14 @@ export default function AgentDetails() {
 
   async function removeAgent() {
     if (!confirm("Delete this agent?")) return;
-    await api(`/agents/${id}`, { method: "DELETE" });
-    navigate("/agents");
+    setError("");
+    setNotice("");
+    try {
+      await api(`/agents/${id}`, { method: "DELETE" });
+      navigate("/agents");
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    }
   }
 
   async function action(type) {
@@ -297,15 +303,63 @@ export default function AgentDetails() {
     }
   }
 
+  async function updateDograhWorkflow() {
+    setError("");
+    setNotice("");
+    setCallLoading(true);
+    try {
+      console.log("Update Dograh Flow:", {
+        agentId: id,
+        provider: agent?.provider,
+        providerWorkflowId: agent?.providerWorkflowId || agent?.dograhWorkflowId,
+        apiMethod: "PATCH",
+        apiPath: `/agents/${id}/sync-provider`
+      });
+
+      const result = await api(`/agents/${id}/sync-provider`, { method: "PATCH", body: { createIfMissing: false } });
+      setDebugResponse(result);
+      setNotice(result.message || "Provider synced successfully");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    } finally {
+      setCallLoading(false);
+    }
+  }
+
+  async function copyCallbackLink() {
+    await navigator.clipboard.writeText(`${window.location.origin}/call/${id}`);
+    setNotice("Callback link copied.");
+  }
+
   const connected = Boolean(agent?.dograhWorkflowUuid);
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
+  const workflowSyncStatus = useMemo(() => {
+    if (!agent) return "";
+    if (["failed", "update_failed"].includes(String(agent.dograhStatus || "").toLowerCase())) return "Workflow Error";
+    if (agent.dograhNeedsUpdate) return "Workflow Needs Update";
+    if (agent.providerWorkflowId || agent.dograhWorkflowUuid) return "Workflow Synced";
+    return "Workflow Missing";
+  }, [agent]);
 
   return (
     <>
       <PageHeader
         title={agent?.agentName || "Agent Details"}
         description={agent ? `${agent.agentType} for ${agent.businessName}` : "Loading agent..."}
-        action={agent && <StatusBadge status={agent.status} />}
+        action={agent && (
+          <>
+            <StatusBadge status={agent.status} />
+            <span className={`badge ${
+              workflowSyncStatus === "Workflow Synced" ? "bg-emerald-50 text-emerald-700" :
+              workflowSyncStatus === "Workflow Needs Update" ? "bg-amber-50 text-amber-700" :
+              workflowSyncStatus === "Workflow Error" ? "bg-rose-50 text-rose-700" :
+              "bg-slate-100 text-slate-700"
+            }`}>
+              {workflowSyncStatus}
+            </span>
+          </>
+        )}
       />
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
@@ -316,24 +370,48 @@ export default function AgentDetails() {
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
           <section className="space-y-6">
             <div className="card">
-              <div className="mb-4 flex flex-wrap gap-2">
+              <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-100 pb-4 text-sm">
+                {[
+                  ["Overview", "#overview"],
+                  ["Message Test", "#message-test"],
+                  ["Test Call", "#test-call"],
+                  ["Call Logs", "#call-logs"],
+                  ["Leads", "/leads"],
+                  ["Voice/Language Settings", "#voice-settings"],
+                  ["Dograh Settings", "#dograh-settings"],
+                  ["Public Callback Link", "#callback-link"]
+                ].map(([label, href]) => (
+                  <a key={label} className="rounded-lg bg-slate-100 px-3 py-2 font-semibold text-slate-700 hover:bg-brand-50 hover:text-brand-700" href={href}>{label}</a>
+                ))}
+              </div>
+              <div id="test-call" className="mb-4 flex flex-wrap gap-2">
                 <button className="btn-secondary" onClick={openConnectModal}><Cable size={16} />Connect Dograh Workflow</button>
+                <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
                 <button className="btn-secondary" disabled={callLoading} onClick={retryDograhWorkflowCreation}><RefreshCw size={16} />Retry Dograh Workflow Creation</button>
+                <button className="btn-secondary" disabled={callLoading} onClick={updateDograhWorkflow}>
+                  <RefreshCw size={16} />{agent.provider === "dograh" ? "Update Dograh Flow" : "Sync Provider"}
+                </button>
                 <button className="btn-secondary" onClick={() => action("publish")}><Play size={16} />Publish</button>
                 <button className="btn-secondary text-rose-600" onClick={removeAgent}><Trash2 size={16} />Delete</button>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div id="overview" className="grid gap-4 md:grid-cols-2">
                 <Info label="Business" value={agent.businessName} />
                 <Info label="Category" value={agent.businessCategory} />
                 <Info label="Location" value={agent.businessLocation} />
                 <Info label="Working Hours" value={agent.workingHours} />
                 <Info label="Contact" value={agent.contactNumber} />
                 <Info label="Dograh Connection" value={connected ? "Connected" : "Not connected"} />
+                <Info label="Dograh Sync Status" value={workflowSyncStatus} />
               </div>
+              {agent.dograhNeedsUpdate && (
+                <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
+                  Agent saved locally. Update Dograh Workflow to apply these changes to live calls.
+                </p>
+              )}
               {!connected && (
                 <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                   Create or connect Dograh workflow first.
@@ -381,7 +459,7 @@ export default function AgentDetails() {
               </form>
             </div>
 
-            <div className="card">
+            <div id="call-logs" className="card">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="font-bold text-ink">Call Logs</h2>
                 <button className="btn-secondary" onClick={load}><RefreshCw size={16} />Refresh</button>
@@ -434,15 +512,17 @@ export default function AgentDetails() {
               </div>
             )}
 
-            <div className="card">
+            <div id="dograh-settings" className="card">
               <h2 className="mb-3 font-bold text-ink">System prompt preview</h2>
               <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-4 text-sm text-slate-100">{agent.systemPrompt}</pre>
             </div>
           </section>
 
           <aside className="space-y-6">
-            <div className="card">
+            <div id="voice-settings" className="card">
               <h2 className="mb-3 font-bold text-ink">Dograh workflow</h2>
+              <Info label="Provider" value={agent.provider || (agent.dograhWorkflowId ? "dograh" : "custom")} />
+              <Info label="Provider Workflow ID" value={agent.providerWorkflowId || agent.dograhWorkflowId} />
               <Info label="Workflow Name" value={agent.dograhWorkflowName} />
               <Info label="Workflow ID" value={agent.dograhWorkflowId} />
               <Info label="Workflow UUID" value={agent.dograhWorkflowUuid} />
@@ -450,8 +530,14 @@ export default function AgentDetails() {
               <Info label="Caller ID Number" value={agent.callerIdNumber} />
               <Info label="Telephony Provider" value={agent.telephonyProvider} />
               <Info label="Dograh Status" value={agent.dograhStatus} />
+              <Info label="Dograh Sync Status" value={workflowSyncStatus} />
               <Info label="Dograh Error" value={agent.dograhError} />
-              {agent.dograhStatus === "failed" && (
+              {agent.dograhNeedsUpdate && (
+                <button className="btn-primary mt-2 w-full" disabled={callLoading} onClick={updateDograhWorkflow}>
+                  <RefreshCw size={16} />{agent.provider === "dograh" ? "Update Dograh Flow" : "Sync Provider"}
+                </button>
+              )}
+              {["failed", "update_failed"].includes(String(agent.dograhStatus || "").toLowerCase()) && (
                 <button className="btn-secondary mt-2 w-full" disabled={callLoading} onClick={retryDograhWorkflowCreation}>
                   <RefreshCw size={16} />Retry Dograh Workflow Creation
                 </button>
@@ -466,9 +552,20 @@ export default function AgentDetails() {
               <Info label="Personality" value={agent.personality} />
             </div>
 
-            <div className="card">
+            <div id="callback-link" className="card">
               <h2 className="mb-3 font-bold text-ink">Webhook</h2>
               <Info label="Dograh Webhook URL" value="http://localhost:5000/api/webhooks/dograh" />
+            </div>
+
+            <div className="card">
+              <h2 className="mb-3 font-bold text-ink">Public Callback Link</h2>
+              <p className="mb-3 text-sm text-slate-500">Share this link with customers so they can request an AI callback.</p>
+              <Info label="Callback URL" value={`/call/${agent._id}`} />
+              <div className="flex flex-wrap gap-2">
+                <button className="btn-secondary" onClick={copyCallbackLink}>Copy Link</button>
+                <a className="btn-primary" href={`/call/${agent._id}`} target="_blank">Preview</a>
+              </div>
+              <p className="mt-3 text-sm text-slate-500">Customers enter their phone number and the AI calls them.</p>
             </div>
           </aside>
         </div>

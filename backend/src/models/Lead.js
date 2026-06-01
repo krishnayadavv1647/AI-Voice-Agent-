@@ -24,7 +24,7 @@ const leadSchema = new mongoose.Schema(
     message: String,
     customFields: { type: mongoose.Schema.Types.Mixed },
     source: String,
-    status: { type: String, enum: ["New", "Contacted", "Interested", "Closed", "Not Interested"], default: "New" },
+    status: { type: String, enum: ["New", "Contacted", "Interested", "Booked", "Closed", "Not Interested"], default: "New" },
     notes: [noteSchema]
   },
   { timestamps: true }

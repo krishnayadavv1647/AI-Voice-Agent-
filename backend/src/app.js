@@ -13,6 +13,9 @@ import dograhRoutes from "./routes/dograh.routes.js";
 import knowledgeRoutes from "./routes/knowledge.routes.js";
 import leadRoutes from "./routes/lead.routes.js";
 import llmRoutes from "./routes/llm.routes.js";
+import publicRoutes from "./routes/public.routes.js";
+import telephonyConfigRoutes from "./routes/telephonyConfig.routes.js";
+import telephonyRoutes from "./routes/telephony.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
@@ -21,6 +24,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
 app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
@@ -33,6 +37,9 @@ app.use("/api/calls", callRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/knowledge", knowledgeRoutes);
 app.use("/api/llm", llmRoutes);
+app.use("/api/public", publicRoutes);
+app.use("/api/telephony-configs", telephonyConfigRoutes);
+app.use("/api/telephony", telephonyRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
 
