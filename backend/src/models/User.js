@@ -5,7 +5,10 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, minlength: 6 },
+    password: { type: String, minlength: 6 },
+    googleId: { type: String, index: true },
+    avatar: String,
+    authProvider: { type: String, enum: ["google", "local"], default: "local" },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     plan: { type: String, enum: ["free", "starter", "pro", "agency"], default: "free" },
     minutesUsed: { type: Number, default: 0 },
@@ -21,6 +24,7 @@ userSchema.pre("save", async function hashPassword(next) {
 });
 
 userSchema.methods.matchPassword = function matchPassword(password) {
+  if (!this.password) return false;
   return bcrypt.compare(password, this.password);
 };
 

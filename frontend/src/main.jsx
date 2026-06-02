@@ -8,6 +8,7 @@ import "./styles.css";
 import AgentDetails from "./pages/AgentDetails.jsx";
 import Agents from "./pages/Agents.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
+import AuthSuccess from "./pages/AuthSuccess.jsx";
 import Billing from "./pages/Billing.jsx";
 import CallLogs from "./pages/CallLogs.jsx";
 import CreateAgent from "./pages/CreateAgent.jsx";
@@ -38,6 +39,7 @@ function Router() {
     <Routes>
       <Route path="/login" element={<AuthPage mode="login" />} />
       <Route path="/signup" element={<AuthPage mode="signup" />} />
+      <Route path="/auth/success" element={<AuthSuccess />} />
       <Route path="/call/:agentId" element={<PublicCallback />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route

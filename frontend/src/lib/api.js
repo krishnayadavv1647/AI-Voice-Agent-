@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export function getToken() {
   return localStorage.getItem("ai_voice_agent_token");
@@ -22,7 +22,7 @@ export async function api(path, options = {}) {
       body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body
     });
   } catch (error) {
-    throw new Error("Cannot reach the backend API. Make sure the backend server is running on port 5000.");
+    throw new Error(`Cannot reach the backend API at ${API_URL}. Make sure the backend server is running and VITE_API_URL is correct.`);
   }
 
   if (!response.ok) {

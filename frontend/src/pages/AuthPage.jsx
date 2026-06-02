@@ -1,6 +1,7 @@
 import { Bot, CheckCircle2, Headphones } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
 
 export default function AuthPage({ mode }) {
@@ -29,6 +30,10 @@ export default function AuthPage({ mode }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function continueWithGoogle() {
+    window.location.href = `${API_URL}/auth/google`;
   }
 
   return (
@@ -74,6 +79,9 @@ export default function AuthPage({ mode }) {
             {isSignup && <Label text="Confirm password"><input type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} required /></Label>}
             {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
             <button className="btn-primary w-full" disabled={loading}>{loading ? "Please wait..." : isSignup ? "Sign up" : "Log in"}</button>
+            <button className="btn-secondary w-full justify-center" type="button" disabled={loading} onClick={continueWithGoogle}>
+              Continue with Google
+            </button>
             <p className="text-center text-sm text-slate-500">
               {isSignup ? "Already have an account?" : "New here?"}{" "}
               <Link className="font-semibold text-brand-700" to={isSignup ? "/login" : "/signup"}>
