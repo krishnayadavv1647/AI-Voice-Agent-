@@ -1,10 +1,13 @@
 import express from "express";
-import { deleteCall, getCall, listCalls } from "../controllers/call.controller.js";
+import { deleteCall, extractLeadForCall, getCall, listCalls, syncCall, syncCallByRun } from "../controllers/call.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 router.use(protect);
 router.get("/", listCalls);
+router.post("/sync-by-run", syncCallByRun);
+router.post("/:id/extract-lead", extractLeadForCall);
+router.post("/:id/sync", syncCall);
 router.get("/:id", getCall);
 router.delete("/:id", deleteCall);
 

@@ -1,7 +1,9 @@
 import axios from "axios";
 import { ApiError } from "../utils/apiError.js";
+import { buildDograhWorkflowDefinition, validateLocalWorkflowDefinition } from "./dograhWorkflowBuilder.js";
 
 const EXPECTED_DOGRAH_BASE_URL = "https://app.dograh.com/api/v1";
+const DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT = "/workflow/create/definition";
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 function getDograhBaseUrl() {
@@ -155,6 +157,218 @@ export async function fetchDograhWorkflows() {
     return response.data;
   } catch (error) {
     handleDograhError(error, "fetch workflows");
+  }
+}
+
+export function extractDograhWorkflowFields(dograhResponse) {
+  const workflow =
+    dograhResponse?.workflow ||
+    dograhResponse?.data?.workflow ||
+    dograhResponse?.data?.workflow_data ||
+    dograhResponse?.workflow_data ||
+    dograhResponse?.data ||
+    {};
+
+  return {
+    dograhWorkflowId:
+      dograhResponse?.id ||
+      dograhResponse?.workflow_id ||
+      dograhResponse?.workflowId ||
+      dograhResponse?.workflowID ||
+      dograhResponse?.data?.id ||
+      dograhResponse?.data?.workflow_id ||
+      dograhResponse?.data?.workflowId ||
+      dograhResponse?.data?.workflowID ||
+      workflow?.id ||
+      workflow?.workflow_id ||
+      workflow?.workflowId ||
+      workflow?.workflowID ||
+      null,
+
+    dograhWorkflowUuid:
+      dograhResponse?.workflow_uuid ||
+      dograhResponse?.uuid ||
+      dograhResponse?.workflowUuid ||
+      dograhResponse?.workflowUUID ||
+      dograhResponse?.workflow?.uuid ||
+      dograhResponse?.workflow?.workflow_uuid ||
+      dograhResponse?.workflow?.workflowUuid ||
+      dograhResponse?.workflow?.workflowUUID ||
+      dograhResponse?.data?.workflow_uuid ||
+      dograhResponse?.data?.uuid ||
+      dograhResponse?.data?.workflowUuid ||
+      dograhResponse?.data?.workflowUUID ||
+      workflow?.workflow_uuid ||
+      workflow?.uuid ||
+      workflow?.workflowUuid ||
+      workflow?.workflowUUID ||
+      null,
+
+    dograhWorkflowName:
+      dograhResponse?.name ||
+      dograhResponse?.workflow_name ||
+      dograhResponse?.workflowName ||
+      dograhResponse?.data?.name ||
+      dograhResponse?.data?.workflow_name ||
+      dograhResponse?.data?.workflowName ||
+      workflow?.name ||
+      workflow?.workflow_name ||
+      workflow?.workflowName ||
+      null
+  };
+}
+
+export async function resolveDograhWorkflowFields(dograhResponse) {
+  const fields = extractDograhWorkflowFields(dograhResponse);
+
+  if (fields.dograhWorkflowUuid || !fields.dograhWorkflowId) {
+    return fields;
+  }
+
+  try {
+    console.log("Dograh workflow UUID missing in create response. Fetching workflow by ID:", fields.dograhWorkflowId);
+    const workflowResponse = await getDograhWorkflow(fields.dograhWorkflowId);
+    const fetchedFields = extractDograhWorkflowFields(workflowResponse);
+
+    return {
+      dograhWorkflowId: fields.dograhWorkflowId || fetchedFields.dograhWorkflowId,
+      dograhWorkflowUuid: fetchedFields.dograhWorkflowUuid || fields.dograhWorkflowUuid,
+      dograhWorkflowName: fields.dograhWorkflowName || fetchedFields.dograhWorkflowName
+    };
+  } catch (error) {
+    console.error("Dograh workflow UUID fetch failed:", error.message);
+    return fields;
+  }
+}
+
+export async function createDograhWorkflowFromDefinition(agent) {
+  try {
+    const workflow_definition = buildDograhWorkflowDefinition(agent);
+
+    validateLocalWorkflowDefinition(workflow_definition);
+
+    const payload = {
+      name: agent.agentName || `${agent.businessName} Agent`,
+      workflow_definition
+    };
+
+    console.log("Creating Dograh workflow from definition:", {
+      endpoint: DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT,
+      name: payload.name,
+      nodeCount: workflow_definition.nodes.length,
+      edgeCount: workflow_definition.edges.length
+    });
+
+    const response = await createDograhClient().post(
+      DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT,
+      payload
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error("Dograh create workflow failed status:", error.response?.status);
+    console.error("Dograh create workflow failed data:", error.response?.data);
+    console.error("Dograh create workflow failed message:", error.message);
+
+    if (error instanceof ApiError) throw error;
+
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.detail ||
+      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
+      error.message ||
+      "Dograh workflow creation failed";
+
+    throw new ApiError(error.response?.status || 502, message);
+  }
+}
+
+export async function updateDograhWorkflowById(workflowId, agent) {
+  try {
+    if (!workflowId) {
+      throw new ApiError(400, "dograhWorkflowId is required to update the existing Dograh workflow.");
+    }
+
+    const workflow_definition = buildDograhWorkflowDefinition(agent);
+    validateLocalWorkflowDefinition(workflow_definition);
+
+    const payload = {
+      name: agent.agentName || `${agent.businessName} Agent`,
+      workflow_definition
+    };
+
+    console.log("Updating existing Dograh workflow:", {
+      dograhApiMethod: "PUT",
+      dograhApiUrl: `${getDograhBaseUrl()}/workflow/${workflowId}`,
+      endpoint: `/workflow/${workflowId}`,
+      workflowId,
+      name: payload.name,
+      nodeCount: workflow_definition.nodes.length,
+      edgeCount: workflow_definition.edges.length
+    });
+
+    const response = await createDograhClient().put(`/workflow/${workflowId}`, payload);
+
+    return response.data;
+  } catch (error) {
+    console.error("Dograh update workflow failed status:", error.response?.status);
+    console.error("Dograh update workflow failed data:", error.response?.data);
+    console.error("Dograh update workflow failed message:", error.message);
+
+    if (error instanceof ApiError) throw error;
+
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.detail ||
+      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
+      error.message ||
+      "Dograh workflow update failed";
+
+    throw new ApiError(error.response?.status || 502, message);
+  }
+}
+
+export async function archiveDograhWorkflowById(workflowId) {
+  try {
+    if (!workflowId) {
+      throw new ApiError(400, "dograhWorkflowId is required to archive the existing Dograh workflow.");
+    }
+
+    requireDograhConfig();
+
+    const endpoint = `/workflow/${workflowId}/status`;
+
+    console.log("Archiving Dograh workflow:", {
+      workflowId,
+      dograhArchiveUrl: `${getDograhBaseUrl()}${endpoint}`,
+      dograhApiMethod: "PUT"
+    });
+
+    const response = await createDograhClient().put(endpoint, {
+      status: "archived"
+    });
+
+    console.log("Dograh workflow archive response:", response.data || { status: response.status });
+
+    return response.data || { success: true };
+  } catch (error) {
+    console.error("Dograh archive workflow failed status:", error.response?.status);
+    console.error("Dograh archive workflow failed data:", error.response?.data);
+    console.error("Dograh archive workflow failed message:", error.message);
+
+    if (error instanceof ApiError) throw error;
+
+    const message =
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      error.response?.data?.detail ||
+      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
+      error.message ||
+      "Dograh workflow archive failed";
+
+    throw new ApiError(error.response?.status || 502, `Dograh workflow archive failed: ${message}`);
   }
 }
 
