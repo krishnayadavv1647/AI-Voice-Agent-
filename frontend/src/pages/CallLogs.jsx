@@ -70,7 +70,7 @@ export default function CallLogs() {
                       <td>{formatDuration(call)}</td>
                       <td className="break-anywhere">{call.dograhRunId || "Missing"}</td>
                       <td>{call.leadCaptured ? "Yes" : "No"}</td>
-                      <td>{call.recordingUrl ? <audio controls src={call.recordingUrl} className="max-w-[180px]" /> : "-"}</td>
+                      <td>{call.recordingUrl ? <audio controls src={call.recordingUrl} className="w-full max-w-[180px]" /> : "-"}</td>
                       <td>
                         <div className="flex flex-wrap gap-2">
                           <button title="View Details" className="rounded-xl border border-slate-200 p-2" onClick={() => setSelected(call)}><FileText size={16} /></button>
@@ -110,7 +110,7 @@ function CallCard({ call, setSelected, sync, remove }) {
         <Info label="Agent" value={call.agentId?.agentName || "Agent"} />
         <Info label="Run ID" value={call.dograhRunId || "Missing"} />
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 action-row">
         <button className="btn-secondary" onClick={() => setSelected(call)}>View Details</button>
         <button className="btn-secondary" disabled={!call.dograhRunId} onClick={() => sync(call._id)}>Sync</button>
         <button className="btn-danger" onClick={() => remove(call._id)}>Delete</button>
@@ -122,7 +122,7 @@ function CallCard({ call, setSelected, sync, remove }) {
 function CallModal({ call, onClose }) {
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="modal-panel rounded-3xl bg-white p-4 shadow-2xl sm:max-w-4xl sm:p-6" onClick={(event) => event.stopPropagation()}>
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-slate-950">Call Detail</h2>

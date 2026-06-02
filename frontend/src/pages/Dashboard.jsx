@@ -83,14 +83,14 @@ export default function Dashboard() {
 
           <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
             <section className="card min-w-0">
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <div>
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="panel-title">Call Volume</h2>
                   <p className="muted">Outbound calls over the last 12 periods</p>
                 </div>
                 <StatusBadge status="Active" />
               </div>
-              <div className="flex h-64 min-w-0 items-end gap-2 rounded-2xl bg-slate-50 p-4">
+              <div className="flex h-52 min-w-0 items-end gap-1 rounded-2xl bg-slate-50 p-3 sm:h-64 sm:gap-2 sm:p-4">
                 {chartBars.map((height, index) => (
                   <div key={index} className="flex min-w-0 flex-1 items-end">
                     <div

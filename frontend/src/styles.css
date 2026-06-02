@@ -6,6 +6,11 @@
   box-sizing: border-box;
 }
 
+html {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   overflow-x: hidden;
@@ -20,6 +25,7 @@ body {
 #root {
   min-height: 100vh;
   max-width: 100%;
+  min-width: 0;
   overflow-x: hidden;
 }
 
@@ -90,6 +96,22 @@ button {
   -webkit-overflow-scrolling: touch;
 }
 
+.mobile-safe {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.action-row {
+  @apply flex flex-col gap-2 sm:flex-row sm:flex-wrap;
+}
+
+.modal-panel {
+  width: min(100%, 56rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
 .break-anywhere {
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -133,10 +155,13 @@ pre {
 }
 
 @media (max-width: 640px) {
-  .btn-primary,
-  .btn-secondary,
-  .btn-danger,
-  .btn-success {
+  .action-row > * {
     @apply w-full;
+  }
+
+  .card,
+  .glass-card,
+  .metric-card {
+    @apply rounded-2xl p-4;
   }
 }

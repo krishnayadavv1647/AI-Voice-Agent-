@@ -148,13 +148,58 @@ function handleDograhError(error, action) {
   });
 }
 
+function readDograhWorkflowList(responseData) {
+  if (Array.isArray(responseData)) return responseData;
+  if (Array.isArray(responseData?.data)) return responseData.data;
+  if (Array.isArray(responseData?.workflows)) return responseData.workflows;
+  if (Array.isArray(responseData?.results)) return responseData.results;
+  return [];
+}
+
+export function isActiveDograhWorkflow(workflow) {
+  const status = String(workflow?.status || workflow?.workflow_status || workflow?.state || "").toLowerCase();
+  const isArchived =
+    workflow?.archived === true ||
+    workflow?.isArchived === true ||
+    workflow?.is_archived === true ||
+    workflow?.deleted === true ||
+    workflow?.isDeleted === true ||
+    workflow?.is_deleted === true ||
+    status === "archived" ||
+    status === "inactive" ||
+    status === "deleted";
+
+  return !isArchived;
+}
+
+function applyActiveWorkflowFilter(responseData) {
+  const workflows = readDograhWorkflowList(responseData);
+  const activeWorkflows = workflows.filter(isActiveDograhWorkflow);
+
+  console.log("Total Dograh workflows:", workflows.length);
+  console.log("Active Dograh workflows:", activeWorkflows.length);
+
+  if (Array.isArray(responseData)) return activeWorkflows;
+  if (Array.isArray(responseData?.data)) return { ...responseData, data: activeWorkflows };
+  if (Array.isArray(responseData?.workflows)) return { ...responseData, workflows: activeWorkflows };
+  if (Array.isArray(responseData?.results)) return { ...responseData, results: activeWorkflows };
+
+  return activeWorkflows;
+}
+
 export async function fetchDograhWorkflows() {
   try {
     console.log("Fetching Dograh workflows...");
 
-    const response = await createDograhClient().get("/workflow/fetch");
+    const response = await createDograhClient().get("/workflow/fetch", {
+      params: {
+        archived: false,
+        isArchived: false,
+        status: "active"
+      }
+    });
 
-    return response.data;
+    return applyActiveWorkflowFilter(response.data);
   } catch (error) {
     handleDograhError(error, "fetch workflows");
   }

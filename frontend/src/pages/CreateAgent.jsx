@@ -146,10 +146,10 @@ export default function CreateAgent() {
     <>
       <PageHeader title="Create Agent" description="Build an outbound-first AI calling agent with templates, business knowledge, voice settings, and automatic Dograh workflow creation." />
 
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-        <div className="mb-3 flex flex-wrap gap-2">
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4">
+        <div className="mb-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
           {steps.map((label, index) => (
-            <button key={label} onClick={() => setStep(index)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${index === step ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            <button key={label} onClick={() => setStep(index)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${index === step ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
               {index + 1}. {label}
             </button>
           ))}
@@ -231,13 +231,13 @@ export default function CreateAgent() {
               <Field label="Human Transfer Message" name="humanTransferMessage" value={form.humanTransferMessage} onChange={setField} textarea />
               <Field label="Call Summary Format" name="summaryFormat" value={form.summaryFormat} onChange={setField} textarea />
             </div>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-bold text-slate-950">Lead Capture Questions</h3>
               <button className="btn-secondary" onClick={addQuestion}><Plus size={16} />Add Question</button>
             </div>
             <div className="space-y-3">
               {form.leadQuestions.map((question, index) => (
-                <div key={`${question.fieldName}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+                <div key={`${question.fieldName}-${index}`} className="grid min-w-0 gap-3 rounded-2xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
                   <input value={question.label} onChange={(event) => updateQuestion(index, "label", event.target.value)} />
                   <input value={question.fieldName} onChange={(event) => updateQuestion(index, "fieldName", event.target.value)} />
                   <label className="flex items-center gap-2 text-sm text-slate-700">

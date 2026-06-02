@@ -58,7 +58,7 @@ export default function Settings() {
   return (
     <>
       <PageHeader title="Settings" description="Manage profile, team, API keys, billing placeholders, usage limits, notifications, and security." />
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2 xl:gap-6">
         <Panel icon={Users} title="Profile">
           <label className="block text-sm font-semibold text-slate-700">Profile name<input className="mt-1" value={user?.name || ""} readOnly /></label>
           <label className="block text-sm font-semibold text-slate-700">Email<input className="mt-1" value={user?.email || ""} readOnly /></label>
@@ -113,10 +113,10 @@ export default function Settings() {
           <div className="space-y-2">
             {telephonyConfigs.map((config) => (
               <div key={config._id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
                     <p className="font-semibold text-slate-950">{config.name}</p>
-                    <p className="text-sm text-slate-500">{config.provider} · {config.phoneNumber}</p>
+                    <p className="break-anywhere text-sm text-slate-500">{config.provider} · {config.phoneNumber}</p>
                   </div>
                   <button className="btn-secondary" onClick={() => testTelephonyConfig(config._id)}>Test Connection</button>
                 </div>
@@ -137,9 +137,9 @@ export default function Settings() {
 function Panel({ icon: Icon, title, children }) {
   return (
     <section className="card space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="icon-tile"><Icon size={18} /></div>
-        <h2 className="panel-title">{title}</h2>
+        <h2 className="panel-title min-w-0 break-anywhere">{title}</h2>
       </div>
       {children}
     </section>
@@ -147,5 +147,5 @@ function Panel({ icon: Icon, title, children }) {
 }
 
 function Info({ label, value }) {
-  return <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="font-bold text-slate-950">{value}</p></div>;
+  return <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="break-anywhere font-bold text-slate-950">{value}</p></div>;
 }

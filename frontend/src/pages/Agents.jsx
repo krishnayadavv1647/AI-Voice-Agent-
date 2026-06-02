@@ -81,7 +81,7 @@ export default function Agents() {
                 <p className="mt-2 break-anywhere text-xs text-slate-500">{agent.dograhWorkflowUuid || "Workflow UUID not connected yet"}</p>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-5 action-row">
                 <Link title="View" className="btn-secondary" to={`/agents/${agent._id}`}><Eye size={16} />View</Link>
                 <Link title="Edit" className="btn-secondary" to={`/agents/${agent._id}/edit`}><Edit size={16} />Edit</Link>
                 <Link title="Test Call" className="btn-secondary" to={`/agents/${agent._id}/test`}><PhoneCall size={16} />Test Call</Link>

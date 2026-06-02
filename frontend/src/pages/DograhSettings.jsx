@@ -6,7 +6,7 @@ export default function DograhSettings() {
   return (
     <>
       <PageHeader title="Dograh Settings" description="Verify Dograh API connectivity, workflow creation settings, caller ID, and manual workflow connection defaults." />
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-3 xl:gap-6">
         <section className="card xl:col-span-2">
           <h2 className="panel-title">API Connection</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
