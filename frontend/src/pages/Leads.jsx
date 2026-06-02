@@ -1,4 +1,4 @@
-import { Download, FileText, PhoneCall, UserRound } from "lucide-react";
+import { Download, FileText, PhoneCall, Trash2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -10,6 +10,9 @@ const statuses = ["New", "Contacted", "Interested", "Booked", "Closed", "Not Int
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [deletingId, setDeletingId] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
 
   async function load() {
     setLeads(await api("/leads"));
@@ -36,6 +39,24 @@ export default function Leads() {
     load();
   }
 
+  async function deleteLead(id) {
+    if (!confirm("Are you sure you want to delete this lead?")) return;
+    setDeletingId(id);
+    setNotice("");
+    setError("");
+
+    try {
+      await api(`/leads/${id}`, { method: "DELETE" });
+      setLeads((current) => current.filter((lead) => lead._id !== id));
+      if (selected?._id === id) setSelected(null);
+      setNotice("Lead deleted successfully");
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    } finally {
+      setDeletingId("");
+    }
+  }
+
   async function exportCsv() {
     const csv = await api("/leads/export/csv");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -49,6 +70,8 @@ export default function Leads() {
   return (
     <>
       <PageHeader title="Leads" description="CRM-style lead management for customers captured from calls, callback forms, transcripts, and messages." action={<button className="btn-secondary" onClick={exportCsv}><Download size={16} />Export CSV</button>} />
+      {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+      {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {!leads.length ? (
         <EmptyState title="No leads captured yet. Leads will appear after calls or messages." />
       ) : (
@@ -68,6 +91,9 @@ export default function Leads() {
                   <button className="btn-secondary" onClick={() => setSelected(lead)}>View</button>
                   <button className="btn-secondary" onClick={() => addNote(lead._id)}>Add Note</button>
                   <button className="btn-secondary" onClick={() => callAgain(lead._id)}>Call Again</button>
+                  <button className="btn-secondary text-rose-600" disabled={deletingId === lead._id} onClick={() => deleteLead(lead._id)}>
+                    {deletingId === lead._id ? "Deleting..." : "Delete"}
+                  </button>
                 </div>
               </article>
             ))}
@@ -101,6 +127,7 @@ export default function Leads() {
                           <button className="rounded-xl border border-slate-200 p-2" title="Add note" onClick={() => addNote(lead._id)}><FileText size={16} /></button>
                           {lead.callLogId?.transcriptUrl && <a className="rounded-xl border border-slate-200 p-2" title="View transcript" href={lead.callLogId.transcriptUrl} target="_blank"><FileText size={16} /></a>}
                           <button className="rounded-xl border border-slate-200 p-2" title="Call again" onClick={() => callAgain(lead._id)}><PhoneCall size={16} /></button>
+                          <button className="rounded-xl border border-slate-200 p-2 text-rose-600 disabled:opacity-50" disabled={deletingId === lead._id} title="Delete" onClick={() => deleteLead(lead._id)}><Trash2 size={16} /></button>
                         </div>
                       </td>
                     </tr>
@@ -133,6 +160,9 @@ export default function Leads() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => addNote(selected._id)}>Add Note</button>
               <button className="btn-primary" onClick={() => callAgain(selected._id)}>Call Again</button>
+              <button className="btn-secondary text-rose-600" disabled={deletingId === selected._id} onClick={() => deleteLead(selected._id)}>
+                {deletingId === selected._id ? "Deleting..." : "Delete"}
+              </button>
             </div>
           </div>
         </div>

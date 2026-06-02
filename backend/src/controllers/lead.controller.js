@@ -33,7 +33,7 @@ export const deleteLead = asyncHandler(async (req, res) => {
   const lead = await Lead.findOne({ _id: req.params.id, ...filter(req) });
   if (!lead) throw new ApiError(404, "Lead not found");
   await lead.deleteOne();
-  res.json({ message: "Lead deleted" });
+  res.json({ success: true, message: "Lead deleted successfully" });
 });
 
 export const exportLeadsCsv = asyncHandler(async (req, res) => {

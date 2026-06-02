@@ -474,7 +474,7 @@ export const testAgent = asyncHandler(async (req, res) => {
 
 export const testChatAgent = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
-  const { message } = req.body;
+  const { message, conversationId } = req.body;
 
   if (!message || !message.trim()) {
     throw new ApiError(400, "Message is required.");
@@ -483,6 +483,7 @@ export const testChatAgent = asyncHandler(async (req, res) => {
   const reply = await runCustomAgent({
     systemPrompt: agent.systemPrompt,
     userMessage: message,
+    conversationId: conversationId || `agent:${agent._id.toString()}:test-chat`,
     tools: agent.tools,
     settings: agent.settings,
     agent

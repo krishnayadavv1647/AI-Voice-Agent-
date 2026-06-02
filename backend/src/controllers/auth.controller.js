@@ -14,6 +14,8 @@ function authResponse(user) {
       id: user._id,
       name: user.name,
       email: user.email,
+      avatar: user.avatar,
+      authProvider: user.authProvider,
       role: user.role,
       plan: user.plan,
       minutesUsed: user.minutesUsed
@@ -30,7 +32,7 @@ export const signup = asyncHandler(async (req, res) => {
   const exists = await User.findOne({ email: email.toLowerCase().trim() });
   if (exists) throw new ApiError(409, "Email is already registered");
 
-  const user = await User.create({ name: name.trim(), email: email.toLowerCase().trim(), password });
+  const user = await User.create({ name: name.trim(), email: email.toLowerCase().trim(), password, authProvider: "local" });
   res.status(201).json(authResponse(user));
 });
 
@@ -47,4 +49,21 @@ export const login = asyncHandler(async (req, res) => {
 
 export const me = asyncHandler(async (req, res) => {
   res.json({ user: req.user });
+});
+
+export const googleCallbackSuccess = asyncHandler(async (req, res) => {
+  ensureJwtConfigured();
+
+  if (!req.user) {
+    throw new ApiError(401, "Google auth failed");
+  }
+
+  if (!process.env.CLIENT_URL) {
+    throw new ApiError(500, "CLIENT_URL is missing in backend environment");
+  }
+
+  const token = signToken(req.user);
+  const clientUrl = process.env.CLIENT_URL.replace(/\/$/, "");
+
+  res.redirect(`${clientUrl}/auth/success?token=${encodeURIComponent(token)}`);
 });
