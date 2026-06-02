@@ -25,6 +25,7 @@ import Admin from "./pages/Admin.jsx";
 import VoiceLanguage from "./pages/VoiceLanguage.jsx";
 import DograhSettings from "./pages/DograhSettings.jsx";
 import TelephonyConfiguration from "./pages/TelephonyConfiguration.jsx";
+import Welcome from "./pages/Welcome.jsx";
 
 function ProtectedRoute({ children, admin = false }) {
   const { user, loading } = useAuth();
@@ -41,7 +42,7 @@ function Router() {
       <Route path="/signup" element={<AuthPage mode="signup" />} />
       <Route path="/auth/success" element={<AuthSuccess />} />
       <Route path="/call/:agentId" element={<PublicCallback />} />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Welcome />} />
       <Route
         path="/"
         element={
