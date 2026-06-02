@@ -13,12 +13,41 @@ function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
 }
 
-function publicBaseUrl(req) {
-  return (process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
+function publicBaseUrl() {
+  const baseUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, "");
+
+  if (!baseUrl) {
+    throw new ApiError(
+      500,
+      "PUBLIC_BACKEND_URL is missing. Set it to your deployed backend URL."
+    );
+  }
+
+  if (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1")) {
+    throw new ApiError(
+      500,
+      "PUBLIC_BACKEND_URL must be a deployed public backend URL, not localhost."
+    );
+  }
+
+  return baseUrl;
 }
 
 function buildWebhookUrl(req, provider) {
-  return `${publicBaseUrl(req)}/api/telephony/${provider}/incoming`;
+  const webhookUrl = `${publicBaseUrl()}/api/telephony/${provider}/incoming`;
+
+  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
+    throw new ApiError(
+      500,
+      "Generated webhook URL is invalid because it contains localhost or 127.0.0.1."
+    );
+  }
+
+  if (provider === "twilio") {
+    console.log("Generated Twilio webhook URL:", webhookUrl);
+  }
+
+  return webhookUrl;
 }
 
 function mask(value) {
