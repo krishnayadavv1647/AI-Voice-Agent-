@@ -263,7 +263,7 @@ export default function AgentDetails() {
       setChatMessages((current) => [...current, { role: "assistant", text: result.response || result.reply }]);
     } catch (err) {
       setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
-      setChatMessages((current) => [...current, { role: "assistant", text: "Message failed. Check backend Gemini configuration and try again.", error: true }]);
+      setChatMessages((current) => [...current, { role: "assistant", text: `Message failed. ${err.message || "Check backend Gemini configuration and try again."}`, error: true }]);
     } finally {
       setChatLoading(false);
     }
