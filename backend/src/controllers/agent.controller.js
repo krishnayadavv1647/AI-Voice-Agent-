@@ -171,8 +171,32 @@ async function syncProvider(agent, action, { createIfMissing = false } = {}) {
 }
 
 function getDograhWebhookUrl() {
-  const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
-  return `${backendUrl.replace(/\/$/, "")}/api/webhooks/dograh`;
+  const backendUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, "");
+
+  if (!backendUrl) {
+    throw new ApiError(
+      500,
+      "PUBLIC_BACKEND_URL is missing. Set it to your deployed backend URL."
+    );
+  }
+
+  if (backendUrl.includes("localhost") || backendUrl.includes("127.0.0.1")) {
+    throw new ApiError(
+      500,
+      "PUBLIC_BACKEND_URL must be a deployed public backend URL, not localhost."
+    );
+  }
+
+  const webhookUrl = `${backendUrl}/api/webhooks/dograh`;
+
+  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
+    throw new ApiError(
+      500,
+      "Generated webhook URL is invalid because it contains localhost or 127.0.0.1."
+    );
+  }
+
+  return webhookUrl;
 }
 
 function dograhCallPayload(agent, phoneNumber) {
