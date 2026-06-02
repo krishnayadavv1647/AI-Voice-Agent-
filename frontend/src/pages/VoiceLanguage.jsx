@@ -5,7 +5,7 @@ export default function VoiceLanguage() {
   return (
     <>
       <PageHeader title="Voice & Language" description="Configure default voice behavior, pronunciation, Hindi/Hinglish output, and provider preferences." />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
         <section className="card space-y-5">
           <Setting icon={Languages} title="Default Language">
             <select defaultValue="english">
@@ -40,7 +40,7 @@ export default function VoiceLanguage() {
         <aside className="card">
           <h2 className="panel-title">Voice Preview</h2>
           <p className="muted mt-2">Use this area to preview default language and TTS choices before applying them to agents.</p>
-          <div className="mt-6 rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-white">
+          <div className="mt-6 break-anywhere rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-white">
             नमस्ते, आपका स्वागत है। मैं आपकी booking request में मदद कर सकता हूं।
           </div>
         </aside>
@@ -52,9 +52,9 @@ export default function VoiceLanguage() {
 function Setting({ icon: Icon, title, children }) {
   return (
     <div className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[220px_minmax(0,1fr)]">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="icon-tile"><Icon size={18} /></div>
-        <p className="font-semibold text-slate-950">{title}</p>
+        <p className="min-w-0 break-anywhere font-semibold text-slate-950">{title}</p>
       </div>
       <div className="min-w-0">{children}</div>
     </div>

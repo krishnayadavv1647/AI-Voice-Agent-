@@ -206,10 +206,10 @@ export default function EditAgent() {
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {form.dograhNeedsUpdate && <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Dograh workflow needs update.</div>}
 
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         <button className="btn-secondary" onClick={goBack}><ArrowLeft size={16} />Back</button>
         {tabs.map((item) => (
-          <button key={item} className={item === tab ? "btn-primary" : "btn-secondary"} onClick={() => setTab(item)}>{item}</button>
+          <button key={item} className={`${item === tab ? "btn-primary" : "btn-secondary"} shrink-0`} onClick={() => setTab(item)}>{item}</button>
         ))}
       </div>
 
@@ -247,7 +247,7 @@ export default function EditAgent() {
         {tab === "System Prompt" && (
           <div className="space-y-4">
             <Field label="System Prompt" name="systemPrompt" value={form.systemPrompt} setField={setField} textarea tall />
-            <div className="flex flex-wrap gap-2">
+            <div className="action-row">
               <button className="btn-secondary" onClick={regeneratePrompt}><RefreshCw size={16} />Regenerate System Prompt</button>
               <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
               <button className="btn-secondary" disabled={updatingDograh} onClick={updateDograhWorkflow}><RefreshCw size={16} />{updatingDograh ? "Updating..." : "Update Dograh Workflow"}</button>

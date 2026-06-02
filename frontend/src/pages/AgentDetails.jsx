@@ -13,6 +13,31 @@ function readWorkflowList(response) {
   return [];
 }
 
+function isActiveWorkflow(workflow) {
+  const status = String(workflow?.status || workflow?.workflow_status || workflow?.state || "").toLowerCase();
+  return !(
+    workflow?.archived === true ||
+    workflow?.isArchived === true ||
+    workflow?.is_archived === true ||
+    workflow?.deleted === true ||
+    workflow?.isDeleted === true ||
+    workflow?.is_deleted === true ||
+    status === "archived" ||
+    status === "inactive" ||
+    status === "deleted"
+  );
+}
+
+function readActiveWorkflowList(response) {
+  const workflows = readWorkflowList(response);
+  const activeWorkflows = workflows.filter(isActiveWorkflow);
+
+  console.log("Total Dograh workflows:", workflows.length);
+  console.log("Active Dograh workflows:", activeWorkflows.length);
+
+  return activeWorkflows;
+}
+
 function workflowId(workflow) {
   return workflow.id || workflow.workflow_id || workflow.workflowId || workflow._id || "";
 }
@@ -106,7 +131,7 @@ export default function AgentDetails() {
     setError("");
     setConnectOpen(true);
     try {
-      setWorkflows(readWorkflowList(await api("/dograh/workflows")));
+      setWorkflows(readActiveWorkflowList(await api("/dograh/workflows")));
     } catch (err) {
       setError(err.message);
     }
@@ -367,7 +392,7 @@ export default function AgentDetails() {
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
 
       {agent && (
-        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)] xl:gap-6">
           <section className="space-y-6">
             <div className="card">
               <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-100 pb-4 text-sm">
@@ -384,7 +409,7 @@ export default function AgentDetails() {
                   <a key={label} className="rounded-lg bg-slate-100 px-3 py-2 font-semibold text-slate-700 hover:bg-brand-50 hover:text-brand-700" href={href}>{label}</a>
                 ))}
               </div>
-              <div id="test-call" className="mb-4 flex flex-wrap gap-2">
+              <div id="test-call" className="mb-4 action-row">
                 <button className="btn-secondary" onClick={openConnectModal}><Cable size={16} />Connect Dograh Workflow</button>
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
@@ -450,7 +475,7 @@ export default function AgentDetails() {
                 )}
               </div>
 
-              <form className="flex gap-2" onSubmit={sendChatMessage}>
+              <form className="flex flex-col gap-2 sm:flex-row" onSubmit={sendChatMessage}>
                 <input value={chatMessage} onChange={(event) => setChatMessage(event.target.value)} />
                 <button className="btn-primary" disabled={chatLoading}>
                   <Send size={16} />
@@ -464,7 +489,33 @@ export default function AgentDetails() {
                 <h2 className="font-bold text-ink">Call Logs</h2>
                 <button className="btn-secondary" onClick={load}><RefreshCw size={16} />Refresh</button>
               </div>
-              <div className="overflow-auto">
+              <div className="mobile-card-list">
+                {calls.map((call) => (
+                  <article key={call._id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-anywhere font-bold text-slate-950">{call.callerNumber || "Unknown caller"}</p>
+                        <p className="break-anywhere text-sm text-slate-500">{call.callingNumber || "No caller ID"}</p>
+                      </div>
+                      <StatusBadge status={call.status || "pending"} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <Info label="Duration" value={formatDuration(call)} />
+                      <Info label="Lead" value={call.leadCaptured ? "Yes" : "No"} />
+                      <Info label="Run ID" value={call.dograhRunId || "Missing"} />
+                      <Info label="Date" value={new Date(call.createdAt).toLocaleString()} />
+                    </div>
+                    <div className="mt-4 action-row">
+                      <button className="btn-secondary" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                      <button className="btn-secondary" disabled={!call.dograhRunId} title={!call.dograhRunId ? "Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping." : "Sync from Dograh"} onClick={() => syncCall(call._id)}><RefreshCw size={14} />Sync</button>
+                      {call.recordingUrl && <a className="btn-secondary" href={call.recordingUrl} target="_blank">Recording</a>}
+                    </div>
+                    {!call.dograhRunId && <p className="mt-2 text-xs text-amber-700">Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping.</p>}
+                  </article>
+                ))}
+                {!calls.length && <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">No calls yet.</div>}
+              </div>
+              <div className="desktop-table table-wrap">
                 <table className="table w-full min-w-[1120px]">
                   <thead>
                     <tr><th>Date</th><th>Caller Number</th><th>Calling Number</th><th>Run ID</th><th>Status</th><th>Duration</th><th>Lead Captured</th><th>Actions</th></tr>
@@ -573,7 +624,7 @@ export default function AgentDetails() {
 
       {connectOpen && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-slate-900/40 p-4" onClick={() => setConnectOpen(false)}>
-          <form className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-soft" onSubmit={connectWorkflow} onClick={(event) => event.stopPropagation()}>
+          <form className="modal-panel rounded-3xl bg-white p-4 shadow-soft sm:p-6" onSubmit={connectWorkflow} onClick={(event) => event.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-ink">Connect Dograh Workflow</h2>
@@ -602,7 +653,7 @@ export default function AgentDetails() {
               <Input label="Workflow Name" name="dograhWorkflowName" value={connectForm.dograhWorkflowName} setForm={setConnectForm} />
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 action-row sm:justify-end">
               <button type="button" className="btn-secondary" onClick={() => setConnectOpen(false)}>Cancel</button>
               <button className="btn-primary" disabled={connecting}>{connecting ? "Connecting..." : "Connect Workflow"}</button>
             </div>
@@ -612,7 +663,7 @@ export default function AgentDetails() {
 
       {selectedCall && (
         <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-slate-900/40 p-4" onClick={() => setSelectedCall(null)}>
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white p-6 shadow-soft" onClick={(event) => event.stopPropagation()}>
+          <div className="modal-panel rounded-3xl bg-white p-4 shadow-soft sm:max-w-4xl sm:p-6" onClick={(event) => event.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-ink">Call Details</h2>
@@ -672,7 +723,7 @@ export default function AgentDetails() {
               </pre>
             </details>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="mt-6 action-row sm:justify-end">
               <button className="btn-secondary" onClick={() => extractLead(selectedCall._id)}>Extract Lead</button>
               <button className="btn-secondary" onClick={() => syncCall(selectedCall._id)}><RefreshCw size={16} />Sync</button>
               <button className="btn-primary" onClick={() => setSelectedCall(null)}>Close</button>

@@ -117,10 +117,10 @@ export default function AppShell() {
         </div>
       </aside>
 
-      <div className="min-w-0 lg:pl-72">
+      <div className="min-w-0 max-w-full lg:pl-72">
         <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur-xl">
-          <div className="flex h-16 min-w-0 items-center gap-3 px-4 lg:px-8">
-            <button className="rounded-xl border border-slate-200 p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
+          <div className="flex min-h-16 min-w-0 max-w-full items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 lg:px-8">
+            <button className="shrink-0 rounded-xl border border-slate-200 p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
               <Menu size={20} />
             </button>
             <div className="min-w-0 flex-1">
@@ -134,25 +134,25 @@ export default function AppShell() {
             <button className="hidden rounded-xl border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 sm:block" aria-label="Notifications">
               <Bell size={18} />
             </button>
-            <Link className="btn-primary hidden sm:inline-flex" to="/create-agent"><PlusCircle size={16} />Create Agent</Link>
+            <Link className="btn-primary hidden shrink-0 sm:inline-flex" to="/create-agent"><PlusCircle size={16} />Create Agent</Link>
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-950 text-xs font-bold text-white">{initials}</div>
           </div>
         </header>
 
-        <main className="mx-auto min-w-0 max-w-[1500px] overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto min-w-0 max-w-[1500px] overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
           <Outlet />
         </main>
       </div>
 
       {open && (
         <div className="fixed inset-0 z-40 bg-slate-950/50 p-3 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)}>
-          <div className="flex h-full w-full max-w-sm flex-col rounded-3xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="flex h-full w-full max-w-[22rem] min-w-0 flex-col rounded-3xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-600 text-white"><Globe2 size={20} /></div>
-                <div>
-                  <p className="font-bold text-slate-950">AI Voice Agent</p>
-                  <p className="text-xs text-slate-500">Platform</p>
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-slate-950">AI Voice Agent</p>
+                  <p className="truncate text-xs text-slate-500">Platform</p>
                 </div>
               </div>
               <button className="rounded-xl border border-slate-200 p-2" onClick={() => setOpen(false)}><X size={18} /></button>

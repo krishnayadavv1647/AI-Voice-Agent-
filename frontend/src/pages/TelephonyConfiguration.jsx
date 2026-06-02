@@ -159,10 +159,10 @@ export default function TelephonyConfiguration() {
       {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {message && <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
 
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] xl:gap-6">
         <section className="card">
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="grid gap-2 sm:flex sm:flex-wrap">
               {providers.map((provider) => (
                 <button
                   key={provider.value}
@@ -206,7 +206,7 @@ export default function TelephonyConfiguration() {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-5 action-row">
             <button className="btn-primary" disabled={busy === "save"} onClick={saveConfig}><Save size={16} />{busy === "save" ? "Saving..." : "Save"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "test"} onClick={() => testConfig()}><Wifi size={16} />{busy === "test" ? "Testing..." : "Test Connection"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "webhook"} onClick={() => configureWebhook()}><PlugZap size={16} />{busy === "webhook" ? "Configuring..." : "Configure Webhook"}</button>
@@ -214,8 +214,8 @@ export default function TelephonyConfiguration() {
         </section>
 
         <section className="card">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="panel-title">Saved Configurations</h2>
               <p className="muted">Saved secrets are masked after storage.</p>
             </div>
@@ -230,7 +230,7 @@ export default function TelephonyConfiguration() {
             <div className="space-y-3">
               {configs.map((config) => (
                 <div key={config._id} className="rounded-xl border border-slate-200 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <button className="min-w-0 text-left" onClick={() => editConfig(config)}>
                       <h3 className="break-anywhere font-bold text-slate-950">{config.name}</h3>
                       <p className="break-anywhere text-sm text-slate-500">{config.provider} - {config.phoneNumber}</p>
@@ -238,7 +238,7 @@ export default function TelephonyConfiguration() {
                     </button>
                     <StatusBadge status={config.status} />
                   </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 action-row">
                     <button className="btn-secondary" onClick={() => editConfig(config)}>Edit</button>
                     <button className="btn-secondary" onClick={() => testConfig(config._id)}><Wifi size={16} />Test</button>
                     <button className="btn-secondary" onClick={() => configureWebhook(config._id)}><PlugZap size={16} />Webhook</button>
@@ -259,7 +259,7 @@ function Field({ label, value, onChange, type = "text", placeholder = "", readOn
     <label className="block text-sm font-semibold text-slate-700">
       {label}
       <input
-        className="mt-1"
+        className="mt-1 break-anywhere"
         type={type}
         value={value || ""}
         placeholder={placeholder}

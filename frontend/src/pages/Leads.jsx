@@ -86,8 +86,18 @@ export default function Leads() {
                   </div>
                   <StatusBadge status={lead.status} />
                 </div>
-                <p className="mt-3 text-sm text-slate-700">{lead.requirement || "Requirement pending"}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <Info label="Requirement" value={lead.requirement || "Requirement pending"} />
+                  <Info label="Source" value={lead.source || "-"} />
+                  <Info label="Created" value={lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "-"} />
+                  <div className="rounded-2xl bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase text-slate-500">Status</p>
+                    <select value={lead.status} onChange={(event) => updateStatus(lead._id, event.target.value)} className="mt-1">
+                      {statuses.map((status) => <option key={status}>{status}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 action-row">
                   <button className="btn-secondary" onClick={() => setSelected(lead)}>View</button>
                   <button className="btn-secondary" onClick={() => addNote(lead._id)}>Add Note</button>
                   <button className="btn-secondary" onClick={() => callAgain(lead._id)}>Call Again</button>
@@ -141,7 +151,7 @@ export default function Leads() {
 
       {selected && (
         <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={() => setSelected(null)}>
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="modal-panel rounded-3xl bg-white p-4 shadow-2xl sm:max-w-3xl sm:p-6" onClick={(event) => event.stopPropagation()}>
             <h2 className="text-xl font-bold text-slate-950">Lead Detail</h2>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               <Info label="Name" value={selected.name} />
@@ -157,7 +167,7 @@ export default function Leads() {
               <p className="mb-2 font-semibold text-slate-950">Notes timeline</p>
               <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">{JSON.stringify(selected.notes || [], null, 2)}</pre>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-5 action-row">
               <button className="btn-secondary" onClick={() => addNote(selected._id)}>Add Note</button>
               <button className="btn-primary" onClick={() => callAgain(selected._id)}>Call Again</button>
               <button className="btn-secondary text-rose-600" disabled={deletingId === selected._id} onClick={() => deleteLead(selected._id)}>
