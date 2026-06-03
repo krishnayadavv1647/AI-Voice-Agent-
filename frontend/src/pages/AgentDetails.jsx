@@ -1,4 +1,4 @@
-import { Cable, Edit, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Cable, Edit, Eye, Headphones, MessageCircle, Mic, MicOff, PhoneCall, Play, Radio, RefreshCw, Send, Square, Trash2, Volume2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -82,6 +82,7 @@ export default function AgentDetails() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [selectedCall, setSelectedCall] = useState(null);
+  const [webCallOpen, setWebCallOpen] = useState(false);
   const [runSyncForm, setRunSyncForm] = useState({ workflowId: "", runId: "", callLogId: "" });
   const pollingRef = useRef(null);
   const [connectForm, setConnectForm] = useState({
@@ -358,6 +359,11 @@ export default function AgentDetails() {
   }
 
   const connected = Boolean(agent?.dograhWorkflowUuid);
+  const dograhWebCallAvailable = Boolean(
+    agent?.provider === "dograh" ||
+    agent?.providerWorkflowId ||
+    agent?.dograhWorkflowId
+  );
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
   const workflowSyncStatus = useMemo(() => {
     if (!agent) return "";
@@ -413,6 +419,15 @@ export default function AgentDetails() {
                 <button className="btn-secondary" onClick={openConnectModal}><Cable size={16} />Connect Dograh Workflow</button>
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
+                {dograhWebCallAvailable && (
+                  <button
+                    className="btn-primary"
+                    title="Start Dograh Web Call"
+                    onClick={() => setWebCallOpen(true)}
+                  >
+                    <Headphones size={16} />Start Dograh Web Call
+                  </button>
+                )}
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
                 <button className="btn-secondary" disabled={callLoading} onClick={retryDograhWorkflowCreation}><RefreshCw size={16} />Retry Dograh Workflow Creation</button>
@@ -661,6 +676,10 @@ export default function AgentDetails() {
         </div>
       )}
 
+      {webCallOpen && (
+        <WebCallModal agent={agent} onClose={() => setWebCallOpen(false)} />
+      )}
+
       {selectedCall && (
         <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-slate-900/40 p-4" onClick={() => setSelectedCall(null)}>
           <div className="modal-panel rounded-3xl bg-white p-4 shadow-soft sm:max-w-4xl sm:p-6" onClick={(event) => event.stopPropagation()}>
@@ -732,6 +751,437 @@ export default function AgentDetails() {
         </div>
       )}
     </>
+  );
+}
+
+function WebCallModal({ agent, onClose }) {
+  const DOGRAH_WIDGET_SCRIPT_URL = "https://app.dograh.com/embed/dograh-widget.js?token=emb_2DZCqJaCmKrPiXuOXAyckWj6OPSlG8RFsr3oOzuUmxE&environment=production&apiEndpoint=https://api.dograh.com";
+  const [callState, setCallState] = useState("starting");
+  const [transcript, setTranscript] = useState([]);
+  const [message, setMessage] = useState("");
+  const [callId, setCallId] = useState("");
+  const [providerCallId, setProviderCallId] = useState("");
+  const [dograhSession, setDograhSession] = useState(null);
+  const [muted, setMuted] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const startedAtRef = useRef(null);
+  const timerRef = useRef(null);
+  const streamRef = useRef(null);
+  const endingRef = useRef(false);
+  const transcriptRef = useRef([]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    startCall();
+
+    return () => {
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      stopMicStream();
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleDograhWidgetMessage(event) {
+      const data = event.data || {};
+      const type = String(data.type || data.event || "");
+
+      if (!type.toLowerCase().includes("dograh") && !type.toLowerCase().includes("call")) return;
+
+      if (["dograh:speaking", "call:speaking", "speaking"].includes(type)) {
+        setSpeaking(Boolean(data.speaking ?? true));
+      }
+
+      if (["dograh:speech_ended", "call:speech_ended", "speech_ended"].includes(type)) {
+        setSpeaking(false);
+      }
+
+      if (["dograh:transcript", "call:transcript", "transcript"].includes(type) && data.text) {
+        setTranscript((current) => [
+          ...current,
+          {
+            role: ["user", "assistant"].includes(data.role) ? data.role : "assistant",
+            text: String(data.text),
+            timestamp: new Date().toISOString()
+          }
+        ]);
+      }
+
+      if (["dograh:ended", "call:ended", "ended"].includes(type)) {
+        endCall();
+      }
+    }
+
+    window.addEventListener("message", handleDograhWidgetMessage);
+    return () => window.removeEventListener("message", handleDograhWidgetMessage);
+  }, [callId, providerCallId]);
+
+  function setFriendlyError(text) {
+    setMessage(formatErrorText(text, "Failed to start Dograh web call"));
+    setCallState("failed");
+  }
+
+  function formatErrorText(value, fallback = "Failed to start Dograh web call") {
+    if (!value) return fallback;
+    if (typeof value === "string") return value;
+    if (value instanceof Error) return formatErrorText(value.message, fallback);
+    if (typeof value !== "object") return String(value);
+
+    const nested =
+      value.message ||
+      value.error ||
+      value.detail ||
+      value.details ||
+      value.data?.message ||
+      value.data?.error ||
+      value.data?.detail ||
+      value.data?.details;
+
+    if (nested && nested !== value) return formatErrorText(nested, fallback);
+
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function readApiErrorMessage(error, fallback = "Failed to start Dograh web call") {
+    const apiMessage = error.response?.message || error.response?.data?.message || "";
+    if (error.status === 404 && String(apiMessage).includes("/api/dograh/web-call")) {
+      return "Dograh web call backend route not found.";
+    }
+
+    const details = error.response?.details ?? error.response?.data?.details;
+    return formatErrorText(
+      apiMessage ||
+      details ||
+      error.message ||
+      error.response ||
+      fallback,
+      fallback
+    );
+  }
+
+  function getDograhWidget() {
+    return window.DograhWidget || window.dograhWidget || null;
+  }
+
+  function loadDograhWidgetScript() {
+    if (getDograhWidget()) return Promise.resolve(getDograhWidget());
+
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById("dograh-widget");
+      if (existing) {
+        existing.addEventListener("load", () => resolve(getDograhWidget()));
+        existing.addEventListener("error", () => reject(new Error("Dograh widget script failed to load.")));
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.id = "dograh-widget";
+      script.src = DOGRAH_WIDGET_SCRIPT_URL;
+      script.async = true;
+      script.onload = () => {
+        const widget = getDograhWidget();
+        if (!widget) reject(new Error("Dograh widget script loaded, but window.DograhWidget was not found."));
+        else resolve(widget);
+      };
+      script.onerror = () => reject(new Error("Dograh widget script failed to load."));
+      document.body.appendChild(script);
+    });
+  }
+
+  function readDograhCallbackToken(callback) {
+    return callback?.token ||
+      callback?.session_token ||
+      callback?.sessionToken ||
+      callback?.callId ||
+      callback?.call_id ||
+      callback?.runId ||
+      callback?.run_id ||
+      "";
+  }
+
+  function registerDograhWidgetCallbacks(widget) {
+    if (!widget) return;
+
+    widget.onCallConnected?.((callback) => {
+      console.log("Dograh call connected:", callback);
+      const token = readDograhCallbackToken(callback);
+      if (token) setProviderCallId(token);
+      setDograhSession((current) => ({ ...current, connected: true, callback }));
+      setSpeaking(false);
+      setCallState("live");
+    });
+
+    widget.onCallDisconnected?.((callback) => {
+      console.log("Dograh call disconnected:", callback);
+      const token = readDograhCallbackToken(callback);
+      if (token) setProviderCallId(token);
+      if (Array.isArray(callback?.transcript)) setTranscript(callback.transcript);
+      if (callback?.transcript && typeof callback.transcript === "string") {
+        setTranscript([{ role: "assistant", text: callback.transcript, timestamp: new Date().toISOString() }]);
+      }
+      endCall(token);
+    });
+
+    widget.onTranscript?.((callback) => {
+      if (!callback?.text) return;
+      setTranscript((current) => [
+        ...current,
+        {
+          role: ["user", "assistant"].includes(callback.role) ? callback.role : "assistant",
+          text: String(callback.text),
+          timestamp: new Date().toISOString()
+        }
+      ]);
+    });
+  }
+
+  async function initializeDograhWidget(widget, config) {
+    if (!widget) throw new Error("Dograh widget is not available.");
+
+    registerDograhWidgetCallbacks(widget);
+
+    if (typeof widget.init === "function") return widget.init(config);
+    if (typeof widget.initialize === "function") return widget.initialize(config);
+    if (typeof widget.configure === "function") return widget.configure(config);
+
+    return null;
+  }
+
+  async function startDograhWidgetCall(widget, config) {
+    if (typeof widget.startCall === "function") return widget.startCall(config);
+    if (typeof widget.open === "function") return widget.open(config);
+    if (typeof widget.start === "function") return widget.start(config);
+    if (typeof widget.call === "function") return widget.call(config);
+    throw new Error("Dograh widget loaded, but no start call method was found.");
+  }
+
+  async function requestMicPermission() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      return stream;
+    } catch {
+      throw new Error("Mic permission denied");
+    }
+  }
+
+  function stopMicStream() {
+    streamRef.current?.getTracks?.().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
+
+  function toggleMute() {
+    const nextMuted = !muted;
+    streamRef.current?.getAudioTracks?.().forEach((track) => {
+      track.enabled = !nextMuted;
+    });
+    setMuted(nextMuted);
+    const widget = getDograhWidget();
+    if (nextMuted) {
+      widget?.mute?.();
+      widget?.setMuted?.(true);
+    } else {
+      widget?.unmute?.();
+      widget?.setMuted?.(false);
+    }
+  }
+
+  async function startCall() {
+    setMessage("");
+    setCallState("starting");
+    setDograhSession(null);
+    setSeconds(0);
+    setMuted(false);
+    setSpeaking(false);
+    endingRef.current = false;
+    stopMicStream();
+
+    try {
+      const agentId = agent?._id || agent?.id;
+
+      console.log("Starting Dograh web call for agent:", agent);
+
+      if (!agentId) {
+        setFriendlyError("Agent ID missing. Cannot start Dograh web call.");
+        return;
+      }
+
+      const result = await api("/dograh/web-call/start", {
+        method: "POST",
+        body: { agentId }
+      });
+
+      setCallId(result.callId || "");
+      setProviderCallId(result.dograh?.providerCallId || "");
+      setDograhSession(result.dograh || null);
+
+      await requestMicPermission();
+      const widget = await loadDograhWidgetScript();
+      console.log("DograhWidget methods:", Object.keys(window.DograhWidget || {}));
+      const widgetConfig = {
+        ...(result.dograh?.widgetConfig || {}),
+        workflowId: result.dograh?.workflowId || result.dograh?.widgetConfig?.workflowId,
+        workflow_id: result.dograh?.workflowId || result.dograh?.widgetConfig?.workflow_id,
+        localCallId: result.callId
+      };
+      await initializeDograhWidget(widget, widgetConfig);
+
+      startedAtRef.current = Date.now();
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      timerRef.current = window.setInterval(() => {
+        setSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      }, 1000);
+
+      await startDograhWidgetCall(widget, widgetConfig);
+      setCallState("live");
+    } catch (err) {
+      setFriendlyError(readApiErrorMessage(err));
+    }
+  }
+
+  async function endCall(callbackProviderCallId = providerCallId) {
+    if (endingRef.current) return;
+    endingRef.current = true;
+
+    const duration = startedAtRef.current ? Math.floor((Date.now() - startedAtRef.current) / 1000) : seconds;
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    stopMicStream();
+    const widget = getDograhWidget();
+    widget?.endCall?.();
+    widget?.disconnect?.();
+    widget?.close?.();
+    setSpeaking(false);
+    setCallState("ended");
+    setSeconds(duration);
+
+    if (!callId) return;
+
+    try {
+      const result = await api("/dograh/web-call/end", {
+        method: "POST",
+        body: {
+          callId,
+          providerCallId: callbackProviderCallId,
+          transcript: transcriptRef.current,
+          duration
+        }
+      });
+      setTranscript(result.webCall?.transcript || transcriptRef.current);
+    } catch (err) {
+      setMessage(readApiErrorMessage(err, "Web call failed"));
+    }
+  }
+
+  const inCall = callState === "starting" || callState === "live";
+  async function closeModal() {
+    if (inCall) await endCall();
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/50 p-3 sm:p-4" onClick={closeModal}>
+      <div className="modal-panel rounded-2xl bg-white shadow-soft" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dograh Web Call</p>
+            <h2 className="break-anywhere text-lg font-bold text-ink">{agent.agentName || agent.name}</h2>
+          </div>
+          <button type="button" className="rounded-lg border border-slate-200 p-2" onClick={closeModal} aria-label="Close web call">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[0.85fr_1.15fr]">
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Live status</p>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${callState === "live" ? "bg-emerald-500" : callState === "failed" ? "bg-rose-500" : "bg-slate-300"}`} />
+                  <span className="text-sm font-bold capitalize text-slate-800">{callState}</span>
+                </div>
+              </div>
+              <span className="badge bg-emerald-50 text-emerald-700">Dograh</span>
+            </div>
+
+            <div className="grid min-h-72 place-items-center rounded-2xl bg-white p-6 text-center">
+              <div className="grid h-20 w-20 place-items-center rounded-full bg-brand-50 text-brand-700">
+                <Headphones size={30} />
+              </div>
+              <p className="mt-4 text-sm font-semibold text-slate-800">
+                {callState === "starting" ? "Starting Dograh web call" : callState === "failed" ? "Dograh web call unavailable" : "Dograh session ready"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Dograh handles browser voice, transcript, and recording.</p>
+              {dograhSession?.widgetConfig && (
+                <p className="mt-3 break-anywhere rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                  Dograh widget config ready. The widget will handle session token generation.
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+              </div>
+              <div className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                {speaking ? "Speaking" : muted ? "Muted" : callState === "live" ? "Listening" : "Ready"}
+              </div>
+            </div>
+
+            {message && (
+              <div className={`mt-4 rounded-lg p-3 text-sm ${callState === "failed" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
+                {message}
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              <button className="btn-secondary" disabled={callState !== "live"} onClick={toggleMute}>
+                {muted ? <Mic size={16} /> : <MicOff size={16} />}
+                {muted ? "Unmute" : "Mute"}
+              </button>
+              <button className="btn-secondary" disabled={callState !== "failed"} onClick={startCall}>
+                <RefreshCw size={16} />
+                Retry
+              </button>
+              <button className="btn-danger" disabled={callState === "ended"} onClick={endCall}>
+                <Square size={16} />
+                End Call
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="font-bold text-ink">Live transcript</h3>
+              <span className="badge bg-slate-100 text-slate-600">{transcript.length} lines</span>
+            </div>
+            <div className="max-h-[28rem] min-h-72 space-y-3 overflow-y-auto rounded-xl bg-slate-50 p-3">
+              {transcript.map((item, index) => (
+                <div key={`${item.role}-${index}`} className={`rounded-xl p-3 text-sm ${item.role === "assistant" ? "bg-white text-slate-800" : "bg-brand-600 text-white"}`}>
+                  <p className={`mb-1 text-xs font-semibold uppercase ${item.role === "assistant" ? "text-slate-400" : "text-brand-100"}`}>
+                    {item.role === "assistant" ? agent.agentName || "Agent" : "You"}
+                  </p>
+                  <p className="whitespace-pre-wrap break-anywhere">{item.text}</p>
+                </div>
+              ))}
+              {!transcript.length && (
+                <div className="grid min-h-60 place-items-center text-center text-sm text-slate-500">
+                  Dograh transcript appears here after the call ends when the API returns transcript data.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
   );
 }
 

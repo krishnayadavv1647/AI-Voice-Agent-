@@ -26,7 +26,14 @@ export default function AuthPage({ mode }) {
       else await login({ email: form.email, password: form.password });
       navigate("/dashboard");
     } catch (err) {
-      setError(err.message);
+      const message =
+        err.response?.data?.message ||
+        err.response?.message ||
+        err.response?.data?.error ||
+        err.response?.error ||
+        err.message ||
+        "Login failed. Please check your credentials.";
+      setError(typeof message === "string" ? message : JSON.stringify(message));
     } finally {
       setLoading(false);
     }
