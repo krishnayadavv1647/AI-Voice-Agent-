@@ -1,9 +1,10 @@
-import { Cable, Edit, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
+import { Cable, Copy, Edit, Eye, Globe2, Headphones, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Share2, Square, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
+import { loadDograhWidget } from "../utils/loadDograhWidget.js";
 
 function readWorkflowList(response) {
   if (Array.isArray(response)) return response;
@@ -82,6 +83,19 @@ export default function AgentDetails() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [selectedCall, setSelectedCall] = useState(null);
+  const [dograhEmbedToken, setDograhEmbedToken] = useState("");
+  const [dograhWidgetLoading, setDograhWidgetLoading] = useState(false);
+  const [dograhCallStatus, setDograhCallStatus] = useState("idle");
+  const [dograhCallError, setDograhCallError] = useState("");
+  const [shareSaving, setShareSaving] = useState(false);
+  const [shareForm, setShareForm] = useState({
+    isPublic: false,
+    publicChatEnabled: true,
+    publicWebCallEnabled: false,
+    publicTitle: "",
+    publicDescription: "",
+    publicWelcomeMessage: ""
+  });
   const [runSyncForm, setRunSyncForm] = useState({ workflowId: "", runId: "", callLogId: "" });
   const pollingRef = useRef(null);
   const [connectForm, setConnectForm] = useState({
@@ -124,6 +138,24 @@ export default function AgentDetails() {
       connectedPhoneNumber: agent.connectedPhoneNumber || "",
       callerIdNumber: agent.callerIdNumber || "",
       telephonyProvider: agent.telephonyProvider || "twilio"
+    });
+  }, [agent?._id]);
+
+  useEffect(() => {
+    setDograhEmbedToken(agent?.dograhEmbedToken || "");
+    setDograhCallStatus("idle");
+    setDograhCallError("");
+  }, [agent?._id, agent?.dograhEmbedToken]);
+
+  useEffect(() => {
+    if (!agent) return;
+    setShareForm({
+      isPublic: Boolean(agent.isPublic),
+      publicChatEnabled: agent.publicChatEnabled !== false,
+      publicWebCallEnabled: Boolean(agent.publicWebCallEnabled),
+      publicTitle: agent.publicTitle || agent.businessName || agent.agentName || "",
+      publicDescription: agent.publicDescription || agent.businessDescription || agent.description || "",
+      publicWelcomeMessage: agent.publicWelcomeMessage || agent.greetingMessage || agent.firstMessage || ""
     });
   }, [agent?._id]);
 
@@ -357,7 +389,165 @@ export default function AgentDetails() {
     setNotice("Callback link copied.");
   }
 
+  function setShareField(name, value) {
+    setShareForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function saveShareSettings(nextForm = shareForm) {
+    setShareSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await api(`/agents/${id}/share-settings`, {
+        method: "PATCH",
+        body: nextForm
+      });
+      setData((current) => ({ ...current, agent: result.agent || current.agent }));
+      setNotice("Share settings saved.");
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    } finally {
+      setShareSaving(false);
+    }
+  }
+
+  async function toggleShareField(name) {
+    const nextForm = { ...shareForm, [name]: !shareForm[name] };
+    setShareForm(nextForm);
+    await saveShareSettings(nextForm);
+  }
+
+  async function copyPublicLink() {
+    await navigator.clipboard.writeText(publicUrl);
+    setNotice("Agent link copied.");
+  }
+
+  function registerDograhWidgetCallbacks(widget) {
+    if (!widget) return;
+
+    widget.onCallConnected?.((payload) => {
+      console.log("Dograh call connected:", payload);
+      setDograhCallStatus("connected");
+    });
+
+    widget.onCallDisconnected?.((payload) => {
+      console.log("Dograh call disconnected:", payload);
+      setDograhCallStatus("ended");
+    });
+
+    widget.onCallEnd?.((payload) => {
+      console.log("Dograh call end:", payload);
+      setDograhCallStatus("ended");
+    });
+
+    widget.onError?.((error) => {
+      console.error("Dograh widget error:", error);
+      setDograhCallError(error?.message || "Dograh web call failed.");
+      setDograhCallStatus("error");
+    });
+
+    widget.onStatusChange?.((status) => {
+      console.log("Dograh status:", status);
+      setDograhCallStatus(status || "idle");
+    });
+  }
+
+  function readDograhCallError(error) {
+    const details = error?.response?.details;
+    const dograhError = error?.response?.dograhError;
+
+    if (typeof details === "string") return details;
+    if (details && typeof details === "object") return JSON.stringify(details);
+    if (typeof dograhError === "string") return dograhError;
+    if (dograhError && typeof dograhError === "object") return JSON.stringify(dograhError);
+
+    return error?.message || "Dograh web call failed.";
+  }
+
+  async function enableDograhWebCalling() {
+    setDograhWidgetLoading(true);
+    setDograhCallError("");
+    setNotice("");
+
+    try {
+      const result = await api(`/agents/${id}/dograh/embed-token`, { method: "POST" });
+      setDograhEmbedToken(result.embedToken || "");
+      setData((current) => ({ ...current, agent: result.agent || current.agent }));
+      const widget = await loadDograhWidget(result.embedToken);
+      registerDograhWidgetCallbacks(widget);
+      setNotice("Dograh web calling enabled.");
+      setDograhCallStatus("ready");
+    } catch (err) {
+      setDograhCallError(readDograhCallError(err));
+      setDograhCallStatus("error");
+    } finally {
+      setDograhWidgetLoading(false);
+    }
+  }
+
+  async function disableDograhWebCalling() {
+    setDograhWidgetLoading(true);
+    setDograhCallError("");
+    setNotice("");
+
+    try {
+      await window.DograhWidget?.end?.();
+      const result = await api(`/agents/${id}/dograh/embed-token`, { method: "DELETE" });
+      setDograhEmbedToken("");
+      setData((current) => ({ ...current, agent: result.agent || { ...current.agent, dograhEmbedToken: "", dograhWidgetEnabled: false } }));
+      document.getElementById("dograh-widget")?.remove();
+      delete window.DograhWidget;
+      setDograhCallStatus("disabled");
+      setNotice("Dograh web calling disabled.");
+    } catch (err) {
+      setDograhCallError(readDograhCallError(err));
+      setDograhCallStatus("error");
+    } finally {
+      setDograhWidgetLoading(false);
+    }
+  }
+
+  async function startDograhWebCall() {
+    setDograhCallError("");
+    setDograhCallStatus("connecting");
+
+    try {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream.getTracks().forEach((track) => track.stop());
+      } catch {
+        throw new Error("Microphone permission denied.");
+      }
+
+      const token = dograhEmbedToken || agent?.dograhEmbedToken;
+      const widget = await loadDograhWidget(token);
+      registerDograhWidgetCallbacks(widget);
+
+      if (typeof widget.start !== "function") {
+        throw new Error("DograhWidget.start() method not found.");
+      }
+
+      await widget.start();
+    } catch (err) {
+      setDograhCallError(readDograhCallError(err));
+      setDograhCallStatus("error");
+    }
+  }
+
+  async function endDograhWebCall() {
+    try {
+      await window.DograhWidget?.end?.();
+      setDograhCallStatus("ended");
+    } catch (err) {
+      setDograhCallError(readDograhCallError(err));
+      setDograhCallStatus("error");
+    }
+  }
+
   const connected = Boolean(agent?.dograhWorkflowUuid);
+  const dograhWebCallingEnabled = Boolean(dograhEmbedToken || agent?.dograhWidgetEnabled);
+  const publicUrl = agent?.publicSlug ? `${window.location.origin}/a/${agent.publicSlug}` : "";
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
   const workflowSyncStatus = useMemo(() => {
     if (!agent) return "";
@@ -402,6 +592,8 @@ export default function AgentDetails() {
                   ["Test Call", "#test-call"],
                   ["Call Logs", "#call-logs"],
                   ["Leads", "/leads"],
+                  ["Dograh Web Calling", "#dograh-web-calling"],
+                  ["Share Agent", "#share-agent"],
                   ["Voice/Language Settings", "#voice-settings"],
                   ["Dograh Settings", "#dograh-settings"],
                   ["Public Callback Link", "#callback-link"]
@@ -441,6 +633,49 @@ export default function AgentDetails() {
                 <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                   Create or connect Dograh workflow first.
                 </p>
+              )}
+            </div>
+
+            <div id="dograh-web-calling" className="card">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-ink">Dograh Web Calling</h2>
+                  <p className="text-sm text-slate-500">Browser calls use a Dograh embed token managed by the backend.</p>
+                </div>
+                <span className={`badge ${dograhWebCallingEnabled ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
+                  {dograhWebCallingEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-500">Call status</p>
+                  <p className="text-sm font-semibold capitalize text-slate-800">{dograhCallStatus}</p>
+                </div>
+                <div className="action-row">
+                  <button className="btn-secondary" disabled={dograhWidgetLoading || dograhWebCallingEnabled} onClick={enableDograhWebCalling}>
+                    <RefreshCw size={16} />
+                    Enable Web Calling
+                  </button>
+                  <button className="btn-secondary" disabled={dograhWidgetLoading || !dograhWebCallingEnabled} onClick={disableDograhWebCalling}>
+                    <Trash2 size={16} />
+                    Disable Web Calling
+                  </button>
+                  <button className="btn-primary" disabled={!dograhWebCallingEnabled || dograhCallStatus === "connecting" || dograhCallStatus === "connected"} onClick={startDograhWebCall}>
+                    <Headphones size={16} />
+                    Start Call
+                  </button>
+                  <button className="btn-secondary" disabled={dograhCallStatus !== "connected"} onClick={endDograhWebCall}>
+                    <Square size={16} />
+                    End Call
+                  </button>
+                </div>
+              </div>
+
+              {dograhCallError && (
+                <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+                  {dograhCallError}
+                </div>
               )}
             </div>
 
@@ -603,6 +838,52 @@ export default function AgentDetails() {
               <Info label="Personality" value={agent.personality} />
             </div>
 
+            <div id="share-agent" className="card">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-ink">Share Agent</h2>
+                  <p className="text-sm text-slate-500">Publish a public page for this agent.</p>
+                </div>
+                <Globe2 className={shareForm.isPublic ? "text-emerald-600" : "text-slate-400"} size={20} />
+              </div>
+
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Public URL</p>
+                <p className="break-anywhere text-sm font-semibold text-slate-800">{publicUrl || "Generated when the agent is saved."}</p>
+              </div>
+
+              <div className="mb-4 grid gap-2">
+                <ShareToggle label="Public" checked={shareForm.isPublic} disabled={shareSaving} onChange={() => toggleShareField("isPublic")} />
+                <ShareToggle label="Chat" checked={shareForm.publicChatEnabled} disabled={shareSaving} onChange={() => toggleShareField("publicChatEnabled")} />
+                <ShareToggle label="Web Call" checked={shareForm.publicWebCallEnabled} disabled={shareSaving || !dograhWebCallingEnabled} onChange={() => toggleShareField("publicWebCallEnabled")} />
+              </div>
+              {!dograhWebCallingEnabled && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Enable Dograh web calling before turning on public web calls.</p>}
+
+              <div className="space-y-3">
+                <Input label="Public Title" name="publicTitle" value={shareForm.publicTitle} setForm={setShareForm} />
+                <label className="block text-sm font-medium text-slate-700">
+                  Public Description
+                  <textarea className="mt-1" value={shareForm.publicDescription} onChange={(event) => setShareField("publicDescription", event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Welcome Message
+                  <textarea className="mt-1" value={shareForm.publicWelcomeMessage} onChange={(event) => setShareField("publicWelcomeMessage", event.target.value)} />
+                </label>
+              </div>
+
+              <div className="mt-4 action-row">
+                <button className="btn-primary" disabled={shareSaving} onClick={() => saveShareSettings()}>
+                  <Share2 size={16} />
+                  {shareSaving ? "Saving..." : "Save"}
+                </button>
+                <button className="btn-secondary" disabled={!publicUrl} onClick={copyPublicLink}>
+                  <Copy size={16} />
+                  Copy Link
+                </button>
+                {publicUrl && <a className="btn-secondary" href={publicUrl} target="_blank"><Eye size={16} />Preview</a>}
+              </div>
+            </div>
+
             <div id="callback-link" className="card">
               <h2 className="mb-3 font-bold text-ink">Webhook</h2>
               <Info label="Dograh Webhook URL" value="Generated by backend from PUBLIC_BACKEND_URL" />
@@ -741,6 +1022,15 @@ function Input({ label, name, value, setForm, example }) {
       {label}
       <input className="mt-1" value={value} onChange={(event) => setForm((current) => ({ ...current, [name]: event.target.value }))} />
       {example && <span className="mt-1 block text-xs text-slate-500">Example: {example}</span>}
+    </label>
+  );
+}
+
+function ShareToggle({ label, checked, disabled, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+      <span>{label}</span>
+      <input className="h-5 w-5 rounded border-slate-300" type="checkbox" checked={checked} disabled={disabled} onChange={onChange} />
     </label>
   );
 }

@@ -1,6 +1,6 @@
 import { runCustomAgent as runEngineAgent } from "../engine/agentRuntime.js";
 
-export async function runCustomAgent({ systemPrompt, userMessage, tools = [], settings = {}, agent = {} }) {
+export async function runCustomAgent({ systemPrompt, userMessage, conversationId, tools = [], settings = {}, agent = {} }) {
   const result = await runEngineAgent({
     agent: {
       ...agent,
@@ -8,7 +8,8 @@ export async function runCustomAgent({ systemPrompt, userMessage, tools = [], se
       tools,
       settings
     },
-    userMessage
+    userMessage,
+    conversationId
   });
 
   return result.reply;

@@ -126,6 +126,17 @@ function createDograhClient() {
   });
 }
 
+function formatDograhErrorMessage(data, fallback) {
+  const detail = data?.message || data?.error || data?.detail;
+
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return JSON.stringify(detail);
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  if (data) return JSON.stringify(data);
+
+  return fallback;
+}
+
 function handleDograhError(error, action) {
   console.error("Dograh API Error Status:", error.response?.status);
   console.error("Dograh API Error Data:", error.response?.data);
@@ -133,13 +144,10 @@ function handleDograhError(error, action) {
 
   const statusCode = error.response?.status || 502;
 
-  const realMessage =
-    error.response?.data?.message ||
-    error.response?.data?.error ||
-    error.response?.data?.detail ||
-    (error.response?.data ? JSON.stringify(error.response.data) : null) ||
-    error.message ||
-    "Dograh API call failed";
+  const realMessage = formatDograhErrorMessage(
+    error.response?.data,
+    error.message || "Dograh API call failed"
+  );
 
   throw new ApiError(statusCode, realMessage, {
     success: false,
@@ -154,6 +162,18 @@ function readDograhWorkflowList(responseData) {
   if (Array.isArray(responseData?.workflows)) return responseData.workflows;
   if (Array.isArray(responseData?.results)) return responseData.results;
   return [];
+}
+
+function readDograhEmbedToken(responseData) {
+  return (
+    responseData?.embedToken ||
+    responseData?.embed_token ||
+    responseData?.token ||
+    responseData?.data?.embedToken ||
+    responseData?.data?.embed_token ||
+    responseData?.data?.token ||
+    null
+  );
 }
 
 export function isActiveDograhWorkflow(workflow) {
@@ -430,6 +450,57 @@ export async function getDograhWorkflow(workflowId) {
     return response.data;
   } catch (error) {
     handleDograhError(error, "get workflow");
+  }
+}
+
+export async function createDograhEmbedToken(workflowId) {
+  try {
+    if (!workflowId) {
+      throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
+    }
+
+    const response = await createDograhClient().post(`/workflow/${workflowId}/embed-token`, {});
+    const embedToken = readDograhEmbedToken(response.data);
+
+    if (!embedToken) {
+      throw new ApiError(502, "Dograh embed token was not returned.");
+    }
+
+    return { embedToken, raw: response.data };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    handleDograhError(error, "create embed token");
+  }
+}
+
+export async function fetchDograhEmbedToken(workflowId) {
+  try {
+    if (!workflowId) {
+      throw new ApiError(400, "dograhWorkflowId is required before reading Dograh web calling token.");
+    }
+
+    const response = await createDograhClient().get(`/workflow/${workflowId}/embed-token`);
+    const embedToken = readDograhEmbedToken(response.data);
+
+    return { embedToken, raw: response.data };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    handleDograhError(error, "get embed token");
+  }
+}
+
+export async function deleteDograhEmbedToken(workflowId) {
+  try {
+    if (!workflowId) {
+      throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
+    }
+
+    const response = await createDograhClient().delete(`/workflow/${workflowId}/embed-token`);
+
+    return response.data || { success: true };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    handleDograhError(error, "delete embed token");
   }
 }
 

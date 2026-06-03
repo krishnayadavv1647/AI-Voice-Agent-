@@ -5,6 +5,7 @@ import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import { extractRunId } from "../services/callLogMapper.js";
 import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
+import { runCustomAgent } from "../services/customAgentRuntime.js";
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
@@ -32,6 +33,65 @@ async function enforceCallbackLimits({ phoneNumber, ip }) {
     throw new ApiError(429, "Too many callback requests. Please try again later.");
   }
 }
+
+function publicAgentResponse(agent) {
+  return {
+    name: agent.businessName || agent.agentName || agent.name,
+    publicTitle: agent.publicTitle || agent.businessName || agent.agentName || agent.name,
+    publicDescription: agent.publicDescription || agent.businessDescription || agent.description || "",
+    publicWelcomeMessage: agent.publicWelcomeMessage || agent.greetingMessage || agent.firstMessage || "",
+    publicChatEnabled: Boolean(agent.publicChatEnabled),
+    publicWebCallEnabled: Boolean(agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken)
+  };
+}
+
+async function getPublicAgentBySlug(publicSlug) {
+  const agent = await Agent.findOne({ publicSlug, isPublic: true, status: { $ne: "archived" } });
+  if (!agent) throw new ApiError(404, "Public agent not found");
+  return agent;
+}
+
+export const getPublicAgent = asyncHandler(async (req, res) => {
+  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+  res.json(publicAgentResponse(agent));
+});
+
+export const chatWithPublicAgent = asyncHandler(async (req, res) => {
+  const { message, sessionId } = req.body;
+  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+
+  if (!agent.publicChatEnabled) throw new ApiError(403, "Public chat is not enabled for this agent.");
+  if (!message || !message.trim()) throw new ApiError(400, "Message is required.");
+
+  const conversationId = `public:${agent._id.toString()}:${sessionId || requesterIp(req)}`;
+  const reply = await runCustomAgent({
+    systemPrompt: agent.systemPrompt,
+    userMessage: message.trim(),
+    conversationId,
+    tools: agent.tools,
+    settings: agent.settings,
+    agent
+  });
+
+  res.json({
+    success: true,
+    reply,
+    response: reply,
+    sessionId: sessionId || conversationId
+  });
+});
+
+export const getPublicWebCallToken = asyncHandler(async (req, res) => {
+  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+
+  if (!agent.publicWebCallEnabled) throw new ApiError(403, "Public web call is not enabled for this agent.");
+  if (!agent.dograhWidgetEnabled || !agent.dograhEmbedToken) throw new ApiError(400, "Web call is not ready for this agent.");
+
+  res.json({
+    success: true,
+    embedToken: agent.dograhEmbedToken
+  });
+});
 
 export const requestCallbackCall = asyncHandler(async (req, res) => {
   const { name = "", phoneNumber, requirement = "", preferredTime = "" } = req.body;

@@ -1,8 +1,16 @@
 import express from "express";
-import { requestCallbackCall } from "../controllers/public.controller.js";
+import {
+  chatWithPublicAgent,
+  getPublicAgent,
+  getPublicWebCallToken,
+  requestCallbackCall
+} from "../controllers/public.controller.js";
 
 const router = express.Router();
 
+router.get("/agents/:publicSlug", getPublicAgent);
+router.post("/agents/:publicSlug/chat", chatWithPublicAgent);
+router.post("/agents/:publicSlug/web-call-token", getPublicWebCallToken);
 router.post("/agents/:agentId/request-call", requestCallbackCall);
 
 export default router;
