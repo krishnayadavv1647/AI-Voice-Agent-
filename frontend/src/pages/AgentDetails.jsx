@@ -1,10 +1,9 @@
-import { Cable, Edit, Eye, Headphones, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Square, Trash2, X } from "lucide-react";
+import { Cable, Edit, Eye, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
-import { loadDograhWidget } from "../utils/loadDograhWidget.js";
 
 function readWorkflowList(response) {
   if (Array.isArray(response)) return response;
@@ -83,10 +82,6 @@ export default function AgentDetails() {
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [selectedCall, setSelectedCall] = useState(null);
-  const [dograhEmbedCode, setDograhEmbedCode] = useState("");
-  const [dograhWidgetSaving, setDograhWidgetSaving] = useState(false);
-  const [webCallStatus, setWebCallStatus] = useState("idle");
-  const [webCallError, setWebCallError] = useState("");
   const [runSyncForm, setRunSyncForm] = useState({ workflowId: "", runId: "", callLogId: "" });
   const pollingRef = useRef(null);
   const [connectForm, setConnectForm] = useState({
@@ -130,12 +125,6 @@ export default function AgentDetails() {
       callerIdNumber: agent.callerIdNumber || "",
       telephonyProvider: agent.telephonyProvider || "twilio"
     });
-  }, [agent?._id]);
-
-  useEffect(() => {
-    setDograhEmbedCode("");
-    setWebCallError("");
-    setWebCallStatus("idle");
   }, [agent?._id]);
 
   async function openConnectModal() {
@@ -368,106 +357,7 @@ export default function AgentDetails() {
     setNotice("Callback link copied.");
   }
 
-  async function saveDograhWidget(event) {
-    event.preventDefault();
-    setError("");
-    setNotice("");
-    setWebCallError("");
-
-    if (!dograhEmbedCode.trim()) {
-      setWebCallError("Paste Dograh embed code first.");
-      return;
-    }
-
-    setDograhWidgetSaving(true);
-    try {
-      const result = await api(`/agents/${id}/dograh-widget`, {
-        method: "POST",
-        body: { embedCode: dograhEmbedCode }
-      });
-      setData((current) => ({ ...current, agent: result.agent }));
-      setDograhEmbedCode("");
-      setNotice("Dograh web call setup saved.");
-    } catch (err) {
-      setWebCallError(err.message || "Dograh web call failed.");
-    } finally {
-      setDograhWidgetSaving(false);
-    }
-  }
-
-  function registerDograhWidgetCallbacks(widget) {
-    widget.onCallConnected?.((payload) => {
-      console.log("Dograh call connected:", payload);
-      setWebCallStatus("live");
-    });
-
-    widget.onCallDisconnected?.((payload) => {
-      console.log("Dograh call disconnected:", payload);
-      setWebCallStatus("ended");
-    });
-
-    widget.onError?.((payload) => {
-      console.error("Dograh widget error:", payload);
-      setWebCallError("Dograh web call failed.");
-      setWebCallStatus("error");
-    });
-  }
-
-  async function startDograhWebCall() {
-    setWebCallError("");
-
-    if (!agent?.dograhWidgetScriptUrl) {
-      setWebCallError("Paste Dograh embed code first.");
-      return;
-    }
-
-    setWebCallStatus("connecting");
-    try {
-      try {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStream.getTracks().forEach((track) => track.stop());
-      } catch {
-        throw new Error("Microphone permission denied.");
-      }
-
-      const widget = await loadDograhWidget(agent.dograhWidgetScriptUrl);
-      registerDograhWidgetCallbacks(widget);
-
-      if (typeof widget.start !== "function") {
-        throw new Error("DograhWidget.start() method not found.");
-      }
-
-      await widget.start();
-      setWebCallStatus("live");
-    } catch (err) {
-      const message = [
-        "Paste Dograh embed code first.",
-        "Dograh widget script failed to load.",
-        "DograhWidget.start() method not found.",
-        "Microphone permission denied."
-      ].includes(err.message)
-        ? err.message
-        : "Dograh web call failed.";
-      setWebCallError(message);
-      setWebCallStatus("error");
-    }
-  }
-
-  async function endDograhWebCall() {
-    setWebCallError("");
-    try {
-      if (typeof window.DograhWidget?.end === "function") {
-        await window.DograhWidget.end();
-      }
-      setWebCallStatus("ended");
-    } catch {
-      setWebCallError("Dograh web call failed.");
-      setWebCallStatus("error");
-    }
-  }
-
   const connected = Boolean(agent?.dograhWorkflowUuid);
-  const dograhWidgetConfigured = Boolean(agent?.dograhWidgetScriptUrl || agent?.dograhWidgetConfigured);
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
   const workflowSyncStatus = useMemo(() => {
     if (!agent) return "";
@@ -512,7 +402,6 @@ export default function AgentDetails() {
                   ["Test Call", "#test-call"],
                   ["Call Logs", "#call-logs"],
                   ["Leads", "/leads"],
-                  ["Dograh Web Call", "#dograh-web-call"],
                   ["Voice/Language Settings", "#voice-settings"],
                   ["Dograh Settings", "#dograh-settings"],
                   ["Public Callback Link", "#callback-link"]
@@ -552,67 +441,6 @@ export default function AgentDetails() {
                 <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                   Create or connect Dograh workflow first.
                 </p>
-              )}
-            </div>
-
-            <div id="dograh-web-call" className="card">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-bold text-ink">Dograh Web Call Setup</h2>
-                  <p className="text-sm text-slate-500">
-                    Paste the Dograh embed code once to enable browser calling for this agent.
-                  </p>
-                </div>
-                <span className={`badge ${dograhWidgetConfigured ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>
-                  {dograhWidgetConfigured ? "Configured" : "Not configured"}
-                </span>
-              </div>
-
-              <form className="space-y-3" onSubmit={saveDograhWidget}>
-                <label className="block text-sm font-medium text-slate-700">
-                  Paste Dograh Embed Code
-                  <textarea
-                    className="mt-1 min-h-32"
-                    value={dograhEmbedCode}
-                    onChange={(event) => setDograhEmbedCode(event.target.value)}
-                    placeholder="<script src=&quot;https://app.dograh.com/embed/...&quot;></script>"
-                  />
-                </label>
-                <div className="action-row">
-                  <button className="btn-secondary" disabled={dograhWidgetSaving}>
-                    {dograhWidgetSaving ? "Saving..." : "Save"}
-                  </button>
-                  {agent.dograhWidgetScriptUrl && (
-                    <span className="break-anywhere text-xs text-slate-500">
-                      Saved script URL: {agent.dograhWidgetScriptUrl}
-                    </span>
-                  )}
-                </div>
-              </form>
-
-              <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase text-slate-500">Web call status</p>
-                  <p className="text-sm font-semibold capitalize text-slate-800">{webCallStatus}</p>
-                </div>
-                <div className="action-row">
-                  {agent.dograhWidgetScriptUrl && (
-                    <button className="btn-primary" disabled={webCallStatus === "connecting" || webCallStatus === "live"} onClick={startDograhWebCall}>
-                      <Headphones size={16} />
-                      Start Web Call
-                    </button>
-                  )}
-                  <button className="btn-secondary" disabled={webCallStatus !== "live"} onClick={endDograhWebCall}>
-                    <Square size={16} />
-                    End
-                  </button>
-                </div>
-              </div>
-
-              {webCallError && (
-                <div className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
-                  {webCallError}
-                </div>
               )}
             </div>
 

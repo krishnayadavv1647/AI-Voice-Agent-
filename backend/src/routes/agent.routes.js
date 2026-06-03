@@ -10,7 +10,6 @@ import {
   previewRegeneratedPrompt,
   publishAgent,
   removeAgent,
-  saveDograhWidget,
   syncProviderForAgent,
   testChatAgent,
   testAgent,
@@ -32,7 +31,6 @@ router.post("/:id/test-chat", testChatAgent);
 router.post("/:id/publish", publishAgent);
 router.post("/:id/pause", pauseAgent);
 router.post("/:id/connect-dograh", connectDograhWorkflow);
-router.post("/:agentId/dograh-widget", saveDograhWidget);
 router.post("/:id/create-dograh-workflow", createDograhWorkflowForAgent);
 router.post("/:id/update-dograh-workflow", updateDograhWorkflowForAgent);
 router.patch("/:id/dograh-workflow", updateDograhWorkflowForAgent);

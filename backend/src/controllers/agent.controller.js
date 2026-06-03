@@ -17,27 +17,6 @@ function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
 }
 
-function extractDograhWidgetScriptUrl(embedCode = "") {
-  const code = String(embedCode || "");
-  const scriptTagMatch = code.match(/<script\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/i);
-  const jsSrcMatch = code.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
-  const url = scriptTagMatch?.[1] || jsSrcMatch?.[1] || "";
-
-  if (!url.trim()) {
-    throw new ApiError(400, "Paste Dograh embed code first.");
-  }
-
-  try {
-    const parsed = new URL(url.trim());
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      throw new Error("Invalid protocol");
-    }
-    return parsed.toString();
-  } catch {
-    throw new ApiError(400, "Paste Dograh embed code first.");
-  }
-}
-
 async function normalizeAgentProvider(agent) {
   let changed = false;
 
@@ -579,32 +558,6 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   await agent.save();
 
   res.json(agent);
-});
-
-export const saveDograhWidget = asyncHandler(async (req, res) => {
-  const agentId = req.params.agentId;
-  if (!agentId) {
-    throw new ApiError(400, "agentId is required");
-  }
-
-  const agent = await Agent.findOne({
-    _id: agentId,
-    ...userFilter(req),
-  });
-
-  if (!agent) throw new ApiError(404, "Agent not found");
-
-  const scriptUrl = extractDograhWidgetScriptUrl(req.body?.embedCode);
-  agent.dograhWidgetScriptUrl = scriptUrl;
-  agent.dograhWidgetMode = "embed";
-  agent.dograhWidgetConfigured = true;
-  await agent.save();
-
-  res.json({
-    success: true,
-    message: "Dograh web call setup saved.",
-    agent
-  });
 });
 
 export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
