@@ -22,7 +22,7 @@ export async function api(path, options = {}) {
       body: options.body && typeof options.body !== "string" ? JSON.stringify(options.body) : options.body
     });
   } catch (error) {
-    throw new Error(`Cannot reach the backend API at ${API_URL}. Make sure the backend server is running and VITE_API_URL is correct.`);
+    throw new Error("Backend API is unreachable. Check VITE_API_URL and backend server.");
   }
 
   if (!response.ok) {
