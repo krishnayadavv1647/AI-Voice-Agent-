@@ -2,7 +2,10 @@ import express from "express";
 import {
   connectDograhWorkflow,
   createDograhWorkflowForAgent,
+  createDograhAgentEmbedToken,
+  deleteDograhAgentEmbedToken,
   createAgent,
+  getDograhAgentEmbedToken,
   getAgent,
   listAgentCalls,
   listAgents,
@@ -16,7 +19,8 @@ import {
   triggerOutboundCall,
   triggerTestCall,
   updateAgent,
-  updateDograhWorkflowForAgent
+  updateDograhWorkflowForAgent,
+  updateShareSettings
 } from "../controllers/agent.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 
@@ -25,12 +29,16 @@ const router = express.Router();
 router.use(protect);
 router.route("/").post(createAgent).get(listAgents);
 router.route("/:id").get(getAgent).put(updateAgent).delete(removeAgent);
+router.patch("/:agentId/share-settings", updateShareSettings);
 router.post("/:id/regenerate-prompt-preview", previewRegeneratedPrompt);
 router.post("/:id/test", testAgent);
 router.post("/:id/test-chat", testChatAgent);
 router.post("/:id/publish", publishAgent);
 router.post("/:id/pause", pauseAgent);
 router.post("/:id/connect-dograh", connectDograhWorkflow);
+router.post("/:agentId/dograh/embed-token", createDograhAgentEmbedToken);
+router.get("/:agentId/dograh/embed-token", getDograhAgentEmbedToken);
+router.delete("/:agentId/dograh/embed-token", deleteDograhAgentEmbedToken);
 router.post("/:id/create-dograh-workflow", createDograhWorkflowForAgent);
 router.post("/:id/update-dograh-workflow", updateDograhWorkflowForAgent);
 router.patch("/:id/dograh-workflow", updateDograhWorkflowForAgent);

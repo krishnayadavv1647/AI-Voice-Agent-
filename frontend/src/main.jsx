@@ -18,6 +18,7 @@ import KnowledgeBase from "./pages/KnowledgeBase.jsx";
 import Leads from "./pages/Leads.jsx";
 import Messages from "./pages/Messages.jsx";
 import PublicCallback from "./pages/PublicCallback.jsx";
+import PublicAgent from "./pages/PublicAgent.jsx";
 import Settings from "./pages/Settings.jsx";
 import Templates from "./pages/Templates.jsx";
 import TestAgent from "./pages/TestAgent.jsx";
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/signup" element={<AuthPage mode="signup" />} />
       <Route path="/auth/success" element={<AuthSuccess />} />
       <Route path="/call/:agentId" element={<PublicCallback />} />
+      <Route path="/a/:publicSlug" element={<PublicAgent />} />
       <Route path="/" element={<Welcome />} />
       <Route
         path="/"

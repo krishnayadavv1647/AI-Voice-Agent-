@@ -4,6 +4,8 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import {
+  createDograhEmbedToken,
+  deleteDograhEmbedToken,
   triggerDograhOutboundCallByWorkflow,
   triggerDograhTestCallByWorkflow
 } from "../services/dograh.service.js";
@@ -15,6 +17,30 @@ import { runCustomAgent } from "../services/customAgentRuntime.js";
 
 function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
+}
+
+function slugifyAgentName(value = "") {
+  const slug = String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+
+  return slug || `agent-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function generateUniquePublicSlug(name) {
+  const baseSlug = slugifyAgentName(name);
+  let slug = baseSlug;
+  let exists = await Agent.exists({ publicSlug: slug });
+
+  while (exists) {
+    slug = `${baseSlug}-${Math.random().toString(36).slice(2, 7)}`;
+    exists = await Agent.exists({ publicSlug: slug });
+  }
+
+  return slug;
 }
 
 async function normalizeAgentProvider(agent) {
@@ -31,6 +57,11 @@ async function normalizeAgentProvider(agent) {
     changed = true;
   }
 
+  if (!agent.publicSlug) {
+    agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
+    changed = true;
+  }
+
   if (changed) await agent.save();
   return agent;
 }
@@ -44,6 +75,27 @@ async function getOwnedAgent(req) {
   if (!agent) throw new ApiError(404, "Agent not found");
 
   return normalizeAgentProvider(agent);
+}
+
+async function getOwnedAgentById(req, agentId) {
+  const agent = await Agent.findOne({
+    _id: agentId,
+    ...userFilter(req),
+  });
+
+  if (!agent) throw new ApiError(404, "Agent not found");
+
+  return normalizeAgentProvider(agent);
+}
+
+function getAgentDograhWorkflowId(agent) {
+  return (
+    agent.providerWorkflowId ||
+    agent.dograhWorkflowId ||
+    agent.workflowId ||
+    agent.dograhWorkflowUuid ||
+    null
+  );
 }
 
 function assertE164(value, fieldName) {
@@ -234,8 +286,13 @@ export const createAgent = asyncHandler(async (req, res) => {
     provider: req.body.provider || "custom",
     agentName: req.body.agentName || req.body.name,
     name: req.body.name || req.body.agentName,
-    description: req.body.description || req.body.businessDescription
+    description: req.body.description || req.body.businessDescription,
+    publicTitle: req.body.publicTitle || req.body.businessName || req.body.agentName || req.body.name,
+    publicDescription: req.body.publicDescription || req.body.businessDescription || req.body.description,
+    publicWelcomeMessage: req.body.publicWelcomeMessage || req.body.greetingMessage || req.body.firstMessage
   });
+
+  agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
 
   if (!agent.systemPrompt) {
     agent.systemPrompt = generateSystemPrompt(agent);
@@ -410,6 +467,33 @@ export const updateAgent = asyncHandler(async (req, res) => {
   });
 });
 
+export const updateShareSettings = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  const allowedFields = [
+    "isPublic",
+    "publicChatEnabled",
+    "publicWebCallEnabled",
+    "publicTitle",
+    "publicDescription",
+    "publicWelcomeMessage"
+  ];
+
+  if (!agent.publicSlug) {
+    agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
+  }
+
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) agent[field] = req.body[field];
+  }
+
+  await agent.save();
+
+  res.json({
+    success: true,
+    agent
+  });
+});
+
 export const previewRegeneratedPrompt = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
   const previewAgent = { ...agent.toObject(), ...req.body };
@@ -558,6 +642,56 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   await agent.save();
 
   res.json(agent);
+});
+
+export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  const workflowId = getAgentDograhWorkflowId(agent);
+
+  if (!workflowId) {
+    throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
+  }
+
+  const { embedToken } = await createDograhEmbedToken(workflowId);
+  agent.dograhEmbedToken = embedToken;
+  agent.dograhWidgetEnabled = true;
+  await agent.save();
+
+  res.json({
+    success: true,
+    embedToken,
+    agent
+  });
+});
+
+export const getDograhAgentEmbedToken = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+
+  res.json({
+    success: true,
+    embedToken: agent.dograhEmbedToken || null,
+    dograhWidgetEnabled: Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken)
+  });
+});
+
+export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  const workflowId = getAgentDograhWorkflowId(agent);
+
+  if (!workflowId) {
+    throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
+  }
+
+  await deleteDograhEmbedToken(workflowId);
+  agent.dograhEmbedToken = undefined;
+  agent.dograhWidgetEnabled = false;
+  await agent.save();
+
+  res.json({
+    success: true,
+    embedToken: null,
+    agent
+  });
 });
 
 export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
