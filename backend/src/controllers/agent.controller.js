@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
+import TelephonyConfig from "../models/TelephonyConfig.js";
 import {
   createDograhEmbedToken,
   deleteDograhEmbedToken,
@@ -126,6 +127,50 @@ function validateEditableAgentFields(agent) {
   if (agent.callMode && !validCallModes.includes(agent.callMode)) {
     throw new ApiError(400, "Call mode is not valid");
   }
+}
+
+function cleanOptionalObjectId(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (!String(value).trim()) return null;
+  if (!Agent.db.base.Types.ObjectId.isValid(value)) {
+    throw new ApiError(400, `${fieldName} is not valid`);
+  }
+  return value;
+}
+
+function sanitizeAgentBody(body = {}) {
+  const sanitized = { ...body };
+  const telephonyConfigId = cleanOptionalObjectId(sanitized.telephonyConfigId, "telephonyConfigId");
+
+  if (telephonyConfigId === undefined) {
+    delete sanitized.telephonyConfigId;
+  } else {
+    sanitized.telephonyConfigId = telephonyConfigId;
+  }
+
+  return sanitized;
+}
+
+async function syncTelephonyConfigForAgent(agent, telephonyConfigId) {
+  const unlinkFilter = { userId: agent.userId, linkedAgentId: agent._id };
+  if (telephonyConfigId) unlinkFilter._id = { $ne: telephonyConfigId };
+
+  await TelephonyConfig.updateMany(
+    unlinkFilter,
+    { $set: { linkedAgentId: null } }
+  );
+
+  if (!telephonyConfigId) return;
+
+  const config = await TelephonyConfig.findOne({ _id: telephonyConfigId, userId: agent.userId });
+  if (!config) throw new ApiError(400, "Telephony configuration was not found for this user");
+
+  config.linkedAgentId = agent._id;
+  await config.save();
+
+  agent.telephonyProvider = config.provider;
+  agent.connectedPhoneNumber = config.phoneNumber;
 }
 
 function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
@@ -280,16 +325,20 @@ export const createAgent = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Agent name, type, and business name are required");
   }
 
+  const body = sanitizeAgentBody(req.body);
+  const telephonyConfigId = body.telephonyConfigId;
+  delete body.telephonyConfigId;
+
   const agent = new Agent({
-    ...req.body,
+    ...body,
     userId: req.user._id,
-    provider: req.body.provider || "custom",
-    agentName: req.body.agentName || req.body.name,
-    name: req.body.name || req.body.agentName,
-    description: req.body.description || req.body.businessDescription,
-    publicTitle: req.body.publicTitle || req.body.businessName || req.body.agentName || req.body.name,
-    publicDescription: req.body.publicDescription || req.body.businessDescription || req.body.description,
-    publicWelcomeMessage: req.body.publicWelcomeMessage || req.body.greetingMessage || req.body.firstMessage
+    provider: body.provider || "custom",
+    agentName: body.agentName || body.name,
+    name: body.name || body.agentName,
+    description: body.description || body.businessDescription,
+    publicTitle: body.publicTitle || body.businessName || body.agentName || body.name,
+    publicDescription: body.publicDescription || body.businessDescription || body.description,
+    publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
 
   agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
@@ -299,21 +348,24 @@ export const createAgent = asyncHandler(async (req, res) => {
   }
 
   agent.callerIdNumber =
-    req.body.callerIdNumber ||
+    body.callerIdNumber ||
     process.env.DEFAULT_CALLER_ID_NUMBER ||
     agent.callerIdNumber;
 
   agent.connectedPhoneNumber =
-    req.body.connectedPhoneNumber ||
+    body.connectedPhoneNumber ||
     process.env.DEFAULT_CALLER_ID_NUMBER ||
     agent.connectedPhoneNumber;
 
   agent.telephonyProvider =
-    req.body.telephonyProvider ||
+    body.telephonyProvider ||
     process.env.DEFAULT_TELEPHONY_PROVIDER ||
     agent.telephonyProvider ||
     "twilio";
 
+  await agent.save();
+  agent.telephonyConfigId = telephonyConfigId || null;
+  await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
   await agent.save();
 
   try {
@@ -345,7 +397,7 @@ export const createAgent = asyncHandler(async (req, res) => {
       agent,
       providerResult: null,
       dograhCreated: false,
-      warning: `Agent created locally but ${agent.provider} provider creation failed.`,
+      warning: `Agent created locally, but ${agent.provider} provider creation failed. ${error.message}`,
       error: error.message
     });
   }
@@ -376,6 +428,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
   }
 
   const agent = await getOwnedAgent(req);
+  const body = sanitizeAgentBody(req.body);
   const allowedFields = [
     "agentName",
     "name",
@@ -429,20 +482,23 @@ export const updateAgent = asyncHandler(async (req, res) => {
   ];
 
   for (const field of allowedFields) {
-    if (req.body[field] !== undefined) agent[field] = req.body[field];
+    if (body[field] !== undefined) agent[field] = body[field];
   }
 
   agent.agentName = agent.agentName || agent.name;
   agent.name = agent.name || agent.agentName;
   agent.description = agent.description || agent.businessDescription;
 
-  if (req.body.regeneratePrompt === true) {
+  if (body.regeneratePrompt === true) {
     agent.systemPrompt = generateSystemPrompt(agent);
-  } else if (req.body.systemPrompt !== undefined) {
-    agent.systemPrompt = req.body.systemPrompt;
+  } else if (body.systemPrompt !== undefined) {
+    agent.systemPrompt = body.systemPrompt;
   }
 
   validateEditableAgentFields(agent);
+  if (Object.prototype.hasOwnProperty.call(body, "telephonyConfigId")) {
+    await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+  }
 
   if (agent.provider === "dograh") {
     agent.dograhNeedsUpdate = true;
@@ -451,9 +507,9 @@ export const updateAgent = asyncHandler(async (req, res) => {
 
   let providerResult = null;
 
-  if (req.body.syncProvider === true) {
+  if (body.syncProvider === true) {
     providerResult = await syncProvider(agent, "update", {
-      createIfMissing: Boolean(req.body.createIfMissing)
+      createIfMissing: Boolean(body.createIfMissing)
     });
   }
 

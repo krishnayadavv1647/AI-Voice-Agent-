@@ -5,6 +5,7 @@ import Lead from "../models/Lead.js";
 import User from "../models/User.js";
 import WebhookEvent from "../models/WebhookEvent.js";
 import { extractCallFields, hasUsefulLeadData, normalizeLeadData, pick } from "../services/callLogMapper.js";
+import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
 async function findAgent(fields) {
   if (fields.localAgentId && mongoose.Types.ObjectId.isValid(fields.localAgentId)) {
@@ -31,7 +32,7 @@ async function upsertLead({ agent, callLog, leadData }) {
   const existingLead = await Lead.findOne({ callLogId: callLog._id });
   if (existingLead) return false;
 
-  await Lead.create({
+  await Lead.create(normalizeLeadToEnglish({
     userId: agent.userId,
     agentId: agent._id,
     callLogId: callLog._id,
@@ -47,7 +48,7 @@ async function upsertLead({ agent, callLog, leadData }) {
     customFields: leadData.customFields,
     status: "New",
     source: "call"
-  });
+  }));
 
   return true;
 }

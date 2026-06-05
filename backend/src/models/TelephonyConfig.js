@@ -14,7 +14,18 @@ const telephonyConfigSchema = new mongoose.Schema(
     region: String,
     country: String,
     webhookUrl: String,
-    linkedAgentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent", default: null },
+    inboundEnabled: { type: Boolean, default: true },
+    outboundEnabled: { type: Boolean, default: true },
+    dograhTelephonyConfigId: String,
+    dograhPhoneNumberId: String,
+    dograhProviderSync: { type: mongoose.Schema.Types.Mixed },
+    dograhRawResponse: { type: mongoose.Schema.Types.Mixed },
+    linkedAgentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Agent",
+      default: null,
+      set: (value) => value === "" ? null : value
+    },
     status: { type: String, enum: ["active", "inactive", "failed"], default: "active" }
   },
   { timestamps: true }

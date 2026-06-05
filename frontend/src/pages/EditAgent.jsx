@@ -18,6 +18,14 @@ const editableFields = [
   "provider"
 ];
 
+function formatApiError(error) {
+  const response = error?.response;
+  if (response?.userMessage) return response.userMessage;
+  if (response?.message) return response.message;
+  if (typeof response?.details === "string") return response.details;
+  return error?.message || "Something went wrong.";
+}
+
 export default function EditAgent() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -111,7 +119,11 @@ export default function EditAgent() {
     setError("");
     setNotice("");
     try {
-      const result = await api(`/agents/${id}`, { method: "PUT", body: form });
+      const payload = {
+        ...form,
+        telephonyConfigId: form.telephonyConfigId || null
+      };
+      const result = await api(`/agents/${id}`, { method: "PUT", body: payload });
       const saved = result.agent || result;
       if (saved._id && saved._id !== id) {
         throw new Error("Save returned a different agent. Local edit was stopped.");
@@ -130,7 +142,7 @@ export default function EditAgent() {
       setOriginal(next);
       setNotice(result.message || "Agent saved locally. Update Dograh Workflow to apply changes to live calls.");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setSaving(false);
     }
@@ -181,7 +193,7 @@ export default function EditAgent() {
       }));
       setNotice(result.message || "Provider synced successfully");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setUpdatingDograh(false);
     }

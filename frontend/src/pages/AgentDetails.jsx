@@ -39,6 +39,14 @@ function readActiveWorkflowList(response) {
   return activeWorkflows;
 }
 
+function formatApiError(error) {
+  const response = error?.response;
+  if (response?.userMessage) return response.userMessage;
+  if (response?.message) return response.message;
+  if (typeof response?.details === "string") return response.details;
+  return error?.message || "Something went wrong.";
+}
+
 function workflowId(workflow) {
   return workflow.id || workflow.workflow_id || workflow.workflowId || workflow._id || "";
 }
@@ -217,7 +225,7 @@ export default function AgentDetails() {
       await load();
       startCallPolling(result.callLog?._id);
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
@@ -259,7 +267,7 @@ export default function AgentDetails() {
       setNotice("Call log synced from Dograh.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -274,7 +282,7 @@ export default function AgentDetails() {
       setNotice(result.lead ? "Lead extracted from transcript." : "No lead extracted from transcript.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -297,7 +305,7 @@ export default function AgentDetails() {
       setNotice("Dograh run fetched and saved.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -319,7 +327,7 @@ export default function AgentDetails() {
 
       setChatMessages((current) => [...current, { role: "assistant", text: result.response || result.reply }]);
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
       setChatMessages((current) => [...current, { role: "assistant", text: `Message failed. ${err.message || "Check backend Gemini configuration and try again."}`, error: true }]);
     } finally {
       setChatLoading(false);
@@ -334,7 +342,7 @@ export default function AgentDetails() {
       await api(`/agents/${id}`, { method: "DELETE" });
       navigate("/agents");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -354,7 +362,7 @@ export default function AgentDetails() {
       setNotice(result.dograhCreated ? "Dograh workflow created successfully." : result.warning || "Dograh workflow response did not include a workflow UUID.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
@@ -378,7 +386,7 @@ export default function AgentDetails() {
       setNotice(result.message || "Provider synced successfully");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
@@ -406,7 +414,7 @@ export default function AgentDetails() {
       setData((current) => ({ ...current, agent: result.agent || current.agent }));
       setNotice("Share settings saved.");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setShareSaving(false);
     }

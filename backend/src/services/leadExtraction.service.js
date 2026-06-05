@@ -64,6 +64,7 @@ Return ONLY valid JSON with this structure:
 }
 
 Rules:
+- Return all structured lead data in English only. Transliterate Hindi names, translate requirements, and convert date/time into English format. Never return Hindi text in CRM fields.
 - leadCaptured should be true if the caller showed interest, asked for booking, gave requirement, or provided any useful customer detail.
 - Do not invent name, phone, date, time, or guest count.
 - If phone is not spoken in transcript, use empty string.

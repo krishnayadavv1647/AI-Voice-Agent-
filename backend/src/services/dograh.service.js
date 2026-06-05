@@ -4,6 +4,7 @@ import { buildDograhWorkflowDefinition, validateLocalWorkflowDefinition } from "
 
 const EXPECTED_DOGRAH_BASE_URL = "https://app.dograh.com/api/v1";
 const DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT = "/workflow/create/definition";
+const DOGRAH_TELEPHONY_CONFIGS_ENDPOINT = "/organizations/telephony-configs";
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 function getDograhBaseUrl() {
@@ -137,6 +138,16 @@ function formatDograhErrorMessage(data, fallback) {
   return fallback;
 }
 
+function friendlyDograhErrorMessage(data, fallback) {
+  const rawMessage = formatDograhErrorMessage(data, fallback);
+
+  if (/telephony provider not configured/i.test(rawMessage)) {
+    return "Dograh workflow could not be created because telephony provider is not configured in your Dograh organization. Configure a caller/telephony provider in Dograh, then retry Dograh workflow sync.";
+  }
+
+  return rawMessage;
+}
+
 function handleDograhError(error, action) {
   console.error("Dograh API Error Status:", error.response?.status);
   console.error("Dograh API Error Data:", error.response?.data);
@@ -144,7 +155,7 @@ function handleDograhError(error, action) {
 
   const statusCode = error.response?.status || 502;
 
-  const realMessage = formatDograhErrorMessage(
+  const realMessage = friendlyDograhErrorMessage(
     error.response?.data,
     error.message || "Dograh API call failed"
   );
@@ -153,6 +164,8 @@ function handleDograhError(error, action) {
     success: false,
     dograhStatus: error.response?.status,
     dograhError: error.response?.data,
+    dograhAction: action,
+    userMessage: realMessage
   });
 }
 
@@ -337,15 +350,114 @@ export async function createDograhWorkflowFromDefinition(agent) {
 
     if (error instanceof ApiError) throw error;
 
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.response?.data?.detail ||
-      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
-      error.message ||
-      "Dograh workflow creation failed";
+    const message = friendlyDograhErrorMessage(
+      error.response?.data,
+      error.message || "Dograh workflow creation failed"
+    );
 
-    throw new ApiError(error.response?.status || 502, message);
+    throw new ApiError(error.response?.status || 502, message, {
+      success: false,
+      dograhStatus: error.response?.status,
+      dograhError: error.response?.data,
+      dograhAction: "create workflow",
+      userMessage: message
+    });
+  }
+}
+
+function extractDograhTelephonyConfigId(responseData = {}) {
+  return (
+    responseData.id ||
+    responseData.config_id ||
+    responseData.configuration_id ||
+    responseData.telephony_configuration_id ||
+    responseData.data?.id ||
+    responseData.data?.config_id ||
+    responseData.data?.configuration_id ||
+    responseData.data?.telephony_configuration_id ||
+    responseData.configuration?.id ||
+    null
+  );
+}
+
+function extractDograhPhoneNumberId(responseData = {}) {
+  return (
+    responseData.id ||
+    responseData.phone_number_id ||
+    responseData.data?.id ||
+    responseData.data?.phone_number_id ||
+    null
+  );
+}
+
+export async function createDograhTelephonyConfiguration(payload) {
+  try {
+    const response = await createDograhClient().post(DOGRAH_TELEPHONY_CONFIGS_ENDPOINT, payload);
+    const dograhTelephonyConfigId = extractDograhTelephonyConfigId(response.data);
+
+    if (!dograhTelephonyConfigId) {
+      throw new ApiError(502, "Dograh telephony configuration was created but no configuration ID was returned.", {
+        dograhResponse: response.data
+      });
+    }
+
+    return {
+      dograhTelephonyConfigId,
+      raw: response.data
+    };
+  } catch (error) {
+    console.error("Dograh create telephony config failed status:", error.response?.status);
+    console.error("Dograh create telephony config failed data:", error.response?.data);
+    console.error("Dograh create telephony config failed message:", error.message);
+
+    if (error instanceof ApiError) throw error;
+
+    const message = friendlyDograhErrorMessage(
+      error.response?.data,
+      error.message || "Dograh telephony configuration creation failed"
+    );
+
+    throw new ApiError(error.response?.status || 502, message, {
+      success: false,
+      dograhStatus: error.response?.status,
+      dograhError: error.response?.data,
+      dograhAction: "create telephony configuration",
+      userMessage: message
+    });
+  }
+}
+
+export async function addDograhTelephonyPhoneNumber(configId, payload) {
+  try {
+    const response = await createDograhClient().post(
+      `${DOGRAH_TELEPHONY_CONFIGS_ENDPOINT}/${configId}/phone-numbers`,
+      payload
+    );
+
+    return {
+      dograhPhoneNumberId: extractDograhPhoneNumberId(response.data),
+      providerSync: response.data?.provider_sync || null,
+      raw: response.data
+    };
+  } catch (error) {
+    console.error("Dograh add telephony phone number failed status:", error.response?.status);
+    console.error("Dograh add telephony phone number failed data:", error.response?.data);
+    console.error("Dograh add telephony phone number failed message:", error.message);
+
+    if (error instanceof ApiError) throw error;
+
+    const message = friendlyDograhErrorMessage(
+      error.response?.data,
+      error.message || "Dograh phone number attachment failed"
+    );
+
+    throw new ApiError(error.response?.status || 502, message, {
+      success: false,
+      dograhStatus: error.response?.status,
+      dograhError: error.response?.data,
+      dograhAction: "add telephony phone number",
+      userMessage: message
+    });
   }
 }
 
@@ -383,15 +495,18 @@ export async function updateDograhWorkflowById(workflowId, agent) {
 
     if (error instanceof ApiError) throw error;
 
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      error.response?.data?.detail ||
-      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
-      error.message ||
-      "Dograh workflow update failed";
+    const message = friendlyDograhErrorMessage(
+      error.response?.data,
+      error.message || "Dograh workflow update failed"
+    );
 
-    throw new ApiError(error.response?.status || 502, message);
+    throw new ApiError(error.response?.status || 502, message, {
+      success: false,
+      dograhStatus: error.response?.status,
+      dograhError: error.response?.data,
+      dograhAction: "update workflow",
+      userMessage: message
+    });
   }
 }
 

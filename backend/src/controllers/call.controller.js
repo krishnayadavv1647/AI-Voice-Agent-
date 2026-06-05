@@ -7,6 +7,7 @@ import Lead from "../models/Lead.js";
 import { hasUsefulLeadData, normalizeDograhRunDetails } from "../services/callLogMapper.js";
 import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { extractLeadFromCallTranscript } from "../services/leadExtraction.service.js";
+import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
 function filter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -47,7 +48,7 @@ async function fetchTranscriptFromUrl(transcriptUrl) {
 }
 
 function buildLeadPayload(callLog, leadData) {
-  return {
+  return normalizeLeadToEnglish({
     userId: callLog.userId,
     agentId: callLog.agentId,
     callLogId: callLog._id,
@@ -85,7 +86,7 @@ function buildLeadPayload(callLog, leadData) {
     },
     source: "call",
     status: "New"
-  };
+  });
 }
 
 async function upsertLeadFromCallData(callLog, leadData) {

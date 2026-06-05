@@ -41,31 +41,23 @@ function isHealthcareBusiness(agent) {
   );
 }
 
-function usesHindiVoice(agent) {
-  const language = String(agent.language || "").toLowerCase();
-  return language.includes("hindi") || language.includes("hinglish");
-}
-
 function buildPronunciationRules(agent) {
-  if (!usesHindiVoice(agent)) return "";
-
   return `
 Voice Pronunciation Rules:
-- Hindi/Hinglish responses me Hindi words Devanagari script me likho.
-- Short and clear sentences use karo.
-- Long mixed Hindi-English paragraphs mat banao.
-- Business name and location clearly pronounce karo.
-- Reply short rakho.
-- Ek baar me ek hi question pucho.
+- Use English text only for voice output.
+- Keep pronunciation clear, natural, and professional.
+- Speak business names, customer names, phone numbers, dates, and times clearly.
+- Keep sentences short and easy to understand.
+- Ask one question at a time.
 
-Example Hindi replies:
-- नमस्ते, ${value(agent.businessName)} में आपका स्वागत है।
-- बिलकुल, कितने गेस्ट हैं?
-- किस तारीख के लिए बुकिंग चाहिए?
-- किस टाइम के लिए बुकिंग चाहिए?
-- आपका नाम क्या है?
-- आपका फोन नंबर क्या है?
-- टीम चेक करके कन्फर्म करेगी।
+Example English replies:
+- Hello, welcome to ${value(agent.businessName)}. How can I help you today?
+- Sure, how many guests should I book for?
+- Which date would you prefer for the booking?
+- What time would you like?
+- May I have your name?
+- May I have your phone number?
+- Our team will check and confirm.
 `;
 }
 
@@ -181,7 +173,7 @@ Stay strictly within this business category. Do not switch to another business t
 `;
 }
 
-function buildGlobalPrompt(agent) {
+function buildGlobalPrompt() {
   return `
 - Speak politely and professionally.
 - Keep answers short.
@@ -190,6 +182,7 @@ function buildGlobalPrompt(agent) {
 - Stay focused on the business.
 - Do not make fake promises.
 - If user wants appointment/callback, collect name, phone number, and requirement.
+- Use English text only for all voice responses and pronunciation examples.
 `;
 }
 
@@ -206,15 +199,15 @@ function buildExtractionData() {
 
   return {
     extraction_enabled: true,
-    extraction_prompt: "Extract lead details from the call if the caller provides them. Only extract information that was actually mentioned. Do not invent missing details.",
+    extraction_prompt: "Extract lead details from the call if the caller provides them. Only extract information that was actually mentioned. Do not invent missing details. Return all structured lead data in English only. Transliterate Hindi names, translate requirements, and convert date/time into English format. Never return Hindi text in CRM fields.",
     extraction_variables: [
-      { name: "customer_name", type: "string", prompt: "Customer name if mentioned" },
+      { name: "customer_name", type: "string", prompt: "Customer name if mentioned. Return in English only; transliterate Hindi names." },
       { name: "phone_number", type: "string", prompt: "Customer phone number if mentioned" },
-      { name: "requirement", type: "string", prompt: "Main customer requirement or intent" },
+      { name: "requirement", type: "string", prompt: "Main customer requirement or intent. Return in English only; translate Hindi or Hinglish requirements." },
       { name: "number_of_guests", type: "string", prompt: "Number of guests for restaurant booking if mentioned" },
-      { name: "booking_date", type: "string", prompt: "Preferred booking date if mentioned" },
-      { name: "booking_time", type: "string", prompt: "Preferred booking time if mentioned" },
-      { name: "special_request", type: "string", prompt: "Any special request if mentioned" }
+      { name: "booking_date", type: "string", prompt: "Preferred booking date if mentioned. Return in English readable format." },
+      { name: "booking_time", type: "string", prompt: "Preferred booking time if mentioned. Return in English readable format." },
+      { name: "special_request", type: "string", prompt: "Any special request if mentioned. Return in English only." }
     ]
   };
 }
@@ -231,9 +224,7 @@ export function buildDograhWorkflowDefinition(agent) {
   const globalPrompt = buildGlobalPrompt(agent);
   const startPrompt = hasText(agent.greetingMessage)
     ? String(agent.greetingMessage).trim()
-    : usesHindiVoice(agent)
-    ? `नमस्ते, ${value(agent.businessName)} में आपका स्वागत है। बताइए, मैं आपकी कैसे मदद कर सकता हूँ?`
-    : "Greet the caller politely and ask how you can help today.";
+    : `Hello, welcome to ${value(agent.businessName)}. How can I help you today?`;
   const agentPrompt = buildAgentPrompt(agent);
   console.log("AUTO DOGRAH AGENT PROMPT:", agentPrompt);
   const endPrompt = "Thank the caller and end the call politely after the request is handled or callback details are collected.";

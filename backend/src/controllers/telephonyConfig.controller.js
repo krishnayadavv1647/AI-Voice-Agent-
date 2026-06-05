@@ -2,12 +2,14 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { decryptSecret, encryptSecret } from "../utils/secretCrypto.js";
 
 const SECRET_FIELDS = ["authToken", "apiSecret"];
+const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -61,11 +63,33 @@ function isMaskedSecret(value) {
   return typeof value === "string" && value.includes("*****");
 }
 
+function cleanOptionalObjectId(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (!String(value).trim()) return null;
+  if (!TelephonyConfig.db.base.Types.ObjectId.isValid(value)) {
+    throw new ApiError(400, `${fieldName} is not valid`);
+  }
+  return value;
+}
+
+function cleanRequiredObjectId(value, fieldName) {
+  const cleaned = cleanOptionalObjectId(value, fieldName);
+  if (!cleaned) throw new ApiError(400, `${fieldName} is required`);
+  return cleaned;
+}
+
+function booleanValue(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return Boolean(value);
+}
+
 function sanitizeConfig(config) {
   const item = config.toObject ? config.toObject() : { ...config };
   for (const field of SECRET_FIELDS) {
     if (item[field]) item[field] = mask(item[field]);
   }
+  delete item.dograhRawResponse;
   return item;
 }
 
@@ -83,16 +107,83 @@ function applyBody(config, body, req) {
     "country",
     "webhookUrl",
     "linkedAgentId",
+    "inboundEnabled",
+    "outboundEnabled",
     "status"
   ];
 
   for (const field of allowedFields) {
     if (body[field] === undefined) continue;
     if (SECRET_FIELDS.includes(field) && isMaskedSecret(body[field])) continue;
+    if (field === "linkedAgentId") {
+      config[field] = cleanOptionalObjectId(body[field], "linkedAgentId");
+      continue;
+    }
     config[field] = SECRET_FIELDS.includes(field) ? encryptSecret(body[field]) : body[field];
   }
 
   config.webhookUrl = buildWebhookUrl(req, config.provider);
+}
+
+function buildDograhProviderConfig(body) {
+  const config = {
+    provider: body.provider
+  };
+
+  const mappings = [
+    ["accountSid", "account_sid"],
+    ["authToken", "auth_token"],
+    ["apiKey", "api_key"],
+    ["apiSecret", "api_secret"],
+    ["appId", "app_id"],
+    ["region", "region"],
+    ["country", "country"]
+  ];
+
+  for (const [source, target] of mappings) {
+    if (body[source]) config[target] = body[source];
+  }
+
+  if (body.phoneNumber) config.from_numbers = [body.phoneNumber];
+
+  return config;
+}
+
+function buildDograhTelephonyConfigPayload(body) {
+  return {
+    name: body.name,
+    config: buildDograhProviderConfig(body)
+  };
+}
+
+function dograhWorkflowIdForInbound(agent) {
+  const value = agent.providerWorkflowId || agent.dograhWorkflowId;
+  if (!value) return null;
+
+  const numeric = Number(value);
+  return Number.isInteger(numeric) ? numeric : null;
+}
+
+function buildDograhPhonePayload({ body, agent, inboundEnabled, outboundEnabled }) {
+  const inboundWorkflowId = inboundEnabled ? dograhWorkflowIdForInbound(agent) : null;
+
+  if (inboundEnabled && !inboundWorkflowId) {
+    throw new ApiError(400, "Inbound calling requires the linked agent to have a numeric Dograh workflow ID. Sync the agent with Dograh first, or disable inbound for this number.");
+  }
+
+  return {
+    address: body.phoneNumber,
+    country_code: body.country || null,
+    label: body.name || body.phoneNumber,
+    inbound_workflow_id: inboundWorkflowId,
+    is_active: true,
+    is_default_caller_id: outboundEnabled,
+    extra_metadata: {
+      localAgentId: agent._id.toString(),
+      inboundEnabled,
+      outboundEnabled
+    }
+  };
 }
 
 async function syncLinkedAgent(config) {
@@ -101,6 +192,11 @@ async function syncLinkedAgent(config) {
 
   const agent = await Agent.findOne({ _id: config.linkedAgentId, userId: config.userId });
   if (!agent) throw new ApiError(400, "Linked agent was not found for this user");
+
+  await TelephonyConfig.updateMany(
+    { userId: config.userId, linkedAgentId: agent._id, _id: { $ne: config._id } },
+    { $set: { linkedAgentId: null } }
+  );
 
   agent.telephonyConfigId = config._id;
   agent.telephonyProvider = config.provider;
@@ -128,12 +224,61 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Name, provider, and phone number are required");
   }
 
+  if (!E164_PATTERN.test(req.body.phoneNumber)) {
+    throw new ApiError(400, "Phone number must be in E.164 format, for example +17578297060");
+  }
+
+  const linkedAgentId = cleanRequiredObjectId(req.body.linkedAgentId, "linkedAgentId");
+  const linkedAgent = await Agent.findOne({ _id: linkedAgentId, ...userFilter(req) });
+  if (!linkedAgent) throw new ApiError(400, "Linked agent was not found for this user");
+
+  const inboundEnabled = booleanValue(req.body.inboundEnabled, true);
+  const outboundEnabled = booleanValue(req.body.outboundEnabled, true);
+  if (!inboundEnabled && !outboundEnabled) {
+    throw new ApiError(400, "Enable inbound, outbound, or both for this telephony configuration");
+  }
+
   const provider = getTelephonyProvider(req.body.provider);
   const config = new TelephonyConfig({ userId: req.user._id });
-  applyBody(config, req.body, req);
+  applyBody(config, { ...req.body, linkedAgentId, inboundEnabled, outboundEnabled, status: "active" }, req);
   provider.saveConfig(config);
-  await config.save();
-  await syncLinkedAgent(config);
+
+  const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
+  const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
+  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload);
+  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload);
+
+  config.dograhTelephonyConfigId = String(dograhConfig.dograhTelephonyConfigId);
+  config.dograhPhoneNumberId = dograhPhone.dograhPhoneNumberId ? String(dograhPhone.dograhPhoneNumberId) : "";
+  config.dograhProviderSync = dograhPhone.providerSync;
+  config.dograhRawResponse = {
+    telephonyConfiguration: dograhConfig.raw,
+    phoneNumber: dograhPhone.raw
+  };
+
+  try {
+    await config.save();
+  } catch (error) {
+    console.error("Dograh telephony configuration was created, but local TelephonyConfig save failed:", {
+      linkedAgentId: linkedAgentId?.toString(),
+      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
+      dograhPhoneNumberId: config.dograhPhoneNumberId,
+      error: error.message
+    });
+    throw error;
+  }
+
+  try {
+    await syncLinkedAgent(config);
+  } catch (error) {
+    console.error("Local TelephonyConfig saved after Dograh creation, but linked Agent update failed:", {
+      telephonyConfigId: config._id?.toString(),
+      linkedAgentId: linkedAgentId?.toString(),
+      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
+      error: error.message
+    });
+    throw error;
+  }
 
   res.status(201).json(sanitizeConfig(config));
 });

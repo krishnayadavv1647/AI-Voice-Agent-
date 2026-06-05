@@ -6,6 +6,7 @@ import Lead from "../models/Lead.js";
 import { extractRunId } from "../services/callLogMapper.js";
 import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
@@ -107,7 +108,7 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
   const ip = requesterIp(req);
   await enforceCallbackLimits({ phoneNumber, ip });
 
-  const lead = await Lead.create({
+  const leadPayload = normalizeLeadToEnglish({
     userId: agent.userId,
     agentId: agent._id,
     name,
@@ -119,14 +120,16 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
     customFields: { ip }
   });
 
+  const lead = await Lead.create(leadPayload);
+
   const payload = {
     phone_number: phoneNumber,
     calling_number: agent.callerIdNumber,
     initial_context: {
-      customerName: name,
+      customerName: leadPayload.name,
       phoneNumber,
-      requirement,
-      preferredTime,
+      requirement: leadPayload.requirement,
+      preferredTime: leadPayload.preferredTime,
       businessName: agent.businessName,
       agentName: agent.agentName,
       localAgentId: agent._id.toString()

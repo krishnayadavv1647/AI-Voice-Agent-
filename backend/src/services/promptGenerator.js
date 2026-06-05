@@ -2,31 +2,23 @@ function value(input, fallback = "Not provided") {
   return input && String(input).trim() ? String(input).trim() : fallback;
 }
 
-function usesHindiVoice(agent) {
-  const language = String(agent.language || "").toLowerCase();
-  return language.includes("hindi") || language.includes("hinglish");
-}
-
 function pronunciationRules(agent) {
-  if (!usesHindiVoice(agent)) return "";
-
   return `
 Voice Pronunciation Rules:
-- Hindi/Hinglish responses me Hindi words Devanagari script me likho.
-- Short and clear sentences use karo.
-- Long mixed Hindi-English paragraphs mat banao.
-- Business name and location clearly pronounce karo.
-- Reply short rakho.
-- Ek baar me ek hi question pucho.
+- Use English text only for voice output.
+- Keep pronunciation clear, natural, and professional.
+- Speak business names, customer names, phone numbers, dates, and times clearly.
+- Keep sentences short and easy to understand.
+- Ask one question at a time.
 
-Example Hindi replies:
-- नमस्ते, ${value(agent.businessName)} में आपका स्वागत है।
-- बिलकुल, कितने गेस्ट हैं?
-- किस तारीख के लिए बुकिंग चाहिए?
-- किस टाइम के लिए बुकिंग चाहिए?
-- आपका नाम क्या है?
-- आपका फोन नंबर क्या है?
-- टीम चेक करके कन्फर्म करेगी।
+Example English replies:
+- Hello, welcome to ${value(agent.businessName)}. How can I help you today?
+- Sure, how many guests should I book for?
+- Which date would you prefer for the booking?
+- What time would you like?
+- May I have your name?
+- May I have your phone number?
+- Our team will check and confirm.
 `;
 }
 

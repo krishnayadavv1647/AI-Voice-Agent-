@@ -67,7 +67,12 @@ const agentSchema = new mongoose.Schema(
     tools: { type: Array, default: [] },
     settings: { type: mongoose.Schema.Types.Mixed, default: {} },
     knowledgeBaseIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "KnowledgeBase" }],
-    telephonyConfigId: { type: mongoose.Schema.Types.ObjectId, ref: "TelephonyConfig", default: null },
+    telephonyConfigId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TelephonyConfig",
+      default: null,
+      set: (value) => value === "" ? null : value
+    },
     provider: { type: String, enum: ["custom", "dograh", "vapi", "retell"], default: "custom" },
     providerWorkflowId: { type: String, default: null },
     providerAgentId: { type: String, default: null },

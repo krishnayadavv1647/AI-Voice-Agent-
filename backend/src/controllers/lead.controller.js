@@ -4,6 +4,7 @@ import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import { extractRunId } from "../services/callLogMapper.js";
 import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
+import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
 function filter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -23,8 +24,11 @@ export const getLead = asyncHandler(async (req, res) => {
 export const updateLead = asyncHandler(async (req, res) => {
   const lead = await Lead.findOne({ _id: req.params.id, ...filter(req) });
   if (!lead) throw new ApiError(404, "Lead not found");
-  if (req.body.note) lead.notes.push({ text: req.body.note });
-  Object.assign(lead, { ...req.body, note: undefined });
+  if (req.body.note) {
+    const normalizedNote = normalizeLeadToEnglish({ notes: [{ text: req.body.note }] }).notes[0];
+    lead.notes.push(normalizedNote);
+  }
+  Object.assign(lead, { ...normalizeLeadToEnglish(req.body), note: undefined });
   await lead.save();
   res.json(lead);
 });
