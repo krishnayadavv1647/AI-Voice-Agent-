@@ -131,7 +131,7 @@ export const TwilioTelephony = {
     const message = reply || agent?.firstMessage || agent?.greetingMessage || "Hello. How can I help you today?";
     return {
       contentType: "text/xml",
-      body: `<Response><Say>${escapeXml(message)}</Say></Response>`
+      body: `<Response><Say voice="alice">${escapeXml(message)}</Say></Response>`
     };
   }
 };

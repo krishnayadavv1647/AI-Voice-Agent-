@@ -7,14 +7,13 @@ import TelephonyConfig from "../models/TelephonyConfig.js";
 import {
   createDograhEmbedToken,
   deleteDograhEmbedToken,
-  triggerDograhOutboundCallByWorkflow,
   triggerDograhTestCallByWorkflow
 } from "../services/dograh.service.js";
 import { generateAgentTextReply } from "../services/gemini.service.js";
 import { generateSystemPrompt } from "../services/promptGenerator.js";
-import { extractCallFields, extractRunId } from "../services/callLogMapper.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 
 function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -265,59 +264,6 @@ async function syncProvider(agent, action, { createIfMissing = false } = {}) {
   applyProviderResult(agent, result, syncedAt);
 
   return result;
-}
-
-function getDograhWebhookUrl() {
-  const backendUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, "");
-
-  if (!backendUrl) {
-    throw new ApiError(
-      500,
-      "PUBLIC_BACKEND_URL is missing. Set it to your deployed backend URL."
-    );
-  }
-
-  if (backendUrl.includes("localhost") || backendUrl.includes("127.0.0.1")) {
-    throw new ApiError(
-      500,
-      "PUBLIC_BACKEND_URL must be a deployed public backend URL, not localhost."
-    );
-  }
-
-  const webhookUrl = `${backendUrl}/api/webhooks/dograh`;
-
-  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
-    throw new ApiError(
-      500,
-      "Generated webhook URL is invalid because it contains localhost or 127.0.0.1."
-    );
-  }
-
-  return webhookUrl;
-}
-
-function dograhCallPayload(agent, phoneNumber) {
-  const webhookUrl = getDograhWebhookUrl();
-
-  return {
-    phone_number: phoneNumber,
-    calling_number: agent.callerIdNumber,
-    webhook_url: webhookUrl,
-
-    initial_context: {
-      businessName: agent.businessName,
-      agentName: agent.agentName,
-      localAgentId: agent._id.toString(),
-      userId: agent.userId.toString(),
-    },
-
-    metadata: {
-      localAgentId: agent._id.toString(),
-      userId: agent.userId.toString(),
-      dograhWorkflowUuid: agent.dograhWorkflowUuid,
-      webhookUrl,
-    },
-  };
 }
 
 export const createAgent = asyncHandler(async (req, res) => {
@@ -882,86 +828,17 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
 });
 
 async function triggerCall(req, res, trigger) {
-  if (!process.env.DOGRAH_BASE_URL) {
-    throw new ApiError(
-      500,
-      "DOGRAH_BASE_URL is missing. Please configure the backend environment."
-    );
-  }
-
-  if (!process.env.DOGRAH_API_KEY) {
-    throw new ApiError(
-      500,
-      "DOGRAH_API_KEY is missing. Please configure the backend environment."
-    );
-  }
-
   const agent = await getOwnedAgent(req);
   const { phoneNumber } = req.body;
 
-  if (!agent.dograhWorkflowUuid) {
-    throw new ApiError(
-      400,
-      "workflowUuid is required. Connect a Dograh workflow before triggering calls."
-    );
-  }
-
-  if (!phoneNumber) {
-    throw new ApiError(
-      400,
-      "phoneNumber is required before triggering a Dograh call."
-    );
-  }
-
-  if (!agent.callerIdNumber) {
-    throw new ApiError(
-      400,
-      "callerIdNumber is required. Connect a Dograh workflow with a caller ID number."
-    );
-  }
-
-  assertE164(phoneNumber, "Phone number");
-  assertE164(agent.callerIdNumber, "Caller ID number");
-
-  const payload = dograhCallPayload(agent, phoneNumber);
-  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload);
-  const dograhRunId = extractRunId(dograhResponse);
-  const responseFields = extractCallFields(dograhResponse);
-
-  console.log("Dograh trigger response:", JSON.stringify(dograhResponse, null, 2));
-  console.log("Auto extracted dograhRunId:", dograhRunId);
-  if (!dograhRunId) {
-    console.warn("Dograh run ID missing in trigger response. CallLog will be created, but manual sync needs a run ID.");
-  }
-
-  const callLog = await CallLog.create({
+  const result = await triggerOutboundCallForAgent({
+    agent,
     userId: req.user._id,
-    agentId: agent._id,
-    dograhWorkflowId: agent.dograhWorkflowId,
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    callerNumber: phoneNumber,
-    callingNumber: agent.callerIdNumber,
-    status: dograhResponse?.status || dograhResponse?.data?.status || "initiated",
-    callDirection: "outbound",
-    source: "dograh",
-    duration: null,
-    durationSeconds: null,
-    summary: null,
-    transcript: null,
-    rawDograhPayload: dograhResponse,
-    startedAt: responseFields.startedAt || new Date(),
+    phoneNumber,
+    trigger
   });
 
-  console.log("Dograh call triggered:", {
-    localAgentId: agent._id.toString(),
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId,
-    callerNumber: phoneNumber,
-    callingNumber: agent.callerIdNumber
-  });
-
-  res.status(202).json({ dograhResponse, callLog });
+  res.status(202).json(result);
 }
 
 export const triggerTestCall = asyncHandler(async (req, res) => {
@@ -969,7 +846,7 @@ export const triggerTestCall = asyncHandler(async (req, res) => {
 });
 
 export const triggerOutboundCall = asyncHandler(async (req, res) => {
-  await triggerCall(req, res, triggerDograhOutboundCallByWorkflow);
+  await triggerCall(req, res);
 });
 
 export const listAgentCalls = asyncHandler(async (req, res) => {
