@@ -24,8 +24,18 @@ const emptyForm = {
   country: "",
   webhookUrl: "",
   linkedAgentId: "",
+  inboundEnabled: true,
+  outboundEnabled: true,
   status: "active"
 };
+
+function formatApiError(error) {
+  const response = error?.response;
+  if (response?.userMessage) return response.userMessage;
+  if (response?.message) return response.message;
+  if (typeof response?.details === "string") return response.details;
+  return error?.message || "Something went wrong.";
+}
 
 export default function TelephonyConfiguration() {
   const [configs, setConfigs] = useState([]);
@@ -80,8 +90,13 @@ export default function TelephonyConfiguration() {
     setError("");
     setMessage("");
 
-    if (!form.name || !form.phoneNumber) {
-      setError("Configuration name and phone number are required.");
+    if (!form.name || !form.provider || !form.phoneNumber) {
+      setError("Configuration name, provider, and phone number are required.");
+      return;
+    }
+
+    if (!form._id && !form.linkedAgentId) {
+      setError("Select a linked agent before adding a Dograh telephony configuration.");
       return;
     }
 
@@ -89,12 +104,16 @@ export default function TelephonyConfiguration() {
     try {
       const path = form._id ? `/telephony-configs/${form._id}` : "/telephony-configs";
       const method = form._id ? "PUT" : "POST";
-      const saved = await api(path, { method, body: form });
+      const payload = {
+        ...form,
+        linkedAgentId: form.linkedAgentId || null
+      };
+      const saved = await api(path, { method, body: payload });
       setForm({ ...emptyForm, ...saved, linkedAgentId: saved.linkedAgentId || "" });
-      setMessage(`${providerLabel} configuration saved.`);
+      setMessage(`${providerLabel} configuration saved in Dograh and linked locally.`);
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setBusy("");
     }
@@ -109,7 +128,7 @@ export default function TelephonyConfiguration() {
       const result = await api(`/telephony-configs/${id}/test`, { method: "POST", body: {} });
       setMessage(result.result?.message || "Connection test completed.");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setBusy("");
     }
@@ -126,7 +145,7 @@ export default function TelephonyConfiguration() {
       await load();
       if (form._id === id) setForm((current) => ({ ...current, webhookUrl: result.webhookUrl || current.webhookUrl }));
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setBusy("");
     }
@@ -143,7 +162,7 @@ export default function TelephonyConfiguration() {
       if (form._id === id) resetForm();
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setBusy("");
     }
@@ -188,12 +207,14 @@ export default function TelephonyConfiguration() {
             <label className="block text-sm font-semibold text-slate-700">
               Linked Agent
               <select className="mt-1" value={form.linkedAgentId} onChange={(event) => setField("linkedAgentId", event.target.value)}>
-                <option value="">No linked agent</option>
+                <option value="">Select linked agent</option>
                 {agents.map((agent) => (
                   <option key={agent._id} value={agent._id}>{agent.agentName || agent.name}</option>
                 ))}
               </select>
             </label>
+            <Toggle label="Inbound Enabled" checked={form.inboundEnabled} onChange={(value) => setField("inboundEnabled", value)} />
+            <Toggle label="Outbound Enabled" checked={form.outboundEnabled} onChange={(value) => setField("outboundEnabled", value)} />
             <label className="block text-sm font-semibold text-slate-700">
               Status
               <select className="mt-1" value={form.status} onChange={(event) => setField("status", event.target.value)}>
@@ -207,7 +228,7 @@ export default function TelephonyConfiguration() {
           </div>
 
           <div className="mt-5 action-row">
-            <button className="btn-primary" disabled={busy === "save"} onClick={saveConfig}><Save size={16} />{busy === "save" ? "Saving..." : "Save"}</button>
+            <button className="btn-primary" disabled={busy === "save"} onClick={saveConfig}><Save size={16} />{busy === "save" ? "Saving..." : form._id ? "Save" : "Add Configuration"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "test"} onClick={() => testConfig()}><Wifi size={16} />{busy === "test" ? "Testing..." : "Test Connection"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "webhook"} onClick={() => configureWebhook()}><PlugZap size={16} />{busy === "webhook" ? "Configuring..." : "Configure Webhook"}</button>
           </div>
@@ -234,6 +255,7 @@ export default function TelephonyConfiguration() {
                     <button className="min-w-0 text-left" onClick={() => editConfig(config)}>
                       <h3 className="break-anywhere font-bold text-slate-950">{config.name}</h3>
                       <p className="break-anywhere text-sm text-slate-500">{config.provider} - {config.phoneNumber}</p>
+                      {config.dograhTelephonyConfigId && <p className="break-anywhere text-xs text-slate-400">Dograh config ID: {config.dograhTelephonyConfigId}</p>}
                       <p className="break-anywhere text-xs text-slate-400">{config.webhookUrl || "Webhook URL will be generated by backend"}</p>
                     </button>
                     <StatusBadge status={config.status} />
@@ -266,6 +288,15 @@ function Field({ label, value, onChange, type = "text", placeholder = "", readOn
         readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
       />
+    </label>
+  );
+}
+
+function Toggle({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
+      <span>{label}</span>
+      <input className="h-5 w-5" type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }

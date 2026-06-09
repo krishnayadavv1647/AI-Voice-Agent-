@@ -1,4 +1,4 @@
-import { Cable, Copy, Edit, Eye, Globe2, Headphones, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Share2, Square, Trash2, X } from "lucide-react";
+import { Cable, CalendarClock, Copy, Edit, Eye, Globe2, Headphones, MessageCircle, PhoneCall, Play, Radio, RefreshCw, Send, Share2, Square, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -39,6 +39,14 @@ function readActiveWorkflowList(response) {
   return activeWorkflows;
 }
 
+function formatApiError(error) {
+  const response = error?.response;
+  if (response?.userMessage) return response.userMessage;
+  if (response?.message) return response.message;
+  if (typeof response?.details === "string") return response.details;
+  return error?.message || "Something went wrong.";
+}
+
 function workflowId(workflow) {
   return workflow.id || workflow.workflow_id || workflow.workflowId || workflow._id || "";
 }
@@ -65,12 +73,34 @@ function isFinalCallStatus(status) {
   return ["completed", "failed", "ended", "cancelled", "canceled"].includes(String(status || "").toLowerCase());
 }
 
+function defaultTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function defaultLocalDateTime() {
+  const date = new Date(Date.now() + 5 * 60 * 1000);
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatScheduleTime(schedule) {
+  if (!schedule?.scheduledForUtc) return "Not scheduled";
+  return new Date(schedule.scheduledForUtc).toLocaleString([], { timeZone: schedule.timezone || undefined });
+}
+
+function formatAppointmentTime(appointment) {
+  if (!appointment?.startAt) return "Not scheduled";
+  return new Date(appointment.startAt).toLocaleString([], { timeZone: appointment.timezone || undefined });
+}
+
 export default function AgentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const [data, setData] = useState(null);
   const [calls, setCalls] = useState([]);
+  const [scheduledCalls, setScheduledCalls] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [workflows, setWorkflows] = useState([]);
   const [connectOpen, setConnectOpen] = useState(false);
   const [debugResponse, setDebugResponse] = useState(null);
@@ -79,6 +109,7 @@ export default function AgentDetails() {
   const [warning, setWarning] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [callLoading, setCallLoading] = useState(false);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
@@ -97,6 +128,11 @@ export default function AgentDetails() {
     publicWelcomeMessage: ""
   });
   const [runSyncForm, setRunSyncForm] = useState({ workflowId: "", runId: "", callLogId: "" });
+  const [scheduleForm, setScheduleForm] = useState({
+    phoneNumber: "",
+    scheduledForLocal: defaultLocalDateTime(),
+    timezone: defaultTimezone()
+  });
   const pollingRef = useRef(null);
   const [connectForm, setConnectForm] = useState({
     dograhWorkflowId: "",
@@ -111,9 +147,16 @@ export default function AgentDetails() {
 
   async function load() {
     try {
-      const [agentData, callData] = await Promise.all([api(`/agents/${id}`), api(`/agents/${id}/calls`)]);
+      const [agentData, callData, scheduleData, appointmentData] = await Promise.all([
+        api(`/agents/${id}`),
+        api(`/agents/${id}/calls`),
+        api(`/scheduled-calls/agent/${id}`),
+        api(`/appointments?agentId=${id}`)
+      ]);
       setData(agentData);
       setCalls(callData);
+      setScheduledCalls(scheduleData);
+      setAppointments(appointmentData);
     } catch (err) {
       setError(err.message);
     }
@@ -217,10 +260,79 @@ export default function AgentDetails() {
       await load();
       startCallPolling(result.callLog?._id);
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
+  }
+
+  function setScheduleField(name, value) {
+    setScheduleForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function scheduleCall(event) {
+    event.preventDefault();
+    setScheduleLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const schedule = await api("/scheduled-calls", {
+        method: "POST",
+        body: {
+          agentId: id,
+          phoneNumber: scheduleForm.phoneNumber,
+          scheduledForLocal: scheduleForm.scheduledForLocal,
+          timezone: scheduleForm.timezone
+        }
+      });
+
+      setScheduledCalls((current) => [schedule, ...current.filter((item) => item._id !== schedule._id)]);
+      setScheduleForm((current) => ({
+        ...current,
+        phoneNumber: "",
+        scheduledForLocal: defaultLocalDateTime()
+      }));
+      setNotice("Call scheduled.");
+      await load();
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setScheduleLoading(false);
+    }
+  }
+
+  async function cancelScheduledCall(scheduleId) {
+    setScheduleLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const schedule = await api(`/scheduled-calls/${scheduleId}/cancel`, { method: "PATCH" });
+      setScheduledCalls((current) => current.map((item) => item._id === schedule._id ? schedule : item));
+      setNotice("Scheduled call cancelled.");
+      await load();
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setScheduleLoading(false);
+    }
+  }
+
+  function repeatCall(call) {
+    if (!call?.callerNumber) return;
+
+    setScheduleForm((current) => ({
+      ...current,
+      phoneNumber: call.callerNumber,
+      scheduledForLocal: defaultLocalDateTime(),
+      timezone: current.timezone || defaultTimezone()
+    }));
+
+    setSelectedCall(null);
+    setNotice("Repeat call details added to schedule form.");
+    window.location.hash = "scheduled-calls";
+    document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function startCallPolling(callLogId) {
@@ -259,7 +371,7 @@ export default function AgentDetails() {
       setNotice("Call log synced from Dograh.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -274,7 +386,7 @@ export default function AgentDetails() {
       setNotice(result.lead ? "Lead extracted from transcript." : "No lead extracted from transcript.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -297,7 +409,7 @@ export default function AgentDetails() {
       setNotice("Dograh run fetched and saved.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -319,7 +431,7 @@ export default function AgentDetails() {
 
       setChatMessages((current) => [...current, { role: "assistant", text: result.response || result.reply }]);
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
       setChatMessages((current) => [...current, { role: "assistant", text: `Message failed. ${err.message || "Check backend Gemini configuration and try again."}`, error: true }]);
     } finally {
       setChatLoading(false);
@@ -334,7 +446,7 @@ export default function AgentDetails() {
       await api(`/agents/${id}`, { method: "DELETE" });
       navigate("/agents");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     }
   }
 
@@ -354,7 +466,7 @@ export default function AgentDetails() {
       setNotice(result.dograhCreated ? "Dograh workflow created successfully." : result.warning || "Dograh workflow response did not include a workflow UUID.");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
@@ -378,7 +490,7 @@ export default function AgentDetails() {
       setNotice(result.message || "Provider synced successfully");
       await load();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setCallLoading(false);
     }
@@ -406,7 +518,7 @@ export default function AgentDetails() {
       setData((current) => ({ ...current, agent: result.agent || current.agent }));
       setNotice("Share settings saved.");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setError(formatApiError(err));
     } finally {
       setShareSaving(false);
     }
@@ -590,6 +702,8 @@ export default function AgentDetails() {
                   ["Overview", "#overview"],
                   ["Message Test", "#message-test"],
                   ["Test Call", "#test-call"],
+                  ["Scheduled Calls", "#scheduled-calls"],
+                  ["Appointments", "#appointments"],
                   ["Call Logs", "#call-logs"],
                   ["Leads", "/leads"],
                   ["Dograh Web Calling", "#dograh-web-calling"],
@@ -604,9 +718,11 @@ export default function AgentDetails() {
               <div id="test-call" className="mb-4 action-row">
                 <button className="btn-secondary" onClick={openConnectModal}><Cable size={16} />Connect Dograh Workflow</button>
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
+                <button className="btn-primary" onClick={() => navigate(`/agents/${id}/bio-page`)}><Globe2 size={16} />Customize Bio Page</button>
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
+                <a className="btn-secondary" href="#scheduled-calls"><CalendarClock size={16} />Schedule Call</a>
                 <button className="btn-secondary" disabled={callLoading} onClick={retryDograhWorkflowCreation}><RefreshCw size={16} />Retry Dograh Workflow Creation</button>
                 <button className="btn-secondary" disabled={callLoading} onClick={updateDograhWorkflow}>
                   <RefreshCw size={16} />{agent.provider === "dograh" ? "Update Dograh Flow" : "Sync Provider"}
@@ -634,6 +750,84 @@ export default function AgentDetails() {
                   Create or connect Dograh workflow first.
                 </p>
               )}
+            </div>
+
+            <div id="scheduled-calls" className="card">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-ink">Scheduled Calls</h2>
+                </div>
+                <CalendarClock className="text-brand-700" size={20} />
+              </div>
+
+              <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={scheduleCall}>
+                <label className="block text-sm font-medium text-slate-700">
+                  Phone Number
+                  <input className="mt-1" required placeholder="+918000000000" value={scheduleForm.phoneNumber} onChange={(event) => setScheduleField("phoneNumber", event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Date and Time
+                  <input className="mt-1" required type="datetime-local" value={scheduleForm.scheduledForLocal} onChange={(event) => setScheduleField("scheduledForLocal", event.target.value)} />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Timezone
+                  <input className="mt-1" required value={scheduleForm.timezone} onChange={(event) => setScheduleField("timezone", event.target.value)} />
+                </label>
+                <button className="btn-primary self-end" disabled={scheduleLoading || !connected}>
+                  <CalendarClock size={16} />{scheduleLoading ? "Saving..." : "Schedule"}
+                </button>
+              </form>
+
+              <div className="mt-5 grid gap-3">
+                {scheduledCalls.map((schedule) => (
+                  <article key={schedule._id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-anywhere font-semibold text-ink">{schedule.phoneNumber}</p>
+                        <p className="text-sm text-slate-500">{formatScheduleTime(schedule)} · {schedule.timezone}</p>
+                        {schedule.lastError && <p className="mt-1 text-xs text-rose-700">{schedule.lastError}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={schedule.status} />
+                        {schedule.status === "pending" && (
+                          <button className="btn-secondary px-3 py-1.5 text-xs" disabled={scheduleLoading} onClick={() => cancelScheduledCall(schedule._id)}>Cancel</button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {!scheduledCalls.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No scheduled calls.</div>}
+              </div>
+            </div>
+
+            <div id="appointments" className="card">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-ink">Appointments</h2>
+                </div>
+                <button className="btn-secondary" onClick={() => navigate(`/appointments?agentId=${id}&open=1`)}><CalendarClock size={16} />Book Appointment</button>
+              </div>
+
+              <div className="grid gap-3">
+                {appointments.map((appointment) => (
+                  <article key={appointment._id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-anywhere font-semibold text-ink">
+                          {appointment.leadId?.businessName || appointment.leadId?.name || appointment.customerName || appointment.customerPhone || "Appointment"}
+                        </p>
+                        <p className="text-sm text-slate-500">{formatAppointmentTime(appointment)} - {appointment.appointmentType}</p>
+                        {appointment.notes && <p className="mt-1 text-sm text-slate-600">{appointment.notes}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={appointment.status} />
+                        <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => navigate(`/appointments?agentId=${id}&leadId=${appointment.leadId?._id || appointment.leadId}`)}>View</button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {!appointments.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No appointments for this agent.</div>}
+              </div>
             </div>
 
             <div id="dograh-web-calling" className="card">
@@ -742,6 +936,7 @@ export default function AgentDetails() {
                     </div>
                     <div className="mt-4 action-row">
                       <button className="btn-secondary" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                      <button className="btn-secondary" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
                       <button className="btn-secondary" disabled={!call.dograhRunId} title={!call.dograhRunId ? "Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping." : "Sync from Dograh"} onClick={() => syncCall(call._id)}><RefreshCw size={14} />Sync</button>
                       {call.recordingUrl && <a className="btn-secondary" href={call.recordingUrl} target="_blank">Recording</a>}
                     </div>
@@ -768,6 +963,7 @@ export default function AgentDetails() {
                         <td>
                           <div className="flex flex-wrap gap-2">
                             <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                            <button className="btn-secondary px-3 py-1.5 text-xs" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
                             <button className="btn-secondary px-3 py-1.5 text-xs" disabled={!call.dograhRunId} title={!call.dograhRunId ? "Dograh Run ID missing. Please trigger a new call or check Dograh trigger response mapping." : "Sync from Dograh"} onClick={() => syncCall(call._id)}><RefreshCw size={14} />Sync</button>
                             {call.recordingUrl && <a className="btn-secondary px-3 py-1.5 text-xs" href={call.recordingUrl} target="_blank">Recording</a>}
                           </div>
@@ -1006,6 +1202,7 @@ export default function AgentDetails() {
 
             <div className="mt-6 action-row sm:justify-end">
               <button className="btn-secondary" onClick={() => extractLead(selectedCall._id)}>Extract Lead</button>
+              <button className="btn-secondary" disabled={!selectedCall.callerNumber} onClick={() => repeatCall(selectedCall)}><RefreshCw size={16} />Repeat</button>
               <button className="btn-secondary" onClick={() => syncCall(selectedCall._id)}><RefreshCw size={16} />Sync</button>
               <button className="btn-primary" onClick={() => setSelectedCall(null)}>Close</button>
             </div>

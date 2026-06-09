@@ -127,7 +127,9 @@ export default function CreateAgent() {
     }
     setLoading(true);
     try {
-      const result = await api("/agents", { method: "POST", body: form });
+      const payload = { ...form };
+      if (!payload.telephonyConfigId) delete payload.telephonyConfigId;
+      const result = await api("/agents", { method: "POST", body: payload });
       const agent = result.agent || result;
       navigate(`/agents/${agent._id}`, {
         state: {

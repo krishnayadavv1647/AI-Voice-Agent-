@@ -9,10 +9,30 @@ const userSchema = new mongoose.Schema(
     googleId: { type: String, index: true },
     avatar: String,
     authProvider: { type: String, enum: ["google", "local"], default: "local" },
-    role: { type: String, enum: ["user", "admin"], default: "user" },
+    role: { type: String, enum: ["user", "admin", "super_admin"], default: "user" },
     plan: { type: String, enum: ["free", "starter", "pro", "agency"], default: "free" },
+    planStatus: { type: String, enum: ["active", "expired", "cancelled", "trial"], default: "active" },
+    planStartedAt: Date,
+    planExpiresAt: Date,
+    credits: {
+      callCredits: { type: Number, default: 0 },
+      emailCredits: { type: Number, default: 0 },
+      leadFinderCredits: { type: Number, default: 0 },
+      appointmentCredits: { type: Number, default: 0 }
+    },
+    limits: {
+      maxAgents: { type: Number, default: 1 },
+      maxCallsPerMonth: { type: Number, default: 25 },
+      maxEmailsPerMonth: { type: Number, default: 25 },
+      maxLeadSearchesPerMonth: { type: Number, default: 10 },
+      monthlyCallLimit: { type: Number, default: 25 },
+      monthlyEmailLimit: { type: Number, default: 25 },
+      monthlyLeadFinderLimit: { type: Number, default: 10 }
+    },
     minutesUsed: { type: Number, default: 0 },
-    status: { type: String, enum: ["active", "suspended"], default: "active" }
+    status: { type: String, enum: ["active", "suspended", "deleted"], default: "active" },
+    lastLoginAt: Date,
+    deletedAt: Date
   },
   { timestamps: true }
 );

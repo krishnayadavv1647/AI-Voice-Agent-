@@ -43,6 +43,7 @@ export function normalizeDograhRunDetails(runDetails = {}) {
     callbacks.find((callback) => callback.status === "completed" || callback.CallStatus === "completed") ||
     callbacks[callbacks.length - 1] ||
     null;
+  const latestCallback = callbacks[callbacks.length - 1] || completedCallback;
 
   const durationFromCostInfo = data?.cost_info?.call_duration_seconds;
   const durationFromCallback =
@@ -58,10 +59,11 @@ export function normalizeDograhRunDetails(runDetails = {}) {
   const status =
     data?.gathered_context?.mapped_call_disposition ||
     data?.gathered_context?.call_disposition ||
-    completedCallback?.CallStatus ||
-    completedCallback?.status ||
-    (data?.is_completed ? "completed" : null) ||
+    latestCallback?.CallStatus ||
+    latestCallback?.status ||
+    latestCallback?.call_status ||
     data?.status ||
+    (data?.is_completed ? "completed" : null) ||
     "pending";
 
   const startedAt =

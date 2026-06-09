@@ -1,22 +1,79 @@
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import fs from "fs/promises";
+import path from "path";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
+import TelephonyConfig from "../models/TelephonyConfig.js";
 import {
   createDograhEmbedToken,
   deleteDograhEmbedToken,
-  triggerDograhOutboundCallByWorkflow,
   triggerDograhTestCallByWorkflow
 } from "../services/dograh.service.js";
 import { generateAgentTextReply } from "../services/gemini.service.js";
 import { generateSystemPrompt } from "../services/promptGenerator.js";
-import { extractCallFields, extractRunId } from "../services/callLogMapper.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
+import { BIO_PAGE_TEMPLATES, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
 
 function userFilter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const BIO_TEXT_FIELDS = ["headline", "subheadline", "welcomeMessage", "ctaText", "secondaryCtaText"];
+const BIO_STRING_FIELDS = ["template", "logoUrl", "coverImageUrl", "primaryColor", "backgroundColor", "textColor", "buttonColor", "fontStyle", "animation", ...BIO_TEXT_FIELDS];
+const BIO_BOOL_FIELDS = ["showWebCall", "showAppointment", "showContactForm", "showBusinessInfo", "showSocialLinks", "isPublished"];
+const FONT_STYLES = ["modern", "professional", "friendly", "bold", "elegant"];
+const ANIMATIONS = ["none", "fade_in", "slide_up", "zoom_in", "floating_cards", "gradient_motion", "pulse_button"];
+
+function sanitizeText(value) {
+  return String(value || "").replace(/[<>]/g, "").trim().slice(0, 600);
+}
+
+function ensureBioPage(agent) {
+  return { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+}
+
+function sanitizeBioPagePatch(body = {}) {
+  const patch = {};
+  for (const field of BIO_STRING_FIELDS) {
+    if (body[field] === undefined) continue;
+    if (BIO_TEXT_FIELDS.includes(field)) patch[field] = sanitizeText(body[field]);
+    else patch[field] = String(body[field] || "").trim().slice(0, 500);
+  }
+  for (const field of ["primaryColor", "backgroundColor", "textColor", "buttonColor"]) {
+    if (patch[field] !== undefined && !HEX_COLOR.test(patch[field])) throw new ApiError(400, `${field} must be a safe hex color.`);
+  }
+  if (patch.template && !BIO_PAGE_TEMPLATES.some((item) => item.templateId === patch.template)) throw new ApiError(400, "Bio page template is not valid.");
+  if (patch.fontStyle && !FONT_STYLES.includes(patch.fontStyle)) throw new ApiError(400, "Font style is not valid.");
+  if (patch.animation && !ANIMATIONS.includes(patch.animation)) throw new ApiError(400, "Animation is not valid.");
+  for (const field of BIO_BOOL_FIELDS) {
+    if (body[field] !== undefined) patch[field] = Boolean(body[field]);
+  }
+  patch.updatedAt = new Date();
+  return patch;
+}
+
+async function saveBioAsset({ req, agent, kind }) {
+  const contentType = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
+  const allowed = kind === "logo"
+    ? { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }
+    : { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+  const maxBytes = kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+
+  if (!allowed[contentType]) throw new ApiError(400, `${kind} must be png, jpg, jpeg, or webp.`);
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ApiError(400, `${kind} file is required.`);
+  if (req.body.length > maxBytes) throw new ApiError(400, `${kind} file is too large.`);
+
+  const uploadDir = path.resolve("uploads", "bio-pages", String(agent._id));
+  await fs.mkdir(uploadDir, { recursive: true });
+  const fileName = `${kind}-${Date.now()}.${allowed[contentType]}`;
+  const filePath = path.join(uploadDir, fileName);
+  await fs.writeFile(filePath, req.body);
+  return `/uploads/bio-pages/${agent._id}/${fileName}`;
 }
 
 function slugifyAgentName(value = "") {
@@ -128,6 +185,50 @@ function validateEditableAgentFields(agent) {
   }
 }
 
+function cleanOptionalObjectId(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (!String(value).trim()) return null;
+  if (!Agent.db.base.Types.ObjectId.isValid(value)) {
+    throw new ApiError(400, `${fieldName} is not valid`);
+  }
+  return value;
+}
+
+function sanitizeAgentBody(body = {}) {
+  const sanitized = { ...body };
+  const telephonyConfigId = cleanOptionalObjectId(sanitized.telephonyConfigId, "telephonyConfigId");
+
+  if (telephonyConfigId === undefined) {
+    delete sanitized.telephonyConfigId;
+  } else {
+    sanitized.telephonyConfigId = telephonyConfigId;
+  }
+
+  return sanitized;
+}
+
+async function syncTelephonyConfigForAgent(agent, telephonyConfigId) {
+  const unlinkFilter = { userId: agent.userId, linkedAgentId: agent._id };
+  if (telephonyConfigId) unlinkFilter._id = { $ne: telephonyConfigId };
+
+  await TelephonyConfig.updateMany(
+    unlinkFilter,
+    { $set: { linkedAgentId: null } }
+  );
+
+  if (!telephonyConfigId) return;
+
+  const config = await TelephonyConfig.findOne({ _id: telephonyConfigId, userId: agent.userId });
+  if (!config) throw new ApiError(400, "Telephony configuration was not found for this user");
+
+  config.linkedAgentId = agent._id;
+  await config.save();
+
+  agent.telephonyProvider = config.provider;
+  agent.connectedPhoneNumber = config.phoneNumber;
+}
+
 function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
   const set = {
     provider: result.provider || agent.provider || "custom",
@@ -222,74 +323,25 @@ async function syncProvider(agent, action, { createIfMissing = false } = {}) {
   return result;
 }
 
-function getDograhWebhookUrl() {
-  const backendUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, "");
-
-  if (!backendUrl) {
-    throw new ApiError(
-      500,
-      "PUBLIC_BACKEND_URL is missing. Set it to your deployed backend URL."
-    );
-  }
-
-  if (backendUrl.includes("localhost") || backendUrl.includes("127.0.0.1")) {
-    throw new ApiError(
-      500,
-      "PUBLIC_BACKEND_URL must be a deployed public backend URL, not localhost."
-    );
-  }
-
-  const webhookUrl = `${backendUrl}/api/webhooks/dograh`;
-
-  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
-    throw new ApiError(
-      500,
-      "Generated webhook URL is invalid because it contains localhost or 127.0.0.1."
-    );
-  }
-
-  return webhookUrl;
-}
-
-function dograhCallPayload(agent, phoneNumber) {
-  const webhookUrl = getDograhWebhookUrl();
-
-  return {
-    phone_number: phoneNumber,
-    calling_number: agent.callerIdNumber,
-    webhook_url: webhookUrl,
-
-    initial_context: {
-      businessName: agent.businessName,
-      agentName: agent.agentName,
-      localAgentId: agent._id.toString(),
-      userId: agent.userId.toString(),
-    },
-
-    metadata: {
-      localAgentId: agent._id.toString(),
-      userId: agent.userId.toString(),
-      dograhWorkflowUuid: agent.dograhWorkflowUuid,
-      webhookUrl,
-    },
-  };
-}
-
 export const createAgent = asyncHandler(async (req, res) => {
   if (!req.body.agentName || !req.body.agentType || !req.body.businessName) {
     throw new ApiError(400, "Agent name, type, and business name are required");
   }
 
+  const body = sanitizeAgentBody(req.body);
+  const telephonyConfigId = body.telephonyConfigId;
+  delete body.telephonyConfigId;
+
   const agent = new Agent({
-    ...req.body,
+    ...body,
     userId: req.user._id,
-    provider: req.body.provider || "custom",
-    agentName: req.body.agentName || req.body.name,
-    name: req.body.name || req.body.agentName,
-    description: req.body.description || req.body.businessDescription,
-    publicTitle: req.body.publicTitle || req.body.businessName || req.body.agentName || req.body.name,
-    publicDescription: req.body.publicDescription || req.body.businessDescription || req.body.description,
-    publicWelcomeMessage: req.body.publicWelcomeMessage || req.body.greetingMessage || req.body.firstMessage
+    provider: body.provider || "custom",
+    agentName: body.agentName || body.name,
+    name: body.name || body.agentName,
+    description: body.description || body.businessDescription,
+    publicTitle: body.publicTitle || body.businessName || body.agentName || body.name,
+    publicDescription: body.publicDescription || body.businessDescription || body.description,
+    publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
 
   agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
@@ -299,21 +351,24 @@ export const createAgent = asyncHandler(async (req, res) => {
   }
 
   agent.callerIdNumber =
-    req.body.callerIdNumber ||
+    body.callerIdNumber ||
     process.env.DEFAULT_CALLER_ID_NUMBER ||
     agent.callerIdNumber;
 
   agent.connectedPhoneNumber =
-    req.body.connectedPhoneNumber ||
+    body.connectedPhoneNumber ||
     process.env.DEFAULT_CALLER_ID_NUMBER ||
     agent.connectedPhoneNumber;
 
   agent.telephonyProvider =
-    req.body.telephonyProvider ||
+    body.telephonyProvider ||
     process.env.DEFAULT_TELEPHONY_PROVIDER ||
     agent.telephonyProvider ||
     "twilio";
 
+  await agent.save();
+  agent.telephonyConfigId = telephonyConfigId || null;
+  await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
   await agent.save();
 
   try {
@@ -345,7 +400,7 @@ export const createAgent = asyncHandler(async (req, res) => {
       agent,
       providerResult: null,
       dograhCreated: false,
-      warning: `Agent created locally but ${agent.provider} provider creation failed.`,
+      warning: `Agent created locally, but ${agent.provider} provider creation failed. ${error.message}`,
       error: error.message
     });
   }
@@ -357,6 +412,71 @@ export const listAgents = asyncHandler(async (req, res) => {
     status: { $ne: "archived" }
   }).sort({ createdAt: -1 });
   res.json(agents);
+});
+
+export const listBioPageTemplates = asyncHandler(async (req, res) => {
+  res.json(BIO_PAGE_TEMPLATES);
+});
+
+export const getBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const bioPage = ensureBioPage(agent);
+  if (!agent.bioPage || !agent.bioPage.updatedAt) {
+    agent.bioPage = bioPage;
+    await agent.save();
+  }
+  res.json({ agentId: agent._id, publicSlug: agent.publicSlug, bioPage });
+});
+
+export const updateBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const current = ensureBioPage(agent);
+  const patch = sanitizeBioPagePatch(req.body);
+  const templatePatch = patch.template ? templateDefaults(patch.template) : {};
+  agent.bioPage = { ...current, ...templatePatch, ...patch };
+  agent.publicTitle = agent.bioPage.headline || agent.publicTitle;
+  agent.publicDescription = agent.bioPage.subheadline || agent.publicDescription;
+  agent.publicWelcomeMessage = agent.bioPage.welcomeMessage || agent.publicWelcomeMessage;
+  await agent.save();
+  res.json({ success: true, agentId: agent._id, publicSlug: agent.publicSlug, bioPage: agent.bioPage });
+});
+
+export const resetBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = defaultBioPage(agent);
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const publishBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = { ...ensureBioPage(agent), isPublished: true, updatedAt: new Date() };
+  agent.isPublic = true;
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const unpublishBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = { ...ensureBioPage(agent), isPublished: false, updatedAt: new Date() };
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageLogo = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const logoUrl = await saveBioAsset({ req, agent, kind: "logo" });
+  agent.bioPage = { ...ensureBioPage(agent), logoUrl, updatedAt: new Date() };
+  await agent.save();
+  res.status(201).json({ success: true, logoUrl, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageCover = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const coverImageUrl = await saveBioAsset({ req, agent, kind: "cover" });
+  agent.bioPage = { ...ensureBioPage(agent), coverImageUrl, updatedAt: new Date() };
+  await agent.save();
+  res.status(201).json({ success: true, coverImageUrl, bioPage: agent.bioPage });
 });
 
 export const getAgent = asyncHandler(async (req, res) => {
@@ -376,6 +496,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
   }
 
   const agent = await getOwnedAgent(req);
+  const body = sanitizeAgentBody(req.body);
   const allowedFields = [
     "agentName",
     "name",
@@ -429,20 +550,23 @@ export const updateAgent = asyncHandler(async (req, res) => {
   ];
 
   for (const field of allowedFields) {
-    if (req.body[field] !== undefined) agent[field] = req.body[field];
+    if (body[field] !== undefined) agent[field] = body[field];
   }
 
   agent.agentName = agent.agentName || agent.name;
   agent.name = agent.name || agent.agentName;
   agent.description = agent.description || agent.businessDescription;
 
-  if (req.body.regeneratePrompt === true) {
+  if (body.regeneratePrompt === true) {
     agent.systemPrompt = generateSystemPrompt(agent);
-  } else if (req.body.systemPrompt !== undefined) {
-    agent.systemPrompt = req.body.systemPrompt;
+  } else if (body.systemPrompt !== undefined) {
+    agent.systemPrompt = body.systemPrompt;
   }
 
   validateEditableAgentFields(agent);
+  if (Object.prototype.hasOwnProperty.call(body, "telephonyConfigId")) {
+    await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+  }
 
   if (agent.provider === "dograh") {
     agent.dograhNeedsUpdate = true;
@@ -451,9 +575,9 @@ export const updateAgent = asyncHandler(async (req, res) => {
 
   let providerResult = null;
 
-  if (req.body.syncProvider === true) {
+  if (body.syncProvider === true) {
     providerResult = await syncProvider(agent, "update", {
-      createIfMissing: Boolean(req.body.createIfMissing)
+      createIfMissing: Boolean(body.createIfMissing)
     });
   }
 
@@ -826,86 +950,17 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
 });
 
 async function triggerCall(req, res, trigger) {
-  if (!process.env.DOGRAH_BASE_URL) {
-    throw new ApiError(
-      500,
-      "DOGRAH_BASE_URL is missing. Please configure the backend environment."
-    );
-  }
-
-  if (!process.env.DOGRAH_API_KEY) {
-    throw new ApiError(
-      500,
-      "DOGRAH_API_KEY is missing. Please configure the backend environment."
-    );
-  }
-
   const agent = await getOwnedAgent(req);
   const { phoneNumber } = req.body;
 
-  if (!agent.dograhWorkflowUuid) {
-    throw new ApiError(
-      400,
-      "workflowUuid is required. Connect a Dograh workflow before triggering calls."
-    );
-  }
-
-  if (!phoneNumber) {
-    throw new ApiError(
-      400,
-      "phoneNumber is required before triggering a Dograh call."
-    );
-  }
-
-  if (!agent.callerIdNumber) {
-    throw new ApiError(
-      400,
-      "callerIdNumber is required. Connect a Dograh workflow with a caller ID number."
-    );
-  }
-
-  assertE164(phoneNumber, "Phone number");
-  assertE164(agent.callerIdNumber, "Caller ID number");
-
-  const payload = dograhCallPayload(agent, phoneNumber);
-  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload);
-  const dograhRunId = extractRunId(dograhResponse);
-  const responseFields = extractCallFields(dograhResponse);
-
-  console.log("Dograh trigger response:", JSON.stringify(dograhResponse, null, 2));
-  console.log("Auto extracted dograhRunId:", dograhRunId);
-  if (!dograhRunId) {
-    console.warn("Dograh run ID missing in trigger response. CallLog will be created, but manual sync needs a run ID.");
-  }
-
-  const callLog = await CallLog.create({
+  const result = await triggerOutboundCallForAgent({
+    agent,
     userId: req.user._id,
-    agentId: agent._id,
-    dograhWorkflowId: agent.dograhWorkflowId,
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    callerNumber: phoneNumber,
-    callingNumber: agent.callerIdNumber,
-    status: dograhResponse?.status || dograhResponse?.data?.status || "initiated",
-    callDirection: "outbound",
-    source: "dograh",
-    duration: null,
-    durationSeconds: null,
-    summary: null,
-    transcript: null,
-    rawDograhPayload: dograhResponse,
-    startedAt: responseFields.startedAt || new Date(),
+    phoneNumber,
+    trigger
   });
 
-  console.log("Dograh call triggered:", {
-    localAgentId: agent._id.toString(),
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId,
-    callerNumber: phoneNumber,
-    callingNumber: agent.callerIdNumber
-  });
-
-  res.status(202).json({ dograhResponse, callLog });
+  res.status(202).json(result);
 }
 
 export const triggerTestCall = asyncHandler(async (req, res) => {
@@ -913,7 +968,7 @@ export const triggerTestCall = asyncHandler(async (req, res) => {
 });
 
 export const triggerOutboundCall = asyncHandler(async (req, res) => {
-  await triggerCall(req, res, triggerDograhOutboundCallByWorkflow);
+  await triggerCall(req, res);
 });
 
 export const listAgentCalls = asyncHandler(async (req, res) => {

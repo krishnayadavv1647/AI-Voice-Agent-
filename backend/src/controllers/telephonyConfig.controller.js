@@ -2,12 +2,17 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { decryptSecret, encryptSecret } from "../utils/secretCrypto.js";
 
 const SECRET_FIELDS = ["authToken", "apiSecret"];
+const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
+const DEFAULT_INCOMING_MESSAGE = "Hello, how can I help you?";
+const MISSING_AGENT_MESSAGE = "Sorry, agent is not configured.";
+const INCOMING_LOOKUP_TIMEOUT_MS = 1500;
 
 function userFilter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -36,10 +41,10 @@ function publicBaseUrl() {
 function buildWebhookUrl(req, provider) {
   const webhookUrl = `${publicBaseUrl()}/api/telephony/${provider}/incoming`;
 
-  if (webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
+  if (!webhookUrl.startsWith("https://") || webhookUrl.includes("localhost") || webhookUrl.includes("127.0.0.1")) {
     throw new ApiError(
       500,
-      "Generated webhook URL is invalid because it contains localhost or 127.0.0.1."
+      "Generated webhook URL must use your deployed HTTPS backend, not localhost."
     );
   }
 
@@ -61,11 +66,33 @@ function isMaskedSecret(value) {
   return typeof value === "string" && value.includes("*****");
 }
 
+function cleanOptionalObjectId(value, fieldName) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (!String(value).trim()) return null;
+  if (!TelephonyConfig.db.base.Types.ObjectId.isValid(value)) {
+    throw new ApiError(400, `${fieldName} is not valid`);
+  }
+  return value;
+}
+
+function cleanRequiredObjectId(value, fieldName) {
+  const cleaned = cleanOptionalObjectId(value, fieldName);
+  if (!cleaned) throw new ApiError(400, `${fieldName} is required`);
+  return cleaned;
+}
+
+function booleanValue(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return Boolean(value);
+}
+
 function sanitizeConfig(config) {
   const item = config.toObject ? config.toObject() : { ...config };
   for (const field of SECRET_FIELDS) {
     if (item[field]) item[field] = mask(item[field]);
   }
+  delete item.dograhRawResponse;
   return item;
 }
 
@@ -83,16 +110,83 @@ function applyBody(config, body, req) {
     "country",
     "webhookUrl",
     "linkedAgentId",
+    "inboundEnabled",
+    "outboundEnabled",
     "status"
   ];
 
   for (const field of allowedFields) {
     if (body[field] === undefined) continue;
     if (SECRET_FIELDS.includes(field) && isMaskedSecret(body[field])) continue;
+    if (field === "linkedAgentId") {
+      config[field] = cleanOptionalObjectId(body[field], "linkedAgentId");
+      continue;
+    }
     config[field] = SECRET_FIELDS.includes(field) ? encryptSecret(body[field]) : body[field];
   }
 
   config.webhookUrl = buildWebhookUrl(req, config.provider);
+}
+
+function buildDograhProviderConfig(body) {
+  const config = {
+    provider: body.provider
+  };
+
+  const mappings = [
+    ["accountSid", "account_sid"],
+    ["authToken", "auth_token"],
+    ["apiKey", "api_key"],
+    ["apiSecret", "api_secret"],
+    ["appId", "app_id"],
+    ["region", "region"],
+    ["country", "country"]
+  ];
+
+  for (const [source, target] of mappings) {
+    if (body[source]) config[target] = body[source];
+  }
+
+  if (body.phoneNumber) config.from_numbers = [body.phoneNumber];
+
+  return config;
+}
+
+function buildDograhTelephonyConfigPayload(body) {
+  return {
+    name: body.name,
+    config: buildDograhProviderConfig(body)
+  };
+}
+
+function dograhWorkflowIdForInbound(agent) {
+  const value = agent.providerWorkflowId || agent.dograhWorkflowId;
+  if (!value) return null;
+
+  const numeric = Number(value);
+  return Number.isInteger(numeric) ? numeric : null;
+}
+
+function buildDograhPhonePayload({ body, agent, inboundEnabled, outboundEnabled }) {
+  const inboundWorkflowId = inboundEnabled ? dograhWorkflowIdForInbound(agent) : null;
+
+  if (inboundEnabled && !inboundWorkflowId) {
+    throw new ApiError(400, "Inbound calling requires the linked agent to have a numeric Dograh workflow ID. Sync the agent with Dograh first, or disable inbound for this number.");
+  }
+
+  return {
+    address: body.phoneNumber,
+    country_code: body.country || null,
+    label: body.name || body.phoneNumber,
+    inbound_workflow_id: inboundWorkflowId,
+    is_active: true,
+    is_default_caller_id: outboundEnabled,
+    extra_metadata: {
+      localAgentId: agent._id.toString(),
+      inboundEnabled,
+      outboundEnabled
+    }
+  };
 }
 
 async function syncLinkedAgent(config) {
@@ -101,6 +195,11 @@ async function syncLinkedAgent(config) {
 
   const agent = await Agent.findOne({ _id: config.linkedAgentId, userId: config.userId });
   if (!agent) throw new ApiError(400, "Linked agent was not found for this user");
+
+  await TelephonyConfig.updateMany(
+    { userId: config.userId, linkedAgentId: agent._id, _id: { $ne: config._id } },
+    { $set: { linkedAgentId: null } }
+  );
 
   agent.telephonyConfigId = config._id;
   agent.telephonyProvider = config.provider;
@@ -128,12 +227,61 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Name, provider, and phone number are required");
   }
 
+  if (!E164_PATTERN.test(req.body.phoneNumber)) {
+    throw new ApiError(400, "Phone number must be in E.164 format, for example +17578297060");
+  }
+
+  const linkedAgentId = cleanRequiredObjectId(req.body.linkedAgentId, "linkedAgentId");
+  const linkedAgent = await Agent.findOne({ _id: linkedAgentId, ...userFilter(req) });
+  if (!linkedAgent) throw new ApiError(400, "Linked agent was not found for this user");
+
+  const inboundEnabled = booleanValue(req.body.inboundEnabled, true);
+  const outboundEnabled = booleanValue(req.body.outboundEnabled, true);
+  if (!inboundEnabled && !outboundEnabled) {
+    throw new ApiError(400, "Enable inbound, outbound, or both for this telephony configuration");
+  }
+
   const provider = getTelephonyProvider(req.body.provider);
   const config = new TelephonyConfig({ userId: req.user._id });
-  applyBody(config, req.body, req);
+  applyBody(config, { ...req.body, linkedAgentId, inboundEnabled, outboundEnabled, status: "active" }, req);
   provider.saveConfig(config);
-  await config.save();
-  await syncLinkedAgent(config);
+
+  const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
+  const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
+  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload);
+  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload);
+
+  config.dograhTelephonyConfigId = String(dograhConfig.dograhTelephonyConfigId);
+  config.dograhPhoneNumberId = dograhPhone.dograhPhoneNumberId ? String(dograhPhone.dograhPhoneNumberId) : "";
+  config.dograhProviderSync = dograhPhone.providerSync;
+  config.dograhRawResponse = {
+    telephonyConfiguration: dograhConfig.raw,
+    phoneNumber: dograhPhone.raw
+  };
+
+  try {
+    await config.save();
+  } catch (error) {
+    console.error("Dograh telephony configuration was created, but local TelephonyConfig save failed:", {
+      linkedAgentId: linkedAgentId?.toString(),
+      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
+      dograhPhoneNumberId: config.dograhPhoneNumberId,
+      error: error.message
+    });
+    throw error;
+  }
+
+  try {
+    await syncLinkedAgent(config);
+  } catch (error) {
+    console.error("Local TelephonyConfig saved after Dograh creation, but linked Agent update failed:", {
+      telephonyConfigId: config._id?.toString(),
+      linkedAgentId: linkedAgentId?.toString(),
+      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
+      error: error.message
+    });
+    throw error;
+  }
 
   res.status(201).json(sanitizeConfig(config));
 });
@@ -212,53 +360,170 @@ async function findConfigForIncoming(providerName, phoneNumber) {
   });
 }
 
-export const handleIncomingTelephony = asyncHandler(async (req, res) => {
-  const providerName = req.params.provider;
+function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+function logIncomingCallEvent(label, details = {}) {
+  console.log(`[Telephony Incoming] ${label}`, details);
+}
+
+function buildFallbackVoiceResponse(providerName, message = MISSING_AGENT_MESSAGE) {
   const provider = getTelephonyProvider(providerName);
+  return provider.handleIncomingCall({ reply: message, agent: null });
+}
+
+function sendVoiceResponse(res, response) {
+  if (response.contentType) res.type(response.contentType);
+  return res.status(200).send(response.body);
+}
+
+function recordInboundCallInBackground({ providerName, phoneNumber, callerNumber, config, agent, req }) {
+  Promise.resolve().then(async () => {
+    if (!config || !agent) return;
+
+    const userMessage = `Incoming phone call from ${callerNumber || "unknown caller"} to ${phoneNumber || config.phoneNumber}.`;
+    let reply = agent.firstMessage || agent.greetingMessage || DEFAULT_INCOMING_MESSAGE;
+
+    try {
+      reply = await runCustomAgent({
+        systemPrompt: agent.systemPrompt,
+        userMessage,
+        tools: agent.tools,
+        settings: agent.settings,
+        agent
+      });
+    } catch (error) {
+      console.error("[Telephony Incoming] Agent runtime failed after voice response", {
+        provider: providerName,
+        phoneNumber,
+        agentId: agent._id?.toString(),
+        error: error.message
+      });
+    }
+
+    await CallLog.create({
+      userId: agent.userId,
+      agentId: agent._id,
+      callerNumber,
+      callingNumber: phoneNumber || config.phoneNumber,
+      callDirection: "inbound",
+      source: providerName,
+      transcript: `Caller: ${userMessage}\nAgent: ${reply}`,
+      status: "answered",
+      rawWebhookPayload: { body: req.body, query: req.query },
+      startedAt: new Date()
+    });
+  }).catch((error) => {
+    console.error("[Telephony Incoming] Background call logging failed", {
+      provider: providerName,
+      phoneNumber,
+      error: error.message
+    });
+  });
+}
+
+export function handleTwilioIncomingFallback(req, res) {
+  console.log("Incoming Twilio call received", req.body);
+
+  res.type("text/xml");
+  return res.status(200).send(`
+    <Response>
+      <Say>Hello, this is a test call from AI agent.</Say>
+      <Pause length="2"/>
+      <Say>Call is working.</Say>
+    </Response>
+  `);
+}
+
+export const handleIncomingTelephony = asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
+  const providerName = req.params.provider;
   const phoneNumber = getIncomingNumber(req);
   const callerNumber = getCallerNumber(req);
 
-  if (!phoneNumber) {
-    throw new ApiError(400, "Incoming webhook did not include the destination phone number");
-  }
-
-  const config = await findConfigForIncoming(providerName, phoneNumber);
-
-  if (!config) {
-    throw new ApiError(404, "No active telephony configuration matched this incoming number");
-  }
-
-  const agent =
-    (config.linkedAgentId && await Agent.findOne({ _id: config.linkedAgentId, status: { $ne: "archived" } })) ||
-    await Agent.findOne({ telephonyConfigId: config._id, status: { $ne: "archived" } });
-
-  if (!agent) {
-    throw new ApiError(404, "No active agent is linked to this telephony configuration");
-  }
-
-  const userMessage = `Incoming phone call from ${callerNumber || "unknown caller"} to ${phoneNumber || config.phoneNumber}.`;
-  const reply = await runCustomAgent({
-    systemPrompt: agent.systemPrompt,
-    userMessage,
-    tools: agent.tools,
-    settings: agent.settings,
-    agent
+  logIncomingCallEvent("incoming call received", {
+    provider: providerName,
+    phoneNumber,
+    callerNumber
   });
+  logIncomingCallEvent("provider", { provider: providerName });
+  logIncomingCallEvent("phone number", { phoneNumber });
 
-  await CallLog.create({
-    userId: agent.userId,
-    agentId: agent._id,
-    callerNumber,
-    callingNumber: phoneNumber || config.phoneNumber,
-    callDirection: "inbound",
-    source: providerName,
-    transcript: `Caller: ${userMessage}\nAgent: ${reply}`,
-    status: "answered",
-    rawWebhookPayload: { body: req.body, query: req.query },
-    startedAt: new Date()
-  });
+  try {
+    const provider = getTelephonyProvider(providerName);
+    let config = null;
+    let agent = null;
 
-  const response = provider.handleIncomingCall({ req, config, agent, reply });
-  if (response.contentType) res.type(response.contentType);
-  return res.send(response.body);
+    if (phoneNumber) {
+      config = await withTimeout(
+        findConfigForIncoming(providerName, phoneNumber),
+        INCOMING_LOOKUP_TIMEOUT_MS,
+        "Telephony config lookup"
+      );
+    }
+
+    logIncomingCallEvent("telephony config found", {
+      provider: providerName,
+      phoneNumber,
+      found: Boolean(config),
+      configId: config?._id?.toString()
+    });
+
+    if (config) {
+      agent =
+        (config.linkedAgentId && await withTimeout(
+          Agent.findOne({ _id: config.linkedAgentId, status: { $ne: "archived" } }),
+          INCOMING_LOOKUP_TIMEOUT_MS,
+          "Linked agent lookup"
+        )) ||
+        await withTimeout(
+          Agent.findOne({ telephonyConfigId: config._id, status: { $ne: "archived" } }),
+          INCOMING_LOOKUP_TIMEOUT_MS,
+          "Telephony agent lookup"
+        );
+    }
+
+    logIncomingCallEvent("linked agent found", {
+      provider: providerName,
+      phoneNumber,
+      found: Boolean(agent),
+      agentId: agent?._id?.toString()
+    });
+
+    const reply = agent?.firstMessage || agent?.greetingMessage || (config ? MISSING_AGENT_MESSAGE : DEFAULT_INCOMING_MESSAGE);
+    const response = provider.handleIncomingCall({ req, config, agent, reply });
+
+    logIncomingCallEvent("response returned", {
+      provider: providerName,
+      phoneNumber,
+      contentType: response.contentType,
+      elapsedMs: Date.now() - startedAt
+    });
+
+    sendVoiceResponse(res, response);
+    recordInboundCallInBackground({ providerName, phoneNumber, callerNumber, config, agent, req });
+  } catch (error) {
+    console.error("[Telephony Incoming] Backend error before voice response", {
+      provider: providerName,
+      phoneNumber,
+      error: error.message
+    });
+
+    const response = buildFallbackVoiceResponse(providerName, MISSING_AGENT_MESSAGE);
+    logIncomingCallEvent("response returned", {
+      provider: providerName,
+      phoneNumber,
+      contentType: response.contentType,
+      fallback: true,
+      elapsedMs: Date.now() - startedAt
+    });
+
+    return sendVoiceResponse(res, response);
+  }
 });

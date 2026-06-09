@@ -1,12 +1,17 @@
+// imports 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { api, getToken, setToken } from "../lib/api.js";
 
+// create context
+
 const AuthContext = createContext(null);
+
+// auth provider function 
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
+//
   useEffect(() => {
     if (!getToken()) {
       setLoading(false);

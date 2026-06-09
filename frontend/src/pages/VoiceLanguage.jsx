@@ -1,10 +1,18 @@
 import { Languages, Mic2, SlidersHorizontal, Volume2 } from "lucide-react";
 import PageHeader from "../components/PageHeader.jsx";
 
+const defaultPronunciationRules = [
+  "Use English text only for voice output.",
+  "Keep pronunciation clear, natural, and professional.",
+  "Speak business names, customer names, phone numbers, dates, and times clearly.",
+  "Keep sentences short and easy to understand.",
+  "Ask one question at a time."
+].join("\n");
+
 export default function VoiceLanguage() {
   return (
     <>
-      <PageHeader title="Voice & Language" description="Configure default voice behavior, pronunciation, Hindi/Hinglish output, and provider preferences." />
+      <PageHeader title="Voice & Language" description="Configure default voice behavior, English pronunciation, and provider preferences." />
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
         <section className="card space-y-5">
           <Setting icon={Languages} title="Default Language">
@@ -27,12 +35,12 @@ export default function VoiceLanguage() {
             <input type="range" min="0.7" max="1.3" step="0.1" defaultValue="1" />
           </Setting>
           <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4 text-sm font-semibold text-slate-700">
-            Hindi/Hinglish Devanagari output
+            English-only voice text
             <input className="h-5 w-5" type="checkbox" defaultChecked />
           </label>
           <label className="block text-sm font-semibold text-slate-700">
             Pronunciation rules
-            <textarea className="mt-2 min-h-40" defaultValue={"Hindi/Hinglish responses me Hindi words Devanagari script me likho.\nShort and clear sentences use karo.\nEk baar me ek hi question pucho."} />
+            <textarea className="mt-2 min-h-40" defaultValue={defaultPronunciationRules} />
           </label>
           <button className="btn-primary"><Volume2 size={16} />Test Voice</button>
         </section>
@@ -41,7 +49,7 @@ export default function VoiceLanguage() {
           <h2 className="panel-title">Voice Preview</h2>
           <p className="muted mt-2">Use this area to preview default language and TTS choices before applying them to agents.</p>
           <div className="mt-6 break-anywhere rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-white">
-            नमस्ते, आपका स्वागत है। मैं आपकी booking request में मदद कर सकता हूं।
+            Hello, welcome. I can help you with your booking request.
           </div>
         </aside>
       </div>

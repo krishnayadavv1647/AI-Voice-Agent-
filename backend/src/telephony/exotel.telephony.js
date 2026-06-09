@@ -93,12 +93,19 @@ export const ExotelTelephony = {
   },
 
   handleIncomingCall({ reply, agent }) {
+    const message = reply || agent?.firstMessage || agent?.greetingMessage || "Hello. How can I help you today?";
     return {
-      contentType: "application/json",
-      body: {
-        success: true,
-        message: reply || agent?.firstMessage || agent?.greetingMessage || "AI voice agent webhook received."
-      }
+      contentType: "text/xml",
+      body: `<Response><Say>${escapeXml(message)}</Say></Response>`
     };
   }
 };
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}

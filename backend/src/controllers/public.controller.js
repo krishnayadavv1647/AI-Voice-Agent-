@@ -3,9 +3,13 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
+import { applyCallOutcomeToLog } from "../services/callOutcome.service.js";
 import { extractRunId } from "../services/callLogMapper.js";
+import { scheduleDograhStatusSync } from "../services/dograhCallStatusSync.service.js";
 import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
+import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
+import { defaultBioPage } from "../services/bioPageTemplates.js";
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
@@ -35,13 +39,25 @@ async function enforceCallbackLimits({ phoneNumber, ip }) {
 }
 
 function publicAgentResponse(agent) {
+  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
   return {
+    _id: agent._id,
     name: agent.businessName || agent.agentName || agent.name,
     publicTitle: agent.publicTitle || agent.businessName || agent.agentName || agent.name,
     publicDescription: agent.publicDescription || agent.businessDescription || agent.description || "",
     publicWelcomeMessage: agent.publicWelcomeMessage || agent.greetingMessage || agent.firstMessage || "",
     publicChatEnabled: Boolean(agent.publicChatEnabled),
-    publicWebCallEnabled: Boolean(agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken)
+    publicWebCallEnabled: Boolean((bioPage.showWebCall !== false) && agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken),
+    publicSlug: agent.publicSlug,
+    agentName: agent.agentName,
+    businessName: agent.businessName,
+    businessCategory: agent.businessCategory,
+    businessDescription: agent.businessDescription,
+    businessLocation: agent.businessLocation,
+    workingHours: agent.workingHours,
+    contactNumber: agent.contactNumber,
+    services: agent.services,
+    bioPage
   };
 }
 
@@ -53,6 +69,8 @@ async function getPublicAgentBySlug(publicSlug) {
 
 export const getPublicAgent = asyncHandler(async (req, res) => {
   const agent = await getPublicAgentBySlug(req.params.publicSlug);
+  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  if (bioPage.isPublished === false) throw new ApiError(403, "This agent page is currently unavailable.");
   res.json(publicAgentResponse(agent));
 });
 
@@ -107,7 +125,7 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
   const ip = requesterIp(req);
   await enforceCallbackLimits({ phoneNumber, ip });
 
-  const lead = await Lead.create({
+  const leadPayload = normalizeLeadToEnglish({
     userId: agent.userId,
     agentId: agent._id,
     name,
@@ -119,14 +137,16 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
     customFields: { ip }
   });
 
+  const lead = await Lead.create(leadPayload);
+
   const payload = {
     phone_number: phoneNumber,
     calling_number: agent.callerIdNumber,
     initial_context: {
-      customerName: name,
+      customerName: leadPayload.name,
       phoneNumber,
-      requirement,
-      preferredTime,
+      requirement: leadPayload.requirement,
+      preferredTime: leadPayload.preferredTime,
       businessName: agent.businessName,
       agentName: agent.agentName,
       localAgentId: agent._id.toString()
@@ -140,6 +160,7 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
 
   const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload);
   const dograhRunId = extractRunId(dograhResponse);
+  const rawProviderStatus = dograhResponse?.status || "initiated";
 
   const callLog = await CallLog.create({
     userId: agent.userId,
@@ -152,10 +173,15 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
     dograhWorkflowId: agent.dograhWorkflowId,
     dograhWorkflowUuid: agent.dograhWorkflowUuid,
     dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    status: dograhResponse?.status || "initiated",
+    status: rawProviderStatus,
+    rawProviderStatus,
+    providerPayload: dograhResponse,
     rawDograhPayload: dograhResponse,
     startedAt: new Date()
   });
+  await applyCallOutcomeToLog(callLog, rawProviderStatus);
+  await callLog.save();
+  scheduleDograhStatusSync(callLog._id);
 
   lead.callLogId = callLog._id;
   await lead.save();
