@@ -19,6 +19,18 @@ const callLogSchema = new mongoose.Schema(
     transcriptUrl: String,
     summary: String,
     status: String,
+    normalizedStatus: {
+      type: String,
+      enum: ["completed", "answered", "declined", "no_answer", "busy", "failed", "cancelled", "in_progress", "unknown"],
+      default: "unknown",
+      index: true
+    },
+    rawProviderStatus: String,
+    providerPayload: { type: mongoose.Schema.Types.Mixed },
+    outcome: String,
+    callEndedAt: Date,
+    retryEligible: { type: Boolean, default: false },
+    retryScheduled: { type: Boolean, default: false },
     leadCaptured: { type: Boolean, default: false },
     leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead" },
     leadData: { type: mongoose.Schema.Types.Mixed },

@@ -97,6 +97,8 @@ Conversation Rules:
 - Do not answer questions outside the provided business knowledge.
 - If the customer asks something unknown, say: "${value(agent.fallbackMessage)}"
 - If the customer wants human help, say: "${value(agent.humanTransferMessage)}"
+- If the lead is interested in an appointment, ask for preferred date and time, confirm the date/time clearly, and collect name, phone, and purpose.
+- Do not say an appointment is booked unless the system confirms it.
 - Before ending, summarize the customer request.
 - End the conversation with: "${value(agent.endingMessage)}"
 

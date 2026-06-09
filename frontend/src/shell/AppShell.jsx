@@ -3,9 +3,12 @@ import {
   Bot,
   BookOpen,
   CreditCard,
+  CalendarClock,
   Gauge,
   Globe2,
   Headphones,
+  Mail,
+  MailOpen,
   Languages,
   LayoutTemplate,
   LogOut,
@@ -16,6 +19,7 @@ import {
   Search,
   Settings,
   Shield,
+  Upload,
   Users,
   Workflow,
   X
@@ -30,6 +34,12 @@ const links = [
   { to: "/create-agent", label: "Create Agent", icon: PlusCircle },
   { to: "/calls", label: "Call Logs", icon: PhoneCall },
   { to: "/leads", label: "Leads", icon: Users },
+  { to: "/lead-finder", label: "Lead Finder", icon: Search },
+  { to: "/email-outreach", label: "Email Outreach", icon: Mail },
+  { to: "/email-inbox", label: "Email Inbox", icon: MailOpen },
+  { to: "/followups", label: "Follow-ups", icon: CalendarClock },
+  { to: "/appointments", label: "Appointments", icon: CalendarClock },
+  { to: "/import-calls", label: "Import Calls", icon: Upload },
   { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/templates", label: "Templates", icon: LayoutTemplate },
   { to: "/voice-language", label: "Voice & Language", icon: Languages },
@@ -40,7 +50,7 @@ const links = [
 
 function NavItems({ onClick }) {
   const { user } = useAuth();
-  const items = user?.role === "admin" ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
+  const items = ["admin", "super_admin"].includes(user?.role) ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
 
   return items.map(({ to, label, icon: Icon }) => (
     <NavLink
@@ -87,6 +97,22 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50">
+      {user?.impersonatedBy && (
+        <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
+          You are viewing as {user.email}.
+          <button
+            className="rounded-lg bg-white px-3 py-1 text-amber-700"
+            onClick={async () => {
+              const { api, setToken } = await import("../lib/api.js");
+              const data = await api("/admin/impersonation/stop", { method: "POST" });
+              setToken(data.token);
+              window.location.href = "/admin";
+            }}
+          >
+            Stop impersonation
+          </button>
+        </div>
+      )}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-slate-200 bg-white/90 p-4 backdrop-blur-xl lg:flex lg:flex-col">
         <Link to="/dashboard" className="mb-6 flex min-w-0 items-center gap-3 px-2">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 text-white shadow-lg shadow-brand-600/25">

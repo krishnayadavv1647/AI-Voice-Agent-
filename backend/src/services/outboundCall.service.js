@@ -1,5 +1,7 @@
 import CallLog from "../models/CallLog.js";
+import { applyCallOutcomeToLog } from "./callOutcome.service.js";
 import { extractCallFields, extractRunId } from "./callLogMapper.js";
+import { scheduleDograhStatusSync } from "./dograhCallStatusSync.service.js";
 import { triggerDograhOutboundCallByWorkflow } from "./dograh.service.js";
 import { ApiError } from "../utils/apiError.js";
 
@@ -120,6 +122,7 @@ export async function triggerOutboundCallForAgent({
     console.warn("Dograh run ID missing in trigger response. CallLog will be created, but manual sync needs a run ID.");
   }
 
+  const rawProviderStatus = dograhResponse?.status || dograhResponse?.data?.status || "initiated";
   const callLog = await CallLog.create({
     userId,
     agentId: agent._id,
@@ -128,7 +131,9 @@ export async function triggerOutboundCallForAgent({
     dograhRunId: dograhRunId ? String(dograhRunId) : null,
     callerNumber: phoneNumber,
     callingNumber: agent.callerIdNumber,
-    status: dograhResponse?.status || dograhResponse?.data?.status || "initiated",
+    status: rawProviderStatus,
+    rawProviderStatus,
+    providerPayload: dograhResponse,
     callDirection: "outbound",
     source: "dograh",
     duration: null,
@@ -138,6 +143,9 @@ export async function triggerOutboundCallForAgent({
     rawDograhPayload: dograhResponse,
     startedAt: responseFields.startedAt || new Date(),
   });
+  await applyCallOutcomeToLog(callLog, rawProviderStatus);
+  await callLog.save();
+  scheduleDograhStatusSync(callLog._id);
 
   console.log("Dograh call triggered:", {
     localAgentId: agent._id.toString(),

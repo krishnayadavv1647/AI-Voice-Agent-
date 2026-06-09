@@ -1,4 +1,4 @@
-import { Bell, CreditCard, KeyRound, Lock, PhoneCall, Save, ShieldCheck, Users } from "lucide-react";
+import { Bell, CreditCard, KeyRound, Lock, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -8,6 +8,9 @@ export default function Settings() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState({ leads: true, calls: true, weekly: false, failures: true });
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
+  const [telegram, setTelegram] = useState(null);
+  const [telegramCode, setTelegramCode] = useState("");
+  const [telegramMessage, setTelegramMessage] = useState("");
   const [agents, setAgents] = useState([]);
   const [telephonyForm, setTelephonyForm] = useState({
     name: "",
@@ -27,7 +30,50 @@ export default function Settings() {
 
   useEffect(() => {
     loadTelephonyConfigs();
+    loadTelegramStatus();
   }, []);
+
+  async function loadTelegramStatus() {
+    try {
+      setTelegram(await api("/integrations/telegram/status"));
+    } catch (error) {
+      setTelegramMessage(error.message);
+    }
+  }
+
+  async function generateTelegramCode() {
+    setTelegramMessage("");
+    try {
+      const result = await api("/integrations/telegram/connect-code", { method: "POST" });
+      setTelegram(result);
+      setTelegramCode(result.connectCode || "");
+      setTelegramMessage("Connect code generated.");
+    } catch (error) {
+      setTelegramMessage(error.response?.message || error.message);
+    }
+  }
+
+  async function disconnectTelegram() {
+    setTelegramMessage("");
+    try {
+      await api("/integrations/telegram/disconnect", { method: "DELETE" });
+      setTelegramCode("");
+      setTelegram({ status: "revoked" });
+      setTelegramMessage("Telegram disconnected.");
+    } catch (error) {
+      setTelegramMessage(error.response?.message || error.message);
+    }
+  }
+
+  async function updateTelegramSetting(field, value) {
+    const next = { ...(telegram || {}), [field]: value };
+    setTelegram(next);
+    try {
+      setTelegram(await api("/integrations/telegram/settings", { method: "PATCH", body: { [field]: value } }));
+    } catch (error) {
+      setTelegramMessage(error.response?.message || error.message);
+    }
+  }
 
   async function loadTelephonyConfigs() {
     try {
@@ -104,6 +150,58 @@ export default function Settings() {
           ))}
         </Panel>
 
+        <Panel icon={MessageCircle} title="Telegram Integration">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Info label="Status" value={telegram?.status || "Not connected"} />
+            <Info label="Bot" value={telegram?.botUsername || "Configure TELEGRAM_BOT_USERNAME"} />
+            <Info label="Telegram User" value={telegram?.telegramUsername || "Not connected"} />
+            <Info label="Connected At" value={telegram?.connectedAt ? new Date(telegram.connectedAt).toLocaleString() : "Not connected"} />
+          </div>
+
+          {telegram?.botLink && (
+            <a className="btn-secondary" href={telegram.botLink} target="_blank" rel="noreferrer">
+              <Send size={16} />Open Telegram Bot
+            </a>
+          )}
+
+          <div className="rounded-2xl border border-slate-200 p-4">
+            <p className="font-semibold text-slate-950">Connect Telegram</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-500">
+              <li>Generate a connect code.</li>
+              <li>Open the Telegram bot.</li>
+              <li>Send <span className="font-semibold text-slate-700">/connect CODE</span>.</li>
+            </ol>
+            {telegramCode && (
+              <div className="mt-3 rounded-2xl bg-brand-50 p-3">
+                <p className="text-xs font-semibold uppercase text-brand-700">Connect Code</p>
+                <p className="mt-1 text-2xl font-bold tracking-wide text-brand-700">{telegramCode}</p>
+                <p className="mt-1 break-anywhere text-sm text-slate-600">Send: /connect {telegramCode}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="action-row">
+            <button className="btn-primary" onClick={generateTelegramCode}><MessageCircle size={16} />Generate Connect Code</button>
+            <button className="btn-secondary" onClick={loadTelegramStatus}><RefreshIcon />Refresh Status</button>
+            <button className="btn-danger" disabled={telegram?.status !== "connected"} onClick={disconnectTelegram}>Disconnect</button>
+          </div>
+
+          <div className="space-y-2">
+            {[
+              ["dailySummaryEnabled", "Send daily summary on Telegram"],
+              ["appointmentBookedEnabled", "Notify when appointment booked"],
+              ["hotLeadEnabled", "Notify when hot lead captured"],
+              ["callFailedEnabled", "Notify when call failed"]
+            ].map(([field, label]) => (
+              <label key={field} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3 text-sm font-semibold">
+                {label}
+                <input className="h-5 w-5" type="checkbox" disabled={telegram?.status !== "connected"} checked={Boolean(telegram?.[field])} onChange={(event) => updateTelegramSetting(field, event.target.checked)} />
+              </label>
+            ))}
+          </div>
+          {telegramMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telegramMessage}</p>}
+        </Panel>
+
         <Panel icon={PhoneCall} title="Telephony Settings">
           <p className="text-sm leading-6 text-slate-500">Add Twilio, Exotel, or Vonage numbers. Secret values are masked after saving.</p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -172,4 +270,8 @@ function Panel({ icon: Icon, title, children }) {
 
 function Info({ label, value }) {
   return <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="break-anywhere font-bold text-slate-950">{value}</p></div>;
+}
+
+function RefreshIcon() {
+  return <span className="inline-block h-4 w-4 rounded-full border-2 border-current border-r-transparent" aria-hidden="true" />;
 }

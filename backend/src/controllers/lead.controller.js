@@ -2,7 +2,9 @@ import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
+import { applyCallOutcomeToLog } from "../services/callOutcome.service.js";
 import { extractRunId } from "../services/callLogMapper.js";
+import { scheduleDograhStatusSync } from "../services/dograhCallStatusSync.service.js";
 import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
@@ -88,6 +90,7 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
 
   const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload);
   const dograhRunId = extractRunId(dograhResponse);
+  const rawProviderStatus = dograhResponse?.status || "initiated";
 
   const callLog = await CallLog.create({
     userId: lead.userId,
@@ -100,10 +103,15 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
     dograhWorkflowId: agent.dograhWorkflowId,
     dograhWorkflowUuid: agent.dograhWorkflowUuid,
     dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    status: dograhResponse?.status || "initiated",
+    status: rawProviderStatus,
+    rawProviderStatus,
+    providerPayload: dograhResponse,
     rawDograhPayload: dograhResponse,
     startedAt: new Date()
   });
+  await applyCallOutcomeToLog(callLog, rawProviderStatus);
+  await callLog.save();
+  scheduleDograhStatusSync(callLog._id);
 
   lead.callLogId = callLog._id;
   await lead.save();

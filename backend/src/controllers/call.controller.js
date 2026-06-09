@@ -4,8 +4,13 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
+import FollowUp from "../models/FollowUp.js";
+import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../services/callOutcome.service.js";
 import { hasUsefulLeadData, normalizeDograhRunDetails } from "../services/callLogMapper.js";
 import { getDograhCallRunDetails } from "../services/dograh.service.js";
+import { runFollowUp } from "../services/followUp.service.js";
+import { createAppointmentRecord } from "../services/appointment.service.js";
+import { extractAppointmentFromTranscript } from "../services/appointmentExtraction.service.js";
 import { extractLeadFromCallTranscript } from "../services/leadExtraction.service.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
@@ -29,6 +34,48 @@ export const deleteCall = asyncHandler(async (req, res) => {
   if (!call) throw new ApiError(404, "Call log not found");
   await call.deleteOne();
   res.json({ message: "Call log deleted" });
+});
+
+export const retryCall = asyncHandler(async (req, res) => {
+  const call = await CallLog.findOne({ _id: req.params.id, ...filter(req) });
+  if (!call) throw new ApiError(404, "Call log not found");
+  if (!call.agentId) throw new ApiError(400, "Call is missing an assigned agent.");
+
+  let lead = call.leadId ? await Lead.findOne({ _id: call.leadId, ...filter(req) }) : null;
+  if (!lead && call.callerNumber) {
+    lead = await Lead.findOne({ phone: call.callerNumber, agentId: call.agentId, ...filter(req) }).sort({ createdAt: -1 });
+  }
+  if (!lead && call.callerNumber) {
+    lead = await Lead.create({
+      userId: call.userId || req.user._id,
+      agentId: call.agentId,
+      callLogId: call._id,
+      name: call.callerNumber,
+      phone: call.callerNumber,
+      source: "call",
+      status: "follow_up",
+      notes: [{ text: "Lead created automatically for manual retry call." }]
+    });
+    call.leadId = lead._id;
+    await call.save();
+  }
+  if (!lead) throw new ApiError(400, "Call is not linked to a lead and has no phone number.");
+
+  const followUp = await FollowUp.create({
+    userId: call.userId || req.user._id,
+    agentId: call.agentId,
+    leadId: lead._id,
+    callLogId: call._id,
+    type: "call",
+    trigger: "manual",
+    status: "scheduled",
+    scheduledAt: new Date(),
+    maxAttempts: 3,
+    note: "Manual retry call from call log"
+  });
+
+  const result = await runFollowUp(followUp);
+  res.status(202).json({ success: true, followUp: result || followUp });
 });
 
 function compactUpdate(update) {
@@ -108,6 +155,35 @@ async function upsertLeadFromCallData(callLog, leadData) {
 
   const lead = await Lead.create(leadPayload);
   return { lead, created: true };
+}
+
+async function autoCreateAppointmentFromCall(callLog, lead) {
+  if (!lead || !callLog.transcript) return null;
+  const agent = callLog.agentId ? await Agent.findById(callLog.agentId) : null;
+  if (!agent) return null;
+
+  const extracted = await extractAppointmentFromTranscript(callLog.transcript, agent, lead);
+  if (!extracted.appointmentRequested || !extracted.date || !extracted.time) return null;
+
+  const source = callLog.source === "web_call" || callLog.source === "callback_form" ? "web_call" : "ai_call";
+  const result = await createAppointmentRecord({
+    userId: callLog.userId,
+    agent,
+    lead,
+    callLogId: callLog._id,
+    title: extracted.title,
+    appointmentType: extracted.appointmentType,
+    date: extracted.date,
+    time: extracted.time,
+    timezone: extracted.timezone || "Asia/Calcutta",
+    customerName: extracted.customerName,
+    customerPhone: extracted.customerPhone,
+    customerEmail: extracted.customerEmail,
+    notes: extracted.notes,
+    source,
+    reminderEnabled: true
+  });
+  return result.appointment;
 }
 
 export const syncCall = asyncHandler(async (req, res) => {
@@ -211,12 +287,16 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
   const leadData = mapped.leadData || null;
   const leadCaptured = hasUsefulLeadData(leadData);
 
+  const rawProviderStatus = mapped.status || callLog.status;
   Object.assign(callLog, compactUpdate({
-    status: mapped.status || callLog.status,
+    status: rawProviderStatus,
+    rawProviderStatus,
+    providerPayload: runDetails,
     durationSeconds: mapped.durationSeconds ?? callLog.durationSeconds,
     duration: mapped.duration || callLog.duration,
     startedAt: mapped.startedAt ? new Date(mapped.startedAt) : callLog.startedAt,
     endedAt: mapped.endedAt ? new Date(mapped.endedAt) : callLog.endedAt,
+    callEndedAt: mapped.endedAt ? new Date(mapped.endedAt) : callLog.callEndedAt,
     transcript: mapped.transcript
       ? typeof mapped.transcript === "object" ? JSON.stringify(mapped.transcript, null, 2) : mapped.transcript
       : callLog.transcript,
@@ -226,6 +306,7 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
     rawRunDetails: runDetails
   }));
 
+  await applyCallOutcomeToLog(callLog, rawProviderStatus, { endedAt: callLog.endedAt });
   await callLog.save();
   console.log("Updated CallLog:", callLog._id);
 
@@ -236,6 +317,7 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
     callLog.leadData = leadData;
     callLog.leadId = leadResult.lead._id;
     await callLog.save();
+    await autoCreateAppointmentFromCall(callLog, leadResult.lead);
   } else if (callLog.transcript || callLog.transcriptUrl) {
     console.log("No extracted lead data returned by Dograh. TODO: Gemini transcript-based lead extraction.");
   }
@@ -247,6 +329,8 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
   if (!leadResult) {
     await extractLeadForCallLog(callLog, { failOnGeminiError: false });
   }
+
+  await scheduleRetryFollowUpForCall(callLog);
 
   return callLog;
 }
@@ -323,6 +407,7 @@ async function extractLeadForCallLog(callLog, { failOnGeminiError }) {
       if (leadResult.created && callLog.agentId) {
         await Agent.findByIdAndUpdate(callLog.agentId, { $inc: { totalLeads: 1 } });
       }
+      await autoCreateAppointmentFromCall(callLog, leadResult.lead);
     }
 
     return { callLog, lead: leadResult?.lead || null, extracted };

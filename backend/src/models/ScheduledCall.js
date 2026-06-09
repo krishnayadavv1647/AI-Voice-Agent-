@@ -16,6 +16,11 @@ const scheduledCallSchema = new mongoose.Schema(
     attempts: { type: Number, default: 0 },
     lastError: String,
     callLogId: { type: mongoose.Schema.Types.ObjectId, ref: "CallLog" },
+    leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead" },
+    importRunId: { type: mongoose.Schema.Types.ObjectId, ref: "ImportRun" },
+    source: String,
+    purpose: String,
+    notes: String,
     processedAt: Date
   },
   { timestamps: true }

@@ -88,6 +88,11 @@ function formatScheduleTime(schedule) {
   return new Date(schedule.scheduledForUtc).toLocaleString([], { timeZone: schedule.timezone || undefined });
 }
 
+function formatAppointmentTime(appointment) {
+  if (!appointment?.startAt) return "Not scheduled";
+  return new Date(appointment.startAt).toLocaleString([], { timeZone: appointment.timezone || undefined });
+}
+
 export default function AgentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -95,6 +100,7 @@ export default function AgentDetails() {
   const [data, setData] = useState(null);
   const [calls, setCalls] = useState([]);
   const [scheduledCalls, setScheduledCalls] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [workflows, setWorkflows] = useState([]);
   const [connectOpen, setConnectOpen] = useState(false);
   const [debugResponse, setDebugResponse] = useState(null);
@@ -141,14 +147,16 @@ export default function AgentDetails() {
 
   async function load() {
     try {
-      const [agentData, callData, scheduleData] = await Promise.all([
+      const [agentData, callData, scheduleData, appointmentData] = await Promise.all([
         api(`/agents/${id}`),
         api(`/agents/${id}/calls`),
-        api(`/scheduled-calls/agent/${id}`)
+        api(`/scheduled-calls/agent/${id}`),
+        api(`/appointments?agentId=${id}`)
       ]);
       setData(agentData);
       setCalls(callData);
       setScheduledCalls(scheduleData);
+      setAppointments(appointmentData);
     } catch (err) {
       setError(err.message);
     }
@@ -695,6 +703,7 @@ export default function AgentDetails() {
                   ["Message Test", "#message-test"],
                   ["Test Call", "#test-call"],
                   ["Scheduled Calls", "#scheduled-calls"],
+                  ["Appointments", "#appointments"],
                   ["Call Logs", "#call-logs"],
                   ["Leads", "/leads"],
                   ["Dograh Web Calling", "#dograh-web-calling"],
@@ -709,6 +718,7 @@ export default function AgentDetails() {
               <div id="test-call" className="mb-4 action-row">
                 <button className="btn-secondary" onClick={openConnectModal}><Cable size={16} />Connect Dograh Workflow</button>
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
+                <button className="btn-primary" onClick={() => navigate(`/agents/${id}/bio-page`)}><Globe2 size={16} />Customize Bio Page</button>
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
@@ -787,6 +797,36 @@ export default function AgentDetails() {
                   </article>
                 ))}
                 {!scheduledCalls.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No scheduled calls.</div>}
+              </div>
+            </div>
+
+            <div id="appointments" className="card">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-ink">Appointments</h2>
+                </div>
+                <button className="btn-secondary" onClick={() => navigate(`/appointments?agentId=${id}&open=1`)}><CalendarClock size={16} />Book Appointment</button>
+              </div>
+
+              <div className="grid gap-3">
+                {appointments.map((appointment) => (
+                  <article key={appointment._id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-anywhere font-semibold text-ink">
+                          {appointment.leadId?.businessName || appointment.leadId?.name || appointment.customerName || appointment.customerPhone || "Appointment"}
+                        </p>
+                        <p className="text-sm text-slate-500">{formatAppointmentTime(appointment)} - {appointment.appointmentType}</p>
+                        {appointment.notes && <p className="mt-1 text-sm text-slate-600">{appointment.notes}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={appointment.status} />
+                        <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => navigate(`/appointments?agentId=${id}&leadId=${appointment.leadId?._id || appointment.leadId}`)}>View</button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {!appointments.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No appointments for this agent.</div>}
               </div>
             </div>
 

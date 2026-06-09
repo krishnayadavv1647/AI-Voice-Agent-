@@ -7,14 +7,17 @@ import "./styles.css";
 
 import AgentDetails from "./pages/AgentDetails.jsx";
 import Agents from "./pages/Agents.jsx";
+import Appointments from "./pages/Appointments.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import AuthSuccess from "./pages/AuthSuccess.jsx";
 import Billing from "./pages/Billing.jsx";
+import BioPageBuilder from "./pages/BioPageBuilder.jsx";
 import CallLogs from "./pages/CallLogs.jsx";
 import CreateAgent from "./pages/CreateAgent.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import EditAgent from "./pages/EditAgent.jsx";
 import KnowledgeBase from "./pages/KnowledgeBase.jsx";
+import LeadFinder from "./pages/LeadFinder.jsx";
 import Leads from "./pages/Leads.jsx";
 import Messages from "./pages/Messages.jsx";
 import PublicCallback from "./pages/PublicCallback.jsx";
@@ -25,6 +28,10 @@ import TestAgent from "./pages/TestAgent.jsx";
 import Admin from "./pages/Admin.jsx";
 import VoiceLanguage from "./pages/VoiceLanguage.jsx";
 import DograhSettings from "./pages/DograhSettings.jsx";
+import EmailOutreach from "./pages/EmailOutreach.jsx";
+import EmailInbox from "./pages/EmailInbox.jsx";
+import FollowUps from "./pages/FollowUps.jsx";
+import ImportCalls from "./pages/ImportCalls.jsx";
 import TelephonyConfiguration from "./pages/TelephonyConfiguration.jsx";
 import Welcome from "./pages/Welcome.jsx";
 
@@ -32,7 +39,7 @@ function ProtectedRoute({ children, admin = false }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="grid min-h-screen place-items-center text-slate-500">Loading...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (admin && user.role !== "admin") return <Navigate to="/dashboard" replace />;
+  if (admin && !["admin", "super_admin"].includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -56,11 +63,18 @@ function Router() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="agents" element={<Agents />} />
         <Route path="agents/:id" element={<AgentDetails />} />
+        <Route path="agents/:id/bio-page" element={<BioPageBuilder />} />
         <Route path="agents/:id/edit" element={<EditAgent />} />
         <Route path="agents/:id/test" element={<TestAgent />} />
         <Route path="create-agent" element={<CreateAgent />} />
         <Route path="calls" element={<CallLogs />} />
         <Route path="leads" element={<Leads />} />
+        <Route path="lead-finder" element={<LeadFinder />} />
+        <Route path="email-outreach" element={<EmailOutreach />} />
+        <Route path="email-inbox" element={<EmailInbox />} />
+        <Route path="followups" element={<FollowUps />} />
+        <Route path="appointments" element={<Appointments />} />
+        <Route path="import-calls" element={<ImportCalls />} />
         <Route path="messages" element={<Messages />} />
         <Route path="templates" element={<Templates />} />
         <Route path="voice-language" element={<VoiceLanguage />} />

@@ -18,6 +18,7 @@ function authResponse(user) {
       authProvider: user.authProvider,
       role: user.role,
       plan: user.plan,
+      status: user.status,
       minutesUsed: user.minutesUsed
     }
   };
@@ -43,12 +44,15 @@ export const login = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email: email.toLowerCase().trim() });
   if (!user || !(await user.matchPassword(password))) throw new ApiError(401, "Invalid email or password");
+  if (user.status === "suspended" || user.status === "deleted") throw new ApiError(403, "Your account is not active");
+  user.lastLoginAt = new Date();
+  await user.save();
 
   res.json(authResponse(user));
 });
 
 export const me = asyncHandler(async (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: { ...req.user.toObject(), impersonatedBy: req.impersonatedBy } });
 });
 
 export const googleCallbackSuccess = asyncHandler(async (req, res) => {

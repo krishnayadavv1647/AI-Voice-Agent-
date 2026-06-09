@@ -1,4 +1,4 @@
-import { Download, FileText, PlayCircle, RefreshCw, Trash2, X } from "lucide-react";
+import { Download, FileText, PhoneCall, PlayCircle, RefreshCw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -17,6 +17,8 @@ function formatDuration(call) {
 export default function CallLogs() {
   const [calls, setCalls] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [actingId, setActingId] = useState("");
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -42,9 +44,25 @@ export default function CallLogs() {
     load();
   }
 
+  async function retry(id) {
+    setActingId(id);
+    setNotice("");
+    setError("");
+    try {
+      await api(`/calls/${id}/retry`, { method: "POST" });
+      setNotice("Retry call started.");
+      await load();
+    } catch (err) {
+      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+    } finally {
+      setActingId("");
+    }
+  }
+
   return (
     <>
       <PageHeader title="Call Logs" description="Review Dograh run data, recordings, transcripts, summaries, and lead extraction status." />
+      {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
       {!calls.length ? (
@@ -53,13 +71,13 @@ export default function CallLogs() {
         <>
           <div className="mobile-card-list">
             {calls.map((call) => (
-              <CallCard key={call._id} call={call} setSelected={setSelected} sync={sync} remove={remove} />
+              <CallCard key={call._id} call={call} setSelected={setSelected} sync={sync} retry={retry} remove={remove} actingId={actingId} />
             ))}
           </div>
           <div className="desktop-table card overflow-hidden p-0">
             <div className="table-wrap">
-              <table className="table w-full min-w-[1100px]">
-                <thead><tr><th>Date</th><th>Caller Number</th><th>Agent</th><th>Status</th><th>Duration</th><th>Dograh Run ID</th><th>Lead</th><th>Recording</th><th>Actions</th></tr></thead>
+              <table className="table w-full min-w-[1200px]">
+                <thead><tr><th>Date</th><th>Caller Number</th><th>Agent</th><th>Status</th><th>Outcome</th><th>Retry</th><th>Duration</th><th>Dograh Run ID</th><th>Lead</th><th>Recording</th><th>Actions</th></tr></thead>
                 <tbody>
                   {calls.map((call) => (
                     <tr key={call._id}>
@@ -67,6 +85,8 @@ export default function CallLogs() {
                       <td className="break-anywhere">{call.callerNumber || "Unknown"}</td>
                       <td>{call.agentId?.agentName || "Agent"}</td>
                       <td><StatusBadge status={call.status || "pending"} /></td>
+                      <td><StatusBadge status={call.normalizedStatus || "unknown"} /></td>
+                      <td>{call.retryScheduled ? "Scheduled" : call.retryEligible ? "Eligible" : "-"}</td>
                       <td>{formatDuration(call)}</td>
                       <td className="break-anywhere">{call.dograhRunId || "Missing"}</td>
                       <td>{call.leadCaptured ? "Yes" : "No"}</td>
@@ -75,6 +95,7 @@ export default function CallLogs() {
                         <div className="flex flex-wrap gap-2">
                           <button title="View Details" className="rounded-xl border border-slate-200 p-2" onClick={() => setSelected(call)}><FileText size={16} /></button>
                           <button title="Sync Call" disabled={!call.dograhRunId} className="rounded-xl border border-slate-200 p-2 disabled:opacity-50" onClick={() => sync(call._id)}><RefreshCw size={16} /></button>
+                          <button title="Retry Call" disabled={actingId === call._id || !call.agentId || !call.callerNumber} className="rounded-xl border border-slate-200 p-2 disabled:opacity-50" onClick={() => retry(call._id)}><PhoneCall size={16} /></button>
                           {call.recordingUrl && <a title="Play Recording" className="rounded-xl border border-slate-200 p-2" href={call.recordingUrl} target="_blank"><PlayCircle size={16} /></a>}
                           {call.transcriptUrl && <a title="View Transcript" className="rounded-xl border border-slate-200 p-2" href={call.transcriptUrl} target="_blank"><Download size={16} /></a>}
                           <button title="Delete" className="rounded-xl border border-slate-200 p-2 text-rose-600" onClick={() => remove(call._id)}><Trash2 size={16} /></button>
@@ -94,7 +115,7 @@ export default function CallLogs() {
   );
 }
 
-function CallCard({ call, setSelected, sync, remove }) {
+function CallCard({ call, setSelected, sync, retry, remove, actingId }) {
   return (
     <article className="card">
       <div className="flex items-start justify-between gap-3">
@@ -106,6 +127,7 @@ function CallCard({ call, setSelected, sync, remove }) {
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
         <Info label="Duration" value={formatDuration(call)} />
+        <Info label="Outcome" value={call.normalizedStatus || "unknown"} />
         <Info label="Lead" value={call.leadCaptured ? "Yes" : "No"} />
         <Info label="Agent" value={call.agentId?.agentName || "Agent"} />
         <Info label="Run ID" value={call.dograhRunId || "Missing"} />
@@ -113,6 +135,7 @@ function CallCard({ call, setSelected, sync, remove }) {
       <div className="mt-4 action-row">
         <button className="btn-secondary" onClick={() => setSelected(call)}>View Details</button>
         <button className="btn-secondary" disabled={!call.dograhRunId} onClick={() => sync(call._id)}>Sync</button>
+        <button className="btn-secondary" disabled={actingId === call._id || !call.agentId || !call.callerNumber} onClick={() => retry(call._id)}>Retry Call</button>
         <button className="btn-danger" onClick={() => remove(call._id)}>Delete</button>
       </div>
     </article>
@@ -132,6 +155,9 @@ function CallModal({ call, onClose }) {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Info label="Status" value={call.status} />
+          <Info label="Normalized Outcome" value={call.normalizedStatus} />
+          <Info label="Raw Provider Status" value={call.rawProviderStatus} />
+          <Info label="Retry" value={call.retryScheduled ? "Scheduled" : call.retryEligible ? "Eligible" : "Not eligible"} />
           <Info label="Duration" value={formatDuration(call)} />
           <Info label="Start Time" value={call.startedAt ? new Date(call.startedAt).toLocaleString() : ""} />
           <Info label="End Time" value={call.endedAt ? new Date(call.endedAt).toLocaleString() : ""} />

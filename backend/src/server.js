@@ -3,7 +3,9 @@ dotenv.config();
 
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
+import { startFollowUpWorker } from "./services/followUpWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
+import { startTelegramBot } from "./services/telegram/bot.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -15,6 +17,8 @@ connectDB()
   .then(() => {
     console.log("Database connected");
     startScheduledCallWorker();
+    startFollowUpWorker();
+    startTelegramBot();
   })
   .catch((error) => {
     console.error("Database connection failed", error.message);

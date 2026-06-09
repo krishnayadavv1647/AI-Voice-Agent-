@@ -1,5 +1,7 @@
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import fs from "fs/promises";
+import path from "path";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
@@ -14,9 +16,64 @@ import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
+import { BIO_PAGE_TEMPLATES, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
 
 function userFilter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const BIO_TEXT_FIELDS = ["headline", "subheadline", "welcomeMessage", "ctaText", "secondaryCtaText"];
+const BIO_STRING_FIELDS = ["template", "logoUrl", "coverImageUrl", "primaryColor", "backgroundColor", "textColor", "buttonColor", "fontStyle", "animation", ...BIO_TEXT_FIELDS];
+const BIO_BOOL_FIELDS = ["showWebCall", "showAppointment", "showContactForm", "showBusinessInfo", "showSocialLinks", "isPublished"];
+const FONT_STYLES = ["modern", "professional", "friendly", "bold", "elegant"];
+const ANIMATIONS = ["none", "fade_in", "slide_up", "zoom_in", "floating_cards", "gradient_motion", "pulse_button"];
+
+function sanitizeText(value) {
+  return String(value || "").replace(/[<>]/g, "").trim().slice(0, 600);
+}
+
+function ensureBioPage(agent) {
+  return { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+}
+
+function sanitizeBioPagePatch(body = {}) {
+  const patch = {};
+  for (const field of BIO_STRING_FIELDS) {
+    if (body[field] === undefined) continue;
+    if (BIO_TEXT_FIELDS.includes(field)) patch[field] = sanitizeText(body[field]);
+    else patch[field] = String(body[field] || "").trim().slice(0, 500);
+  }
+  for (const field of ["primaryColor", "backgroundColor", "textColor", "buttonColor"]) {
+    if (patch[field] !== undefined && !HEX_COLOR.test(patch[field])) throw new ApiError(400, `${field} must be a safe hex color.`);
+  }
+  if (patch.template && !BIO_PAGE_TEMPLATES.some((item) => item.templateId === patch.template)) throw new ApiError(400, "Bio page template is not valid.");
+  if (patch.fontStyle && !FONT_STYLES.includes(patch.fontStyle)) throw new ApiError(400, "Font style is not valid.");
+  if (patch.animation && !ANIMATIONS.includes(patch.animation)) throw new ApiError(400, "Animation is not valid.");
+  for (const field of BIO_BOOL_FIELDS) {
+    if (body[field] !== undefined) patch[field] = Boolean(body[field]);
+  }
+  patch.updatedAt = new Date();
+  return patch;
+}
+
+async function saveBioAsset({ req, agent, kind }) {
+  const contentType = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
+  const allowed = kind === "logo"
+    ? { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }
+    : { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+  const maxBytes = kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+
+  if (!allowed[contentType]) throw new ApiError(400, `${kind} must be png, jpg, jpeg, or webp.`);
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ApiError(400, `${kind} file is required.`);
+  if (req.body.length > maxBytes) throw new ApiError(400, `${kind} file is too large.`);
+
+  const uploadDir = path.resolve("uploads", "bio-pages", String(agent._id));
+  await fs.mkdir(uploadDir, { recursive: true });
+  const fileName = `${kind}-${Date.now()}.${allowed[contentType]}`;
+  const filePath = path.join(uploadDir, fileName);
+  await fs.writeFile(filePath, req.body);
+  return `/uploads/bio-pages/${agent._id}/${fileName}`;
 }
 
 function slugifyAgentName(value = "") {
@@ -355,6 +412,71 @@ export const listAgents = asyncHandler(async (req, res) => {
     status: { $ne: "archived" }
   }).sort({ createdAt: -1 });
   res.json(agents);
+});
+
+export const listBioPageTemplates = asyncHandler(async (req, res) => {
+  res.json(BIO_PAGE_TEMPLATES);
+});
+
+export const getBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const bioPage = ensureBioPage(agent);
+  if (!agent.bioPage || !agent.bioPage.updatedAt) {
+    agent.bioPage = bioPage;
+    await agent.save();
+  }
+  res.json({ agentId: agent._id, publicSlug: agent.publicSlug, bioPage });
+});
+
+export const updateBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const current = ensureBioPage(agent);
+  const patch = sanitizeBioPagePatch(req.body);
+  const templatePatch = patch.template ? templateDefaults(patch.template) : {};
+  agent.bioPage = { ...current, ...templatePatch, ...patch };
+  agent.publicTitle = agent.bioPage.headline || agent.publicTitle;
+  agent.publicDescription = agent.bioPage.subheadline || agent.publicDescription;
+  agent.publicWelcomeMessage = agent.bioPage.welcomeMessage || agent.publicWelcomeMessage;
+  await agent.save();
+  res.json({ success: true, agentId: agent._id, publicSlug: agent.publicSlug, bioPage: agent.bioPage });
+});
+
+export const resetBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = defaultBioPage(agent);
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const publishBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = { ...ensureBioPage(agent), isPublished: true, updatedAt: new Date() };
+  agent.isPublic = true;
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const unpublishBioPage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  agent.bioPage = { ...ensureBioPage(agent), isPublished: false, updatedAt: new Date() };
+  await agent.save();
+  res.json({ success: true, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageLogo = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const logoUrl = await saveBioAsset({ req, agent, kind: "logo" });
+  agent.bioPage = { ...ensureBioPage(agent), logoUrl, updatedAt: new Date() };
+  await agent.save();
+  res.status(201).json({ success: true, logoUrl, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageCover = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const coverImageUrl = await saveBioAsset({ req, agent, kind: "cover" });
+  agent.bioPage = { ...ensureBioPage(agent), coverImageUrl, updatedAt: new Date() };
+  await agent.save();
+  res.status(201).json({ success: true, coverImageUrl, bioPage: agent.bioPage });
 });
 
 export const getAgent = asyncHandler(async (req, res) => {
