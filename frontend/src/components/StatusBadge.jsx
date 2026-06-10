@@ -1,4 +1,4 @@
-const styles = {
+﻿const styles = {
   Active: "bg-emerald-50 text-emerald-700",
   active: "bg-emerald-50 text-emerald-700",
   Connected: "bg-sky-50 text-sky-700",

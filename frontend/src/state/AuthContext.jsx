@@ -13,6 +13,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 //
   useEffect(() => {
+    const publicPath = window.location.pathname.startsWith("/a/") || window.location.pathname.startsWith("/call/");
+    if (publicPath) {
+      setLoading(false);
+      return;
+    }
+
     if (!getToken()) {
       setLoading(false);
       return;
@@ -20,7 +26,10 @@ export function AuthProvider({ children }) {
 
     api("/auth/me")
       .then((data) => setUser(data.user))
-      .catch(() => setToken(null))
+      .catch(() => {
+        setToken(null);
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 

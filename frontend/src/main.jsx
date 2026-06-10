@@ -96,7 +96,11 @@ function Router() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+const rootElement = document.getElementById("root");
+const root = rootElement.__reactRoot || ReactDOM.createRoot(rootElement);
+rootElement.__reactRoot = root;
+
+root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>

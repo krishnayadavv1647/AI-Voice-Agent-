@@ -12,7 +12,7 @@ export function setToken(token) {
 export async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (token && options.auth !== false) headers.Authorization = `Bearer ${token}`;
 
   let response;
   try {

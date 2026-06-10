@@ -171,8 +171,9 @@ export default function Admin() {
       <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="card space-y-1">
           {tabs.map(([key, label, Icon]) => (
-            <button key={key} className={active === key ? "tab-button tab-button-active w-full justify-start" : "tab-button w-full justify-start"} onClick={() => setActive(key)}>
-              <Icon size={16} />{label}
+            <button key={key} className={active === key ? "tab-button tab-button-active w-full" : "tab-button w-full"} onClick={() => setActive(key)}>
+              <Icon size={16} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate text-left">{label}</span>
             </button>
           ))}
         </aside>
@@ -219,7 +220,7 @@ export default function Admin() {
                   user.counts?.emailsSent || 0,
                   fmt(user.createdAt),
                   fmt(user.lastLoginAt),
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-nowrap items-center gap-2">
                     <button className="btn-secondary" onClick={() => viewUser(user)}>View</button>
                     <button className="btn-secondary" onClick={() => impersonate(user)}>Login As</button>
                     <button className="btn-secondary" onClick={() => mutate("User suspended", () => api(`/admin/users/${user._id}/suspend`, { method: "POST" }))}>Suspend</button>
@@ -260,9 +261,27 @@ function MiniList({ title, rows }) {
 function AdminTable({ columns, rows }) {
   return (
     <div className="table-wrap">
-      <table className="table w-full min-w-[1000px]">
+      <table className="table w-full min-w-[1250px]">
         <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-        <tbody>{rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex} className="break-anywhere">{cell}</td>)}</tr>)}</tbody>
+        <tbody>{rows.map((row, index) => (
+          <tr key={index}>
+            {row.map((cell, cellIndex) => {
+              const isActions = columns[cellIndex] === "Actions";
+             return (
+  <td
+    key={cellIndex}
+    className={
+      isActions
+        ? "whitespace-nowrap align-middle min-w-[280px]"
+        : "break-words align-middle"
+    }
+  >
+    {cell}
+  </td>
+);
+            })}
+          </tr>
+        ))}</tbody>
       </table>
       {!rows.length && <div className="p-6 text-sm text-slate-500">No records found.</div>}
     </div>
@@ -274,8 +293,8 @@ function ResourceTable({ keyName, rows, mutate }) {
     agents: ["Agent", ["Agent Name", "User", "Category", "Status", "Dograh", "Calls", "Leads", "Created", "Actions"], (row) => [row.agentName, row.userId?.email, row.businessCategory, <StatusBadge status={row.status} />, row.dograhStatus || "-", row.totalCalls || 0, row.totalLeads || 0, fmt(row.createdAt), <RowActions row={row} base="/admin/agents" mutate={mutate} pause activate />]],
     calls: ["Calls", ["Date", "User", "Agent", "Caller", "Calling", "Status", "Outcome", "Duration", "Lead", "Actions"], (row) => [fmt(row.createdAt), row.userId?.email, row.agentId?.agentName, row.callerNumber, row.callingNumber, <StatusBadge status={row.normalizedStatus || row.status} />, row.outcome || "-", row.duration || row.durationSeconds || "-", row.leadId ? "Yes" : "No", <button className="btn-danger" onClick={() => mutate("Call deleted", () => api(`/admin/calls/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
     leads: ["Leads", ["Lead", "User", "Agent", "Phone", "Email", "City", "Source", "Status", "Created", "Actions"], (row) => [nameOf(row), row.userId?.email, row.agentId?.agentName, row.phone, row.email, row.city, row.source, <StatusBadge status={row.status} />, fmt(row.createdAt), <button className="btn-danger" onClick={() => mutate("Lead deleted", () => api(`/admin/leads/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
-    appointments: ["Appointments", ["Lead", "User", "Agent", "Date & Time", "Phone", "Type", "Status", "Reminder", "Call Status", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, fmt(row.startAt), row.customerPhone, row.appointmentType, <StatusBadge status={row.status} />, row.reminderStatus, row.appointmentCallStatus, <div className="flex gap-2"><button className="btn-secondary" onClick={() => mutate("Appointment completed", () => api(`/admin/appointments/${row._id}/complete`, { method: "POST" }))}>Complete</button><button className="btn-danger" onClick={() => mutate("Appointment cancelled", () => api(`/admin/appointments/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
-    followups: ["Follow-ups", ["Lead", "User", "Agent", "Type", "Trigger", "Scheduled", "Status", "Attempts", "Error", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, row.type, row.trigger, fmt(row.scheduledAt), <StatusBadge status={row.status} />, `${row.attemptCount || 0}/${row.maxAttempts || 0}`, row.lastError || "-", <div className="flex gap-2"><button className="btn-secondary" onClick={() => mutate("Follow-up queued", () => api(`/admin/followups/${row._id}/run`, { method: "POST" }))}>Run</button><button className="btn-danger" onClick={() => mutate("Follow-up cancelled", () => api(`/admin/followups/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
+    appointments: ["Appointments", ["Lead", "User", "Agent", "Date & Time", "Phone", "Type", "Status", "Reminder", "Call Status", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, fmt(row.startAt), row.customerPhone, row.appointmentType, <StatusBadge status={row.status} />, row.reminderStatus, row.appointmentCallStatus, <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Appointment completed", () => api(`/admin/appointments/${row._id}/complete`, { method: "POST" }))}>Complete</button><button className="btn-danger" onClick={() => mutate("Appointment cancelled", () => api(`/admin/appointments/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
+    followups: ["Follow-ups", ["Lead", "User", "Agent", "Type", "Trigger", "Scheduled", "Status", "Attempts", "Error", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, row.type, row.trigger, fmt(row.scheduledAt), <StatusBadge status={row.status} />, `${row.attemptCount || 0}/${row.maxAttempts || 0}`, row.lastError || "-", <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Follow-up queued", () => api(`/admin/followups/${row._id}/run`, { method: "POST" }))}>Run</button><button className="btn-danger" onClick={() => mutate("Follow-up cancelled", () => api(`/admin/followups/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
     email: ["Email Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Sent", "Failed", "Created", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.totalRecipients || 0, row.sentCount || 0, row.failedCount || 0, fmt(row.createdAt), "-"]]
   };
   const [title, columns, mapper] = configs[keyName];
@@ -283,7 +302,7 @@ function ResourceTable({ keyName, rows, mutate }) {
 }
 
 function RowActions({ row, base, mutate, pause, activate }) {
-  return <div className="flex flex-wrap gap-2">{pause && <button className="btn-secondary" onClick={() => mutate("Agent paused", () => api(`${base}/${row._id}/pause`, { method: "POST" }))}>Pause</button>}{activate && <button className="btn-secondary" onClick={() => mutate("Agent activated", () => api(`${base}/${row._id}/activate`, { method: "POST" }))}>Activate</button>}<button className="btn-danger" onClick={() => mutate("Agent deleted", () => api(`${base}/${row._id}`, { method: "DELETE" }))}>Delete</button></div>;
+  return <div className="flex min-w-max gap-2">{pause && <button className="btn-secondary" onClick={() => mutate("Agent paused", () => api(`${base}/${row._id}/pause`, { method: "POST" }))}>Pause</button>}{activate && <button className="btn-secondary" onClick={() => mutate("Agent activated", () => api(`${base}/${row._id}/activate`, { method: "POST" }))}>Activate</button>}<button className="btn-danger" onClick={() => mutate("Agent deleted", () => api(`${base}/${row._id}`, { method: "DELETE" }))}>Delete</button></div>;
 }
 
 function UsageTable({ rows, mutate }) {

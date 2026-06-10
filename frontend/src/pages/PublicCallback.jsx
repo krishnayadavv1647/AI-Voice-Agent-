@@ -21,7 +21,7 @@ export default function PublicCallback() {
     setMessage("");
 
     try {
-      const result = await api(`/public/agents/${agentId}/request-call`, { method: "POST", body: form });
+      const result = await api(`/public/agents/${agentId}/request-call`, { method: "POST", auth: false, body: form });
       setMessage(result.message || "AI assistant is calling you now.");
     } catch (err) {
       setError(err.response ? `${err.message}` : err.message);

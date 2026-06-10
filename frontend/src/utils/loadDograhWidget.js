@@ -11,7 +11,7 @@ export function loadDograhWidget(embedToken) {
     }
 
     const existing = document.getElementById("dograh-widget");
-    if (existing) existing.remove();
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
     if (window.DograhWidget && window.__dograhWidgetEmbedToken !== embedToken) {
       delete window.DograhWidget;
     }
