@@ -7,7 +7,7 @@ import {
 } from "../services/dograh.service.js";
 
 function getExistingWorkflowId(agent) {
-  return agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId;
+  return agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
 }
 
 export const DograhProvider = {
@@ -48,10 +48,14 @@ export const DograhProvider = {
       throw new Error("Dograh create succeeded but workflow ID was not returned");
     }
 
+    const dograhAgentId = fields.dograhAgentId || fields.dograhWorkflowId;
+
     return {
       provider: "dograh",
       providerWorkflowId: fields.dograhWorkflowId,
+      providerAgentId: dograhAgentId,
       dograhWorkflowId: fields.dograhWorkflowId,
+      dograhAgentId,
       dograhWorkflowUuid: fields.dograhWorkflowUuid,
       dograhWorkflowName: fields.dograhWorkflowName,
       status: fields.dograhWorkflowUuid ? "created" : "created_missing_uuid",
@@ -80,7 +84,9 @@ export const DograhProvider = {
     return {
       provider: "dograh",
       providerWorkflowId: workflowId,
+      providerAgentId: agent.providerAgentId || agent.dograhAgentId || workflowId,
       dograhWorkflowId: workflowId,
+      dograhAgentId: agent.dograhAgentId || agent.providerAgentId || workflowId,
       dograhWorkflowUuid: fields.dograhWorkflowUuid || agent.dograhWorkflowUuid,
       dograhWorkflowName: fields.dograhWorkflowName || agent.dograhWorkflowName,
       status: "updated",

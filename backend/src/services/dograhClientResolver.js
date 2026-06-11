@@ -9,7 +9,8 @@ function cleanBaseUrl(value) {
   return String(value || process.env.DOGRAH_BASE_URL || DEFAULT_DOGRAH_BASE_URL).trim().replace(/\/$/, "");
 }
 
-function globalFallbackAllowed() {
+function globalFallbackAllowed(override) {
+  if (override !== undefined) return Boolean(override);
   return process.env.DOGRAH_ALLOW_GLOBAL_FALLBACK !== "false";
 }
 
@@ -38,7 +39,8 @@ function globalDograhConfig() {
   };
 }
 
-export async function getDograhClientForUser(userId) {
+export async function getDograhClientForUser(userId, { allowGlobalFallbackOnError } = {}) {
+  const allowFallback = globalFallbackAllowed(allowGlobalFallbackOnError);
   const integration = userId
     ? await UserIntegration.findOne({ userId, provider: "dograh", status: "connected" })
     : null;
@@ -51,7 +53,7 @@ export async function getDograhClientForUser(userId) {
       client.interceptors.response.use(
         (response) => response,
         async (error) => {
-          if (!globalFallbackAllowed() || error.config?.__dograhFallbackAttempted) {
+          if (!allowFallback || error.config?.__dograhFallbackAttempted) {
             return Promise.reject(error);
           }
 
@@ -96,7 +98,7 @@ export async function getDograhClientForUser(userId) {
       integration.lastTestedAt = new Date();
       await integration.save();
 
-      if (!globalFallbackAllowed()) {
+      if (!allowFallback) {
         throw new ApiError(502, "Your Dograh API connection failed. Please update your Dograh API key in Settings.", {
           dograhIntegrationError: error.message
         });
