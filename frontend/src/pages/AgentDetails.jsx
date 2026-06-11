@@ -452,8 +452,15 @@ export default function AgentDetails() {
   }
 
   async function action(type) {
-    await api(`/agents/${id}/${type}`, { method: "POST" });
-    load();
+    setError("");
+    setNotice("");
+    try {
+      await api(`/agents/${id}/${type}`, { method: "POST" });
+      await load();
+      setNotice(type === "publish" ? "Agent published." : "Agent updated.");
+    } catch (err) {
+      setError(formatApiError(err));
+    }
   }
 
   async function retryDograhWorkflowCreation() {
@@ -464,7 +471,7 @@ export default function AgentDetails() {
     try {
       const result = await api(`/agents/${id}/create-dograh-workflow`, { method: "POST" });
       setDebugResponse(result);
-      setNotice(result.dograhCreated ? "Dograh workflow created successfully." : result.warning || "Dograh workflow response did not include a workflow UUID.");
+      setNotice(result.message || (result.dograhCreated ? "Dograh workflow created successfully." : result.warning || "Dograh workflow response did not include a workflow ID."));
       await load();
     } catch (err) {
       setError(formatApiError(err));
@@ -653,16 +660,17 @@ export default function AgentDetails() {
     }
   }
 
-  const connected = Boolean(agent?.dograhWorkflowUuid);
+  const connected = Boolean(agent?.dograhWorkflowId || agent?.dograhWorkflowUuid);
   const dograhWebCallingEnabled = Boolean(dograhEmbedToken || agent?.dograhWidgetEnabled);
   const publicUrl = agent?.publicSlug ? `${window.location.origin}/a/${agent.publicSlug}` : "";
   const selectedWorkflowValue = useMemo(() => connectForm.dograhWorkflowUuid || connectForm.dograhWorkflowId, [connectForm]);
   const workflowSyncStatus = useMemo(() => {
     if (!agent) return "";
-    if (["failed", "update_failed"].includes(String(agent.dograhStatus || "").toLowerCase())) return "Workflow Error";
+    if (agent.dograhSyncStatus) return agent.dograhSyncStatus;
+    if (["failed", "update_failed"].includes(String(agent.dograhStatus || "").toLowerCase())) return "Workflow Failed";
     if (agent.dograhNeedsUpdate) return "Workflow Needs Update";
-    if (agent.providerWorkflowId || agent.dograhWorkflowUuid) return "Workflow Synced";
-    return "Workflow Missing";
+    if (agent.dograhWorkflowId || agent.dograhWorkflowUuid) return "Workflow Synced";
+    return "Workflow Not Connected";
   }, [agent]);
 
   return (
@@ -676,7 +684,7 @@ export default function AgentDetails() {
             <span className={`badge ${
               workflowSyncStatus === "Workflow Synced" ? "bg-emerald-50 text-emerald-700" :
               workflowSyncStatus === "Workflow Needs Update" ? "bg-amber-50 text-amber-700" :
-              workflowSyncStatus === "Workflow Error" ? "bg-rose-50 text-rose-700" :
+              workflowSyncStatus === "Workflow Failed" ? "bg-rose-50 text-rose-700" :
               "bg-slate-100 text-slate-700"
             }`}>
               {workflowSyncStatus}
@@ -718,12 +726,12 @@ export default function AgentDetails() {
                 <a className="btn-secondary" href="#message-test"><MessageCircle size={16} />Message Test</a>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
-                <a className="btn-secondary" href="#scheduled-calls"><CalendarClock size={16} />Schedule Call</a>
+                <button className="btn-secondary" disabled={!connected} onClick={() => document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" })}><CalendarClock size={16} />Schedule Call</button>
                 <button className="btn-secondary" disabled={callLoading} onClick={retryDograhWorkflowCreation}><RefreshCw size={16} />Retry Dograh Workflow Creation</button>
-                <button className="btn-secondary" disabled={callLoading} onClick={updateDograhWorkflow}>
+                <button className="btn-secondary" disabled={callLoading || !connected} onClick={updateDograhWorkflow}>
                   <RefreshCw size={16} />{agent.provider === "dograh" ? "Update Dograh Flow" : "Sync Provider"}
                 </button>
-                <button className="btn-secondary" onClick={() => action("publish")}><Play size={16} />Publish</button>
+                <button className="btn-secondary" disabled={!connected} onClick={() => action("publish")}><Play size={16} />Publish</button>
                 <button className="btn-secondary text-rose-600" onClick={removeAgent}><Trash2 size={16} />Delete</button>
               </div>
 
@@ -843,7 +851,7 @@ export default function AgentDetails() {
                   <p className="text-sm font-semibold capitalize text-slate-800">{dograhCallStatus}</p>
                 </div>
                 <div className="action-row">
-                  <button className="btn-secondary" disabled={dograhWidgetLoading || dograhWebCallingEnabled} onClick={enableDograhWebCalling}>
+                  <button className="btn-secondary" disabled={dograhWidgetLoading || dograhWebCallingEnabled || !connected} onClick={enableDograhWebCalling}>
                     <RefreshCw size={16} />
                     Enable Web Calling
                   </button>
@@ -1015,7 +1023,7 @@ export default function AgentDetails() {
                   <RefreshCw size={16} />{agent.provider === "dograh" ? "Update Dograh Flow" : "Sync Provider"}
                 </button>
               )}
-              {["failed", "update_failed"].includes(String(agent.dograhStatus || "").toLowerCase()) && (
+              {(workflowSyncStatus === "Workflow Failed" || !connected) && (
                 <button className="btn-secondary mt-2 w-full" disabled={callLoading} onClick={retryDograhWorkflowCreation}>
                   <RefreshCw size={16} />Retry Dograh Workflow Creation
                 </button>
@@ -1045,11 +1053,12 @@ export default function AgentDetails() {
               </div>
 
               <div className="mb-4 grid gap-2">
-                <ShareToggle label="Public" checked={shareForm.isPublic} disabled={shareSaving} onChange={() => toggleShareField("isPublic")} />
+                <ShareToggle label="Public" checked={shareForm.isPublic} disabled={shareSaving || !connected} onChange={() => toggleShareField("isPublic")} />
                 <ShareToggle label="Chat" checked={shareForm.publicChatEnabled} disabled={shareSaving} onChange={() => toggleShareField("publicChatEnabled")} />
                 <ShareToggle label="Web Call" checked={shareForm.publicWebCallEnabled} disabled={shareSaving || !dograhWebCallingEnabled} onChange={() => toggleShareField("publicWebCallEnabled")} />
               </div>
-              {!dograhWebCallingEnabled && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Enable Dograh web calling before turning on public web calls.</p>}
+              {!connected && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Connect Dograh workflow before publishing this agent.</p>}
+              {connected && !dograhWebCallingEnabled && <p className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Enable Dograh web calling before turning on public web calls.</p>}
 
               <div className="space-y-3">
                 <Input label="Public Title" name="publicTitle" value={shareForm.publicTitle} setForm={setShareForm} />
