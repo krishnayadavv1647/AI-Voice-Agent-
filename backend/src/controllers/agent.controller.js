@@ -886,7 +886,7 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
   }
 
-  const { embedToken } = await createDograhEmbedToken(workflowId);
+  const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId });
   agent.dograhEmbedToken = embedToken;
   agent.dograhWidgetEnabled = true;
   await agent.save();
@@ -916,7 +916,7 @@ export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
   }
 
-  await deleteDograhEmbedToken(workflowId);
+  await deleteDograhEmbedToken(workflowId, { userId: agent.userId });
   agent.dograhEmbedToken = undefined;
   agent.dograhWidgetEnabled = false;
   await agent.save();

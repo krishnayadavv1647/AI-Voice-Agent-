@@ -187,7 +187,7 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
     }
   };
 
-  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload);
+  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload, { userId: agent.userId });
   const dograhRunId = extractRunId(dograhResponse);
   const rawProviderStatus = dograhResponse?.status || "initiated";
 

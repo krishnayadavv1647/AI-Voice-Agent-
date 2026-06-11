@@ -213,4 +213,6 @@ pre {
     @apply rounded-2xl p-4;
   }
 }
-
+::-webkit-scrollbar {
+  display: none;
+}

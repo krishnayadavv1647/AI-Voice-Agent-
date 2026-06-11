@@ -33,6 +33,8 @@ const callLogSchema = new mongoose.Schema(
     retryScheduled: { type: Boolean, default: false },
     leadCaptured: { type: Boolean, default: false },
     leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead" },
+    campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign", index: true },
+    campaignRecipientId: { type: mongoose.Schema.Types.ObjectId, ref: "CampaignRecipient", index: true },
     leadData: { type: mongoose.Schema.Types.Mixed },
     rawDograhPayload: { type: mongoose.Schema.Types.Mixed },
     rawWebhookPayload: { type: mongoose.Schema.Types.Mixed },

@@ -9,8 +9,8 @@ const scheduledCallSchema = new mongoose.Schema(
     timezone: { type: String, required: true },
     status: {
       type: String,
-      enum: ["pending", "processing", "completed", "cancelled", "failed"],
-      default: "pending",
+      enum: ["pending", "scheduled", "running", "processing", "triggered", "completed", "cancelled", "failed"],
+      default: "scheduled",
       index: true
     },
     attempts: { type: Number, default: 0 },

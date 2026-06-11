@@ -1,6 +1,7 @@
 import Agent from "../models/Agent.js";
 import ImportedCallRow from "../models/ImportedCallRow.js";
 import ImportRun from "../models/ImportRun.js";
+import FollowUp from "../models/FollowUp.js";
 import Lead from "../models/Lead.js";
 import ScheduledCall from "../models/ScheduledCall.js";
 import { ApiError } from "../utils/apiError.js";
@@ -273,8 +274,7 @@ export async function validateRun({ userId, runId, mapping }) {
         userId,
         agentId: run.agentId,
         phoneNumber: row.phone,
-        scheduledForUtc: row.startAt,
-        status: { $in: ["pending", "processing"] }
+        scheduledForUtc: row.startAt
       });
       if (duplicate) row.error = "duplicate";
     }
@@ -306,26 +306,39 @@ export async function importValidRows({ userId, runId }) {
   const agent = await Agent.findOne({ _id: run.agentId, userId });
   if (!agent) throw new ApiError(404, "Agent not found.");
 
-  const rows = await ImportedCallRow.find({ importRunId: run._id, userId }).sort({ createdAt: 1 });
+  const rows = await ImportedCallRow.find({ importRunId: run._id, userId, status: "valid" }).sort({ createdAt: 1 });
   let importedRows = 0;
   let skippedRows = 0;
   const errors = [];
 
-  for (const row of rows) {
-    if (row.status !== "valid") continue;
+  console.log("[Import Calls] import run started", {
+    importRunId: run._id.toString(),
+    userId: userId.toString(),
+    agentId: run.agentId.toString()
+  });
+  console.log("[Import Calls] valid rows found", {
+    importRunId: run._id.toString(),
+    count: rows.length
+  });
 
+  for (const row of rows) {
     const duplicate = await ScheduledCall.findOne({
       userId,
       agentId: run.agentId,
       phoneNumber: row.phone,
-      scheduledForUtc: row.startAt,
-      status: { $in: ["pending", "processing"] }
+      scheduledForUtc: row.startAt
     });
     if (duplicate) {
       row.status = "skipped";
-      row.error = "duplicate";
+      row.error = "Duplicate scheduled call";
       skippedRows += 1;
       await row.save();
+      console.log("[Import Calls] duplicate scheduled call skipped", {
+        importRunId: run._id.toString(),
+        leadId: row.leadId?.toString(),
+        toPhone: row.phone,
+        scheduledForUtc: row.startAt
+      });
       continue;
     }
 
@@ -355,6 +368,12 @@ export async function importValidRows({ userId, runId }) {
         { new: true, upsert: true }
       );
 
+      console.log("[Import Calls] lead created/found", {
+        importRunId: run._id.toString(),
+        leadId: lead._id.toString(),
+        phone: row.phone
+      });
+
       const schedule = await ScheduledCall.create({
         userId,
         agentId: run.agentId,
@@ -363,11 +382,48 @@ export async function importValidRows({ userId, runId }) {
         phoneNumber: row.phone,
         scheduledForUtc: row.startAt,
         timezone: row.timezone,
-        status: "pending",
+        status: "scheduled",
         source: "import",
         purpose: row.purpose,
         notes: row.notes
       });
+
+      console.log("[Import Calls] scheduled call created", {
+        importRunId: run._id.toString(),
+        scheduledCallId: schedule._id.toString(),
+        leadId: lead._id.toString(),
+        toPhone: row.phone,
+        scheduledForUtc: row.startAt
+      });
+
+      try {
+        const followUp = await FollowUp.create({
+          userId,
+          agentId: run.agentId,
+          leadId: lead._id,
+          phoneNumber: row.phone,
+          type: "call",
+          trigger: "imported_call",
+          status: "scheduled",
+          scheduledAt: row.startAt,
+          maxAttempts: 0,
+          note: row.purpose || row.notes || "Imported scheduled call."
+        });
+
+        console.log("[Import Calls] follow-up created", {
+          importRunId: run._id.toString(),
+          followUpId: followUp._id.toString(),
+          leadId: lead._id.toString(),
+          scheduledAt: row.startAt
+        });
+      } catch (followUpError) {
+        console.error("[Import Calls] follow-up creation failed", {
+          importRunId: run._id.toString(),
+          scheduledCallId: schedule._id.toString(),
+          leadId: lead._id.toString(),
+          error: followUpError.message
+        });
+      }
 
       row.leadId = lead._id;
       row.scheduledCallId = schedule._id;
@@ -388,9 +444,17 @@ export async function importValidRows({ userId, runId }) {
   run.importedRows = importedRows;
   run.skippedRows = skippedRows;
   run.invalidRows = invalidRows;
-  run.status = "imported";
-  run.errors = errors;
+  run.status = importedRows > 0 ? "imported" : "failed";
+  run.errors = importedRows > 0 ? errors : (errors.length ? errors : ["No valid rows were imported."]);
   await run.save();
+
+  console.log("[Import Calls] import run finished", {
+    importRunId: run._id.toString(),
+    importedRows,
+    skippedRows,
+    invalidRows,
+    status: run.status
+  });
 
   return {
     totalRows: run.totalRows,

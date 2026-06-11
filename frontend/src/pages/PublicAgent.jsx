@@ -317,7 +317,7 @@ function TopBar({ profile, view, onHome }) {
     <header className="sticky top-0 z-30 border-b border-[#d8e4f5] bg-[#ffffff]/85 backdrop-blur">
       <div className="mx-auto flex h-[60px] max-w-[1180px] items-center gap-3 px-4 sm:px-6">
         <button onClick={onHome} className="flex min-w-0 items-center gap-2.5 text-left" aria-label="Home">
-          <Robot size={34} src={profile.logoUrl} head glow={false} float={false} />
+          <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} />
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-sm font-extrabold">{profile.title}</span>
             <span className="block truncate text-[11.5px] text-[#64748b]">{profile.category} Â· {profile.availability}</span>
@@ -413,7 +413,7 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
           <button className="vf-btn vf-btn-ghost p-2.5" onClick={onBack} aria-label="Back">
             <ArrowLeft size={18} />
           </button>
-          <Robot size={42} src={profile.logoUrl} head glow={false} float={false} />
+          <Robot size={42} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-[15px] font-extrabold">{profile.title}</div>
             <div className="inline-flex items-center gap-1.5 text-[12.5px] text-[#64748b]">{typing ? "typing..." : <><GreenDot /> Online</>}</div>
@@ -441,9 +441,9 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
 
         <div ref={scrollRef} className="vf-scroll flex flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.map((item) => (
-            <Bubble key={item.id} message={item} />
+            <Bubble key={item.id} message={item} profile={profile} />
           ))}
-          {typing && <TypingBubble />}
+          {typing && <TypingBubble profile={profile} />}
           {messages.length <= 1 && !typing && (
             <div className="mt-1">
               <div className="mb-2.5 text-[12.5px] font-bold text-[#64748b]">SUGGESTED</div>
@@ -482,6 +482,7 @@ function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBo
   const isLive = status === "connected";
   const isEnded = status === "ended";
   const isError = status === "error";
+  const displayImage = profile.agentImageUrl || profile.logoUrl;
 
   return (
     <div className="vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
@@ -491,27 +492,59 @@ function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBo
             <div className="flex items-center gap-2 text-[12.5px] font-bold tracking-[.08em] text-[#64748b]">
               <GreenDot /> {isLive ? "LIVE VOICE CALL" : "CONNECTING..."}
             </div>
+
             <div className="relative my-6 grid h-[260px] w-[260px] place-items-center">
-              {!isLive && <><span className="vf-pulse-ring" /><span className="vf-pulse-ring vf-d2" /><span className="vf-pulse-ring vf-d3" /></>}
-              <Robot size={isLive ? 210 : 200} glow float={isLive} />
+              {!isLive && (
+                <>
+                  <span className="vf-pulse-ring" />
+                  <span className="vf-pulse-ring vf-d2" />
+                  <span className="vf-pulse-ring vf-d3" />
+                </>
+              )}
+
+              <Robot
+                size={isLive ? 210 : 200}
+                src={displayImage}
+                glow
+                float={isLive}
+              />
             </div>
+
             <h1 className="text-2xl font-extrabold tracking-normal">{profile.title}</h1>
-            <p className="mt-2 text-[15px] text-[#64748b]">{isLive ? "Private voice line is active." : "Securing a private line..."}</p>
-            {error && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+
+            <p className="mt-2 text-[15px] text-[#64748b]">
+              {isLive ? "Private voice line is active." : "Securing a private line..."}
+            </p>
+
+            {error && (
+              <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                {error}
+              </p>
+            )}
+
             {isLive && (
               <div className="vf-eq mt-5">
-                {Array.from({ length: 9 }).map((_, index) => <span key={index} />)}
+                {Array.from({ length: 9 }).map((_, index) => (
+                  <span key={index} />
+                ))}
               </div>
             )}
+
             <div className="mt-auto flex items-center justify-center gap-3.5 pt-7">
               {isLive && (
                 <button className="vf-btn vf-btn-ghost h-[58px] w-[58px] rounded-full p-0" aria-label="Mute">
                   <Mic size={22} />
                 </button>
               )}
-              <button className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_12px_26px_rgba(220,38,38,.32)]" onClick={isLive ? onEnd : onBack} aria-label="End call">
+
+              <button
+                className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_12px_26px_rgba(220,38,38,.32)]"
+                onClick={isLive ? onEnd : onBack}
+                aria-label="End call"
+              >
                 <PhoneOff size={24} />
               </button>
+
               {isLive && (
                 <button className="vf-btn vf-btn-ghost h-[58px] w-[58px] rounded-full p-0" onClick={onBook} aria-label="Book">
                   <CalendarDays size={22} />
@@ -524,15 +557,31 @@ function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBo
             <span className="grid h-[76px] w-[76px] place-items-center rounded-full bg-rose-50 text-rose-700">
               <PhoneOff size={34} />
             </span>
+
             <h1 className="mt-5 text-[26px] font-extrabold tracking-normal">Call could not start</h1>
-            <p className="mt-1.5 max-w-sm text-[15px] text-[#64748b]">{error || "Please allow microphone access and try again."}</p>
+
+            <p className="mt-1.5 max-w-sm text-[15px] text-[#64748b]">
+              {error || "Please allow microphone access and try again."}
+            </p>
+
             <div className="mt-6 flex w-full flex-col gap-3">
-              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onRetry}><Headphones size={17} /> Try web call again</button>
+              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onRetry}>
+                <Headphones size={17} /> Try web call again
+              </button>
+
               <div className="flex gap-3">
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Chat</button>
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
+                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}>
+                  <MessageCircle size={17} /> Chat
+                </button>
+
+                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}>
+                  <ArrowLeft size={17} /> Home
+                </button>
               </div>
-              <button className="vf-btn vf-btn-ghost w-full p-3" onClick={onBook}><CalendarDays size={17} /> Book appointment</button>
+
+              <button className="vf-btn vf-btn-ghost w-full p-3" onClick={onBook}>
+                <CalendarDays size={17} /> Book appointment
+              </button>
             </div>
           </div>
         ) : (
@@ -540,13 +589,26 @@ function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBo
             <span className="grid h-[76px] w-[76px] place-items-center rounded-full bg-[#dbeafe] text-[#1d4ed8]">
               <Check size={36} strokeWidth={2.6} />
             </span>
+
             <h1 className="mt-5 text-[26px] font-extrabold tracking-normal">Call ended</h1>
-            <p className="mt-1.5 text-[15px] text-[#64748b]">with {profile.title}</p>
+
+            <p className="mt-1.5 text-[15px] text-[#64748b]">
+              with {profile.title}
+            </p>
+
             <div className="mt-6 flex w-full flex-col gap-3">
-              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onBook}><CalendarDays size={18} /> Book a counselling session</button>
+              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onBook}>
+                <CalendarDays size={18} /> Book a counselling session
+              </button>
+
               <div className="flex gap-3">
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Chat</button>
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
+                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}>
+                  <MessageCircle size={17} /> Chat
+                </button>
+
+                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}>
+                  <ArrowLeft size={17} /> Home
+                </button>
               </div>
             </div>
           </div>
@@ -607,7 +669,7 @@ function Booking({ profile, agent, onBack, onChat }) {
     return (
       <div className="vf-enter grid w-full place-items-center px-4 py-7 sm:px-5">
         <div className="vf-glass flex w-full max-w-[520px] flex-col items-center rounded-[28px] px-7 py-9 text-center sm:px-11">
-          <Robot size={130} glow float />
+          <Robot size={130} src={profile.agentImageUrl} glow float />
           <span className="-mt-3 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-[0_10px_22px_rgba(37,99,235,.20)]">
             <Check size={24} strokeWidth={3} />
           </span>
@@ -724,11 +786,14 @@ function InfoRow({ icon: Icon, label, value, dot, first }) {
   );
 }
 
-function Bubble({ message }) {
+function Bubble({ message, profile }) {
   const isUser = message.role === "user";
+  const avatarImage = profile?.agentImageUrl || profile?.logoUrl;
+
   return (
     <div className={`vf-msg flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && <Robot size={34} head glow={false} float={false} />}
+      {!isUser && <Robot size={34} src={avatarImage} glow={false} float={false} />}
+
       <div className={`${isUser ? "rounded-br-md bg-[#2563eb] text-white" : "vf-card-solid rounded-bl-md"} max-w-[78%] rounded-[18px] px-4 py-3 text-[15px] leading-normal ${message.error ? "text-rose-700" : ""}`}>
         {message.text}
       </div>
@@ -736,10 +801,13 @@ function Bubble({ message }) {
   );
 }
 
-function TypingBubble() {
+function TypingBubble({ profile }) {
+  const avatarImage = profile?.agentImageUrl || profile?.logoUrl;
+
   return (
     <div className="vf-msg flex items-end gap-2.5">
-      <Robot size={34} head glow={false} float={false} />
+      <Robot size={34} src={avatarImage} glow={false} float={false} />
+
       <div className="vf-card-solid vf-typing flex items-center gap-1.5 rounded-[18px] rounded-bl-md px-4 py-3.5">
         <span /><span /><span />
       </div>
@@ -785,18 +853,22 @@ function GreenDot() {
 
 function Robot({ size = 240, src = "", head = false, glow = true, float = true }) {
   const fallback = head ? robotHead : robotImage;
+  const [imageSrc, setImageSrc] = useState(src || fallback);
+
+  useEffect(() => {
+    setImageSrc(src || fallback);
+  }, [src, fallback]);
+
   return (
     <span className="vf-robot-wrap" style={{ width: size, height: size }}>
       {glow && <span className="vf-robot-glow" />}
+
       <img
         className={`vf-robot-img ${float ? "vf-robot-float" : ""}`}
-        src={src || fallback}
+        src={imageSrc}
         alt="AI assistant"
         draggable="false"
-        onError={(event) => {
-          event.currentTarget.onerror = null;
-          event.currentTarget.src = fallback;
-        }}
+        onError={() => setImageSrc(fallback)}
       />
     </span>
   );

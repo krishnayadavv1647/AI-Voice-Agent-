@@ -22,6 +22,7 @@ const tabs = [
   ["dashboard", "Admin Dashboard", Shield],
   ["users", "Users", Users],
   ["agents", "Agents", Bot],
+  ["campaigns", "Campaigns", PhoneCall],
   ["calls", "Calls", PhoneCall],
   ["leads", "Leads", Users],
   ["appointments", "Appointments", CalendarClock],
@@ -87,6 +88,7 @@ export default function Admin() {
   useEffect(() => {
     const paths = {
       agents: "/admin/agents",
+      campaigns: "/admin/campaigns",
       calls: "/admin/calls",
       leads: "/admin/leads",
       appointments: "/admin/appointments",
@@ -131,16 +133,17 @@ export default function Admin() {
 
   async function viewUser(user) {
     const detail = await api(`/admin/users/${user._id}`);
-    const [agents, leads, calls, appointments, followups, campaigns, usage] = await Promise.all([
+    const [agents, leads, calls, campaigns, appointments, followups, emailCampaigns, usage] = await Promise.all([
       api(`/admin/users/${user._id}/agents`),
       api(`/admin/users/${user._id}/leads`),
       api(`/admin/users/${user._id}/calls`),
+      api(`/admin/users/${user._id}/campaigns`),
       api(`/admin/users/${user._id}/appointments`),
       api(`/admin/users/${user._id}/followups`),
       api(`/admin/users/${user._id}/email-campaigns`),
       api(`/admin/users/${user._id}/usage`)
     ]);
-    setSelectedUser({ ...detail, tabs: { agents, leads, calls, appointments, followups, campaigns, usage } });
+    setSelectedUser({ ...detail, tabs: { agents, leads, calls, campaigns, appointments, followups, emailCampaigns, usage } });
   }
 
   const cards = [
@@ -207,13 +210,14 @@ export default function Admin() {
                 </div>
               </div>
               <AdminTable
-                columns={["Name", "Email", "Role", "Status", "Plan", "Agents", "Calls", "Leads", "Emails", "Created", "Last Login", "Actions"]}
+                columns={["Name", "Email", "Role", "Status", "Plan", "Dograh", "Agents", "Calls", "Leads", "Emails", "Created", "Last Login", "Actions"]}
                 rows={filteredUsers.map((user) => [
                   user.name,
                   user.email,
                   <StatusBadge status={user.role} />,
                   <StatusBadge status={user.status} />,
                   user.plan,
+                  <StatusBadge status={user.dograhIntegration?.status || "not_connected"} />,
                   user.counts?.agents || 0,
                   user.counts?.calls || 0,
                   user.counts?.leads || 0,
@@ -236,7 +240,7 @@ export default function Admin() {
             </section>
           )}
 
-          {["agents", "calls", "leads", "appointments", "followups", "email"].includes(active) && (
+          {["agents", "campaigns", "calls", "leads", "appointments", "followups", "email"].includes(active) && (
             <ResourceTable keyName={active} rows={resources[active] || []} mutate={mutate} />
           )}
 
@@ -291,6 +295,7 @@ function AdminTable({ columns, rows }) {
 function ResourceTable({ keyName, rows, mutate }) {
   const configs = {
     agents: ["Agent", ["Agent Name", "User", "Category", "Status", "Dograh", "Calls", "Leads", "Created", "Actions"], (row) => [row.agentName, row.userId?.email, row.businessCategory, <StatusBadge status={row.status} />, row.dograhStatus || "-", row.totalCalls || 0, row.totalLeads || 0, fmt(row.createdAt), <RowActions row={row} base="/admin/agents" mutate={mutate} pause activate />]],
+    campaigns: ["Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Answered", "Failed", "Start", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.stats?.totalRecipients || 0, row.stats?.answered || 0, row.stats?.failed || 0, fmt(row.startAt), <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Campaign paused", () => api(`/campaigns/${row._id}/pause`, { method: "POST" }))}>Pause</button><button className="btn-danger" onClick={() => mutate("Campaign cancelled", () => api(`/campaigns/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
     calls: ["Calls", ["Date", "User", "Agent", "Caller", "Calling", "Status", "Outcome", "Duration", "Lead", "Actions"], (row) => [fmt(row.createdAt), row.userId?.email, row.agentId?.agentName, row.callerNumber, row.callingNumber, <StatusBadge status={row.normalizedStatus || row.status} />, row.outcome || "-", row.duration || row.durationSeconds || "-", row.leadId ? "Yes" : "No", <button className="btn-danger" onClick={() => mutate("Call deleted", () => api(`/admin/calls/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
     leads: ["Leads", ["Lead", "User", "Agent", "Phone", "Email", "City", "Source", "Status", "Created", "Actions"], (row) => [nameOf(row), row.userId?.email, row.agentId?.agentName, row.phone, row.email, row.city, row.source, <StatusBadge status={row.status} />, fmt(row.createdAt), <button className="btn-danger" onClick={() => mutate("Lead deleted", () => api(`/admin/leads/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
     appointments: ["Appointments", ["Lead", "User", "Agent", "Date & Time", "Phone", "Type", "Status", "Reminder", "Call Status", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, fmt(row.startAt), row.customerPhone, row.appointmentType, <StatusBadge status={row.status} />, row.reminderStatus, row.appointmentCallStatus, <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Appointment completed", () => api(`/admin/appointments/${row._id}/complete`, { method: "POST" }))}>Complete</button><button className="btn-danger" onClick={() => mutate("Appointment cancelled", () => api(`/admin/appointments/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
@@ -340,7 +345,7 @@ function AuditTable({ rows }) {
 }
 
 function UserDetailModal({ detail, onClose, mutate }) {
-  const { user, usage, tabs: userTabs } = detail;
+  const { user, usage, dograhIntegration, tabs: userTabs } = detail;
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="modal-panel rounded-3xl bg-white p-5 shadow-2xl sm:max-w-5xl" onClick={(event) => event.stopPropagation()}>
@@ -350,6 +355,8 @@ function UserDetailModal({ detail, onClose, mutate }) {
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {["status", "role", "plan", "planStatus"].map((key) => <div key={key} className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{key}</p><p className="font-bold text-slate-950">{user[key] || "-"}</p></div>)}
+          <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">Dograh Integration</p><p className="font-bold text-slate-950">{dograhIntegration?.status || "not_connected"}</p></div>
+          <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">Dograh Last Error</p><p className="break-anywhere font-bold text-slate-950">{dograhIntegration?.lastError || "-"}</p></div>
           {Object.entries(usage || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{key}</p><p className="font-bold text-slate-950">{value}</p></div>)}
         </div>
         <div className="mt-5 grid gap-4 xl:grid-cols-2">

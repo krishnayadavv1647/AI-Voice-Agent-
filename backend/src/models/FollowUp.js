@@ -13,7 +13,7 @@ const followUpSchema = new mongoose.Schema(
     type: { type: String, enum: ["email", "call", "message"], required: true },
     trigger: {
       type: String,
-      enum: ["manual", "email_sent", "call_not_picked", "call_completed", "lead_created", "call_declined", "call_busy", "call_failed", "appointment_reminder", "appointment_call"],
+      enum: ["manual", "email_sent", "imported_call", "call_not_picked", "call_completed", "lead_created", "call_declined", "call_busy", "call_failed", "appointment_reminder", "appointment_call"],
       default: "manual",
       index: true
     },

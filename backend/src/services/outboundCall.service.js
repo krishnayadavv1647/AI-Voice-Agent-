@@ -43,7 +43,7 @@ function getDograhWebhookUrl() {
   return webhookUrl;
 }
 
-function dograhCallPayload(agent, phoneNumber) {
+function dograhCallPayload(agent, phoneNumber, metadata = {}) {
   const webhookUrl = getDograhWebhookUrl();
 
   return {
@@ -56,6 +56,7 @@ function dograhCallPayload(agent, phoneNumber) {
       agentName: agent.agentName,
       localAgentId: agent._id.toString(),
       userId: agent.userId.toString(),
+      ...metadata,
     },
 
     metadata: {
@@ -63,6 +64,7 @@ function dograhCallPayload(agent, phoneNumber) {
       userId: agent.userId.toString(),
       dograhWorkflowUuid: agent.dograhWorkflowUuid,
       webhookUrl,
+      ...metadata,
     },
   };
 }
@@ -71,22 +73,11 @@ export async function triggerOutboundCallForAgent({
   agent,
   userId,
   phoneNumber,
+  leadId,
+  source = "dograh",
+  metadata = {},
   trigger = triggerDograhOutboundCallByWorkflow
 }) {
-  if (!process.env.DOGRAH_BASE_URL) {
-    throw new ApiError(
-      500,
-      "DOGRAH_BASE_URL is missing. Please configure the backend environment."
-    );
-  }
-
-  if (!process.env.DOGRAH_API_KEY) {
-    throw new ApiError(
-      500,
-      "DOGRAH_API_KEY is missing. Please configure the backend environment."
-    );
-  }
-
   if (!agent?.dograhWorkflowUuid) {
     throw new ApiError(
       400,
@@ -111,8 +102,8 @@ export async function triggerOutboundCallForAgent({
   assertE164(phoneNumber, "Phone number");
   assertE164(agent.callerIdNumber, "Caller ID number");
 
-  const payload = dograhCallPayload(agent, phoneNumber);
-  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload);
+  const payload = dograhCallPayload(agent, phoneNumber, metadata);
+  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload, { userId: userId || agent.userId });
   const dograhRunId = extractRunId(dograhResponse);
   const responseFields = extractCallFields(dograhResponse);
 
@@ -129,13 +120,16 @@ export async function triggerOutboundCallForAgent({
     dograhWorkflowId: agent.dograhWorkflowId,
     dograhWorkflowUuid: agent.dograhWorkflowUuid,
     dograhRunId: dograhRunId ? String(dograhRunId) : null,
+    leadId,
+    campaignId: metadata.campaignId,
+    campaignRecipientId: metadata.campaignRecipientId,
     callerNumber: phoneNumber,
     callingNumber: agent.callerIdNumber,
     status: rawProviderStatus,
     rawProviderStatus,
     providerPayload: dograhResponse,
     callDirection: "outbound",
-    source: "dograh",
+    source,
     duration: null,
     durationSeconds: null,
     summary: null,

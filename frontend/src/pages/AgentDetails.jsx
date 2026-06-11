@@ -785,7 +785,7 @@ export default function AgentDetails() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={schedule.status} />
-                        {schedule.status === "pending" && (
+                        {["pending", "scheduled"].includes(schedule.status) && (
                           <button className="btn-secondary px-3 py-1.5 text-xs" disabled={scheduleLoading} onClick={() => cancelScheduledCall(schedule._id)}>Cancel</button>
                         )}
                       </div>

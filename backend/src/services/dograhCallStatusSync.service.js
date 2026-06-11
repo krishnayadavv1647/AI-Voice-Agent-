@@ -22,7 +22,7 @@ export async function syncDograhCallStatus(callLogId) {
     runId: callLog.dograhRunId
   });
 
-  const runDetails = await getDograhCallRunDetails(callLog.dograhWorkflowId, callLog.dograhRunId);
+  const runDetails = await getDograhCallRunDetails(callLog.dograhWorkflowId, callLog.dograhRunId, { userId: callLog.userId });
   const mapped = normalizeDograhRunDetails(runDetails);
   const rawProviderStatus = mapped.status || callLog.rawProviderStatus || callLog.status;
 

@@ -3,11 +3,13 @@ import Agent from "../models/Agent.js";
 import Appointment from "../models/Appointment.js";
 import AuditLog from "../models/AuditLog.js";
 import CallLog from "../models/CallLog.js";
+import Campaign from "../models/Campaign.js";
 import EmailCampaign from "../models/EmailCampaign.js";
 import EmailLog from "../models/EmailLog.js";
 import FollowUp from "../models/FollowUp.js";
 import Lead from "../models/Lead.js";
 import LeadFinder from "../models/LeadFinder.js";
+import UserIntegration from "../models/UserIntegration.js";
 import User from "../models/User.js";
 import { signToken } from "../utils/token.js";
 import { ApiError } from "../utils/apiError.js";
@@ -154,9 +156,20 @@ export const listUsers = asyncHandler(async (req, res) => {
     countsByUser(Lead, ids),
     countsByUser(EmailLog, ids, { status: "sent" })
   ]);
+  const integrations = await UserIntegration.find({ userId: { $in: ids }, provider: "dograh" }).select("userId status lastError updatedAt apiKeyEncrypted").lean();
+  const dograhByUser = Object.fromEntries(integrations.map((integration) => [
+    String(integration.userId),
+    {
+      status: integration.status,
+      maskedApiKey: integration.apiKeyEncrypted ? "encrypted" : "",
+      lastError: integration.lastError || "",
+      updatedAt: integration.updatedAt
+    }
+  ]));
 
   res.json(users.map((user) => ({
     ...user,
+    dograhIntegration: dograhByUser[String(user._id)] || { status: "not_connected" },
     counts: {
       agents: agents[String(user._id)] || 0,
       calls: calls[String(user._id)] || 0,
@@ -171,8 +184,21 @@ export const adminUsers = listUsers;
 export const getUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).select("-password").lean();
   actorCanManage(req.user, user);
-  const usage = await usageForUser(user._id);
-  res.json({ user, usage });
+  const [usage, dograhIntegration] = await Promise.all([
+    usageForUser(user._id),
+    UserIntegration.findOne({ userId: user._id, provider: "dograh" }).select("status baseUrl accountEmail workspaceId lastTestedAt lastError apiKeyEncrypted").lean()
+  ]);
+  res.json({
+    user,
+    usage,
+    dograhIntegration: dograhIntegration
+      ? {
+          ...dograhIntegration,
+          apiKeyEncrypted: undefined,
+          maskedApiKey: dograhIntegration.apiKeyEncrypted ? "encrypted" : ""
+        }
+      : { status: "not_connected" }
+  });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
@@ -264,6 +290,7 @@ function listFor(Model, populate = []) {
 
 export const adminAgents = listFor(Agent, [{ path: "userId", select: "name email" }]);
 export const adminCalls = listFor(CallLog, [{ path: "userId", select: "name email" }, { path: "agentId", select: "agentName businessName" }, { path: "leadId", select: "name businessName phone" }]);
+export const adminCampaigns = listFor(Campaign, [{ path: "userId", select: "name email" }, { path: "agentId", select: "agentName businessName" }]);
 export const adminLeads = listFor(Lead, [{ path: "userId", select: "name email" }, { path: "agentId", select: "agentName" }]);
 export const adminAppointments = listFor(Appointment, [{ path: "userId", select: "name email" }, { path: "agentId", select: "agentName" }, { path: "leadId", select: "name businessName phone email" }]);
 export const adminFollowUps = listFor(FollowUp, [{ path: "userId", select: "name email" }, { path: "agentId", select: "agentName" }, { path: "leadId", select: "name businessName phone" }]);

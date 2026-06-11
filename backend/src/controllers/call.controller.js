@@ -240,7 +240,7 @@ export const syncCallByRun = asyncHandler(async (req, res) => {
     });
   }
 
-  const runDetails = await getDograhCallRunDetails(workflowId, runId);
+  const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog?.userId || req.user._id });
 
   if (!callLog) {
     const agent = await Agent.findOne({
@@ -268,7 +268,7 @@ export const syncCallByRun = asyncHandler(async (req, res) => {
 
 async function syncCallLogWithDograhRun({ callLog, workflowId, runId }) {
   try {
-    const runDetails = await getDograhCallRunDetails(workflowId, runId);
+    const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog.userId });
     return applyRunDetailsToCallLog(callLog, runDetails);
   } catch (error) {
     console.log("Dograh run sync failed:", error.response?.data || error.message);

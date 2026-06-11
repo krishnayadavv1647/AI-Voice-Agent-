@@ -3,21 +3,26 @@ import ScheduledCall from "../models/ScheduledCall.js";
 import { triggerOutboundCallForAgent } from "./outboundCall.service.js";
 
 const POLL_INTERVAL_MS = 30 * 1000;
-const MAX_DUE_PER_TICK = 10;
 
 let intervalId = null;
 let running = false;
 
 async function processSchedule(schedule) {
   const claimed = await ScheduledCall.findOneAndUpdate(
-    { _id: schedule._id, status: "pending" },
-    { $set: { status: "processing", lastError: "" }, $inc: { attempts: 1 } },
+    { _id: schedule._id, status: "scheduled" },
+    { $set: { status: "running", lastError: "" }, $inc: { attempts: 1 } },
     { new: true }
   );
 
-  if (!claimed) return;
+  if (!claimed) {
+    console.log("[Scheduled Calls] call skipped", {
+      scheduleId: schedule._id.toString(),
+      reason: "status is not scheduled"
+    });
+    return null;
+  }
 
-  console.log("[Scheduled Calls] schedule claimed", {
+  console.log("[Scheduled Calls] call claimed", {
     scheduleId: claimed._id.toString(),
     agentId: claimed.agentId.toString(),
     phoneNumber: claimed.phoneNumber
@@ -38,20 +43,24 @@ async function processSchedule(schedule) {
     claimed.processedAt = new Date();
     await claimed.save();
 
-    console.log("[Scheduled Calls] schedule completed", {
+    console.log("[Scheduled Calls] call triggered", {
       scheduleId: claimed._id.toString(),
       callLogId: callLog._id.toString()
     });
+
+    return claimed;
   } catch (error) {
     claimed.status = "failed";
     claimed.lastError = error.message;
     claimed.processedAt = new Date();
     await claimed.save();
 
-    console.error("[Scheduled Calls] schedule failed", {
+    console.error("[Scheduled Calls] call failed", {
       scheduleId: claimed._id.toString(),
       error: error.message
     });
+
+    return claimed;
   }
 }
 
@@ -60,20 +69,17 @@ async function tick() {
   running = true;
 
   try {
-    const dueSchedules = await ScheduledCall.find({
-      status: "pending",
+    const dueSchedule = await ScheduledCall.findOne({
+      status: "scheduled",
       scheduledForUtc: { $lte: new Date() }
     })
-      .sort({ scheduledForUtc: 1 })
-      .limit(MAX_DUE_PER_TICK);
+      .sort({ scheduledForUtc: 1 });
 
-    for (const schedule of dueSchedules) {
-      console.log("[Scheduled Calls] due schedule found", {
-        scheduleId: schedule._id.toString(),
-        scheduledForUtc: schedule.scheduledForUtc
-      });
-      await processSchedule(schedule);
-    }
+    console.log("[Scheduled Calls] due calls found", {
+      count: dueSchedule ? 1 : 0
+    });
+
+    if (dueSchedule) await processSchedule(dueSchedule);
   } catch (error) {
     console.error("[Scheduled Calls] worker tick failed", error.message);
   } finally {

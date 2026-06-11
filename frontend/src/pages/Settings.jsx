@@ -11,6 +11,10 @@ export default function Settings() {
   const [telegram, setTelegram] = useState(null);
   const [telegramCode, setTelegramCode] = useState("");
   const [telegramMessage, setTelegramMessage] = useState("");
+  const [dograh, setDograh] = useState(null);
+  const [dograhForm, setDograhForm] = useState({ apiKey: "", baseUrl: "" });
+  const [dograhMessage, setDograhMessage] = useState("");
+  const [dograhSaving, setDograhSaving] = useState(false);
   const [agents, setAgents] = useState([]);
   const [telephonyForm, setTelephonyForm] = useState({
     name: "",
@@ -31,7 +35,61 @@ export default function Settings() {
   useEffect(() => {
     loadTelephonyConfigs();
     loadTelegramStatus();
+    loadDograhStatus();
   }, []);
+
+  async function loadDograhStatus() {
+    try {
+      const status = await api("/integrations/dograh");
+      setDograh(status);
+      setDograhForm((current) => ({ ...current, baseUrl: status.baseUrl || current.baseUrl || "" }));
+    } catch (error) {
+      setDograhMessage(error.response?.message || error.message);
+    }
+  }
+
+  async function connectDograh() {
+    setDograhMessage("");
+    setDograhSaving(true);
+    try {
+      const result = await api("/integrations/dograh/connect", { method: "POST", body: dograhForm });
+      setDograh(result);
+      setDograhForm({ apiKey: "", baseUrl: result.baseUrl || dograhForm.baseUrl });
+      setDograhMessage("Dograh connected successfully.");
+    } catch (error) {
+      setDograhMessage(error.response?.message || error.message);
+    } finally {
+      setDograhSaving(false);
+    }
+  }
+
+  async function testDograh() {
+    setDograhMessage("");
+    setDograhSaving(true);
+    try {
+      const result = await api("/integrations/dograh/test", { method: "POST", body: dograhForm });
+      setDograh(result);
+      setDograhMessage("Dograh connection test passed.");
+    } catch (error) {
+      setDograhMessage(error.response?.message || error.message);
+    } finally {
+      setDograhSaving(false);
+    }
+  }
+
+  async function disconnectDograh() {
+    setDograhMessage("");
+    setDograhSaving(true);
+    try {
+      const result = await api("/integrations/dograh/disconnect", { method: "DELETE" });
+      setDograh(result);
+      setDograhMessage("Dograh disconnected. Your agents will use the platform Dograh account if available.");
+    } catch (error) {
+      setDograhMessage(error.response?.message || error.message);
+    } finally {
+      setDograhSaving(false);
+    }
+  }
 
   async function loadTelegramStatus() {
     try {
@@ -131,6 +189,47 @@ export default function Settings() {
           <p className="text-sm leading-6 text-slate-500">Dograh and Gemini credentials are server-only. Full keys are never exposed in the frontend.</p>
           <input value="DOGRAH_API_KEY: •••••••••••• connected" readOnly />
           <input value="GEMINI_API_KEY: •••••••••••• connected" readOnly />
+        </Panel>
+
+        <Panel icon={KeyRound} title="Dograh API Integration">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Info label="Status" value={dograh?.connected ? "Connected" : dograh?.status || "Not connected"} />
+            <Info label="API Key" value={dograh?.maskedApiKey || "Not connected"} />
+            <Info label="Base URL" value={dograh?.baseUrl || "Platform default"} />
+            <Info label="Last Tested" value={dograh?.lastTestedAt ? new Date(dograh.lastTestedAt).toLocaleString() : "Not tested"} />
+          </div>
+
+          <p className="text-sm leading-6 text-slate-500">Your Dograh API key is encrypted and only used to run your agents and calls.</p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              type="password"
+              placeholder={dograh?.maskedApiKey ? "Enter new API key to replace" : "Dograh API key"}
+              value={dograhForm.apiKey}
+              onChange={(event) => setDograhForm({ ...dograhForm, apiKey: event.target.value })}
+            />
+            <input
+              placeholder="Base URL"
+              value={dograhForm.baseUrl}
+              onChange={(event) => setDograhForm({ ...dograhForm, baseUrl: event.target.value })}
+            />
+          </div>
+
+          <div className="action-row">
+            <button className="btn-primary" disabled={dograhSaving || (!dograhForm.apiKey && !dograh?.connected)} onClick={connectDograh}>
+              <KeyRound size={16} />Save & Connect
+            </button>
+            <button className="btn-secondary" disabled={dograhSaving || (!dograhForm.apiKey && !dograh?.connected)} onClick={testDograh}>
+              Test Connection
+            </button>
+            <button className="btn-danger" disabled={dograhSaving || !dograh?.connected} onClick={disconnectDograh}>
+              Disconnect
+            </button>
+          </div>
+
+          {(dograhMessage || dograh?.lastError) && (
+            <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{dograhMessage || dograh.lastError}</p>
+          )}
         </Panel>
 
         <Panel icon={CreditCard} title="Billing & Usage Limits">
