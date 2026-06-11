@@ -248,8 +248,8 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
 
   const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
   const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
-  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload);
-  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload);
+  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload, { userId: req.user._id });
+  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload, { userId: req.user._id });
 
   config.dograhTelephonyConfigId = String(dograhConfig.dograhTelephonyConfigId);
   config.dograhPhoneNumberId = dograhPhone.dograhPhoneNumberId ? String(dograhPhone.dograhPhoneNumberId) : "";

@@ -13,6 +13,7 @@ import AuthSuccess from "./pages/AuthSuccess.jsx";
 import Billing from "./pages/Billing.jsx";
 import BioPageBuilder from "./pages/BioPageBuilder.jsx";
 import CallLogs from "./pages/CallLogs.jsx";
+import Campaigns from "./pages/Campaigns.jsx";
 import CreateAgent from "./pages/CreateAgent.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import EditAgent from "./pages/EditAgent.jsx";
@@ -68,6 +69,7 @@ function Router() {
         <Route path="agents/:id/test" element={<TestAgent />} />
         <Route path="create-agent" element={<CreateAgent />} />
         <Route path="calls" element={<CallLogs />} />
+        <Route path="campaigns" element={<Campaigns />} />
         <Route path="leads" element={<Leads />} />
         <Route path="lead-finder" element={<LeadFinder />} />
         <Route path="email-outreach" element={<EmailOutreach />} />
@@ -96,7 +98,11 @@ function Router() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+const rootElement = document.getElementById("root");
+const root = rootElement.__reactRoot || ReactDOM.createRoot(rootElement);
+rootElement.__reactRoot = root;
+
+root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>

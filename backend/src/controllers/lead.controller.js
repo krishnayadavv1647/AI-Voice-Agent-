@@ -88,7 +88,7 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
     }
   };
 
-  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload);
+  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload, { userId: lead.userId });
   const dograhRunId = extractRunId(dograhResponse);
   const rawProviderStatus = dograhResponse?.status || "initiated";
 

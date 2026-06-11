@@ -5,6 +5,7 @@ import Lead from "../models/Lead.js";
 import User from "../models/User.js";
 import WebhookEvent from "../models/WebhookEvent.js";
 import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../services/callOutcome.service.js";
+import { syncCampaignRecipientFromCall } from "../services/campaign.service.js";
 import { extractCallFields, hasUsefulLeadData, normalizeLeadData, pick } from "../services/callLogMapper.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 
@@ -132,6 +133,7 @@ export async function dograhWebhook(req, res) {
     const leadCreated = await upsertLead({ agent, callLog, leadData });
     await applyCallOutcomeToLog(callLog, rawProviderStatus, { endedAt: fields.endedAt });
     await callLog.save();
+    await syncCampaignRecipientFromCall(callLog);
     await scheduleRetryFollowUpForCall(callLog);
     await WebhookEvent.create({
       provider: "dograh",

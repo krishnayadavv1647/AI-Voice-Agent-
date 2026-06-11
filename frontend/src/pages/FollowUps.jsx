@@ -21,6 +21,7 @@ function triggerLabel(trigger) {
     call_busy: "Busy",
     call_failed: "Failed",
     email_sent: "Email Sent",
+    imported_call: "Imported Call",
     manual: "Manual"
   };
   return labels[trigger] || trigger || "-";

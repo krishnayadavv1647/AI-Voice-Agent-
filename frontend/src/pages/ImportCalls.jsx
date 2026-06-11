@@ -31,6 +31,7 @@ export default function ImportCalls() {
   const [loading, setLoading] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
 
   const validCount = useMemo(() => rows.filter((row) => row.status === "valid").length, [rows]);
   const invalidCount = useMemo(() => rows.filter((row) => row.status === "invalid").length, [rows]);
@@ -107,13 +108,15 @@ export default function ImportCalls() {
 
   async function importRows() {
     if (!activeRun?._id) return;
+    setShowScheduleConfirm(false);
     setLoading("import");
     setNotice("");
     setError("");
     try {
       const result = await api(`/import-calls/${activeRun._id}/import`, { method: "POST" });
       setSummary(result);
-      setNotice(`Import complete. ${result.importedRows} calls scheduled.`);
+      const created = result.importedRows || 0;
+      setNotice(created === 1 ? "1 scheduled call created" : `${created} scheduled calls created`);
       const fresh = await api(`/import-calls/${activeRun._id}`);
       setActiveRun(fresh.run);
       setRows(fresh.rows || []);
@@ -123,6 +126,14 @@ export default function ImportCalls() {
     } finally {
       setLoading("");
     }
+  }
+
+  function confirmScheduleRows() {
+    if (!validCount) {
+      setError("No valid rows available to schedule.");
+      return;
+    }
+    setShowScheduleConfirm(true);
   }
 
   async function openRun(run) {
@@ -193,7 +204,7 @@ export default function ImportCalls() {
               </div>
               <div className="action-row">
                 <button className="btn-secondary" disabled={loading === "validate"} onClick={validateFile}><FileSpreadsheet size={16} />{loading === "validate" ? "Validating..." : "Validate File"}</button>
-                <button className="btn-primary" disabled={!validCount || loading === "import"} onClick={importRows}><Upload size={16} />{loading === "import" ? "Importing..." : "Import Valid Rows"}</button>
+                <button className="btn-primary" disabled={!validCount || loading === "import"} onClick={confirmScheduleRows}><Upload size={16} />{loading === "import" ? "Scheduling..." : "Schedule All Valid Rows"}</button>
                 <button className="btn-secondary" disabled={!rows.length} onClick={downloadErrors}><Download size={16} />Download Error Rows</button>
               </div>
             </div>
@@ -246,6 +257,23 @@ export default function ImportCalls() {
             </section>
           )}
         </>
+      )}
+
+      {showScheduleConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-bold text-slate-950">Confirm Schedule</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              This will create scheduled AI calls for all {validCount} valid row{validCount === 1 ? "" : "s"} in this import.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button className="btn-secondary" disabled={loading === "import"} onClick={() => setShowScheduleConfirm(false)}>Cancel</button>
+              <button className="btn-primary" disabled={loading === "import"} onClick={importRows}>
+                <Upload size={16} />{loading === "import" ? "Scheduling..." : "Confirm Schedule"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <section className="card overflow-hidden p-0">

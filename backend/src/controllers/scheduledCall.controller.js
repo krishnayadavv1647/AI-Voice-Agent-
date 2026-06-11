@@ -116,7 +116,7 @@ export const createScheduledCall = asyncHandler(async (req, res) => {
     phoneNumber,
     scheduledForUtc,
     timezone,
-    status: "pending"
+    status: "scheduled"
   });
 
   res.status(201).json(schedule);
@@ -144,8 +144,8 @@ export const listScheduledCallsForAgent = asyncHandler(async (req, res) => {
 export const cancelScheduledCall = asyncHandler(async (req, res) => {
   const schedule = await getOwnedSchedule(req);
 
-  if (schedule.status !== "pending") {
-    throw new ApiError(400, "Only pending scheduled calls can be cancelled.");
+  if (!["pending", "scheduled"].includes(schedule.status)) {
+    throw new ApiError(400, "Only scheduled calls can be cancelled.");
   }
 
   schedule.status = "cancelled";

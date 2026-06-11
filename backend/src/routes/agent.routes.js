@@ -28,7 +28,9 @@ import {
   updateShareSettings,
   unpublishBioPage,
   uploadBioPageCover,
-  uploadBioPageLogo
+  uploadBioPageAgentImage,
+  uploadBioPageLogo,
+  uploadBioPageTopicIcon
 } from "../controllers/agent.controller.js";
 import { protect } from "../middleware/auth.middleware.js";
 
@@ -40,11 +42,14 @@ router.get("/bio-page/templates", listBioPageTemplates);
 router.route("/:id").get(getAgent).put(updateAgent).delete(removeAgent);
 router.get("/:id/bio-page", getBioPage);
 router.patch("/:id/bio-page", updateBioPage);
+router.put("/:id/bio-page", updateBioPage);
 router.post("/:id/bio-page/reset", resetBioPage);
 router.post("/:id/bio-page/publish", publishBioPage);
 router.post("/:id/bio-page/unpublish", unpublishBioPage);
 router.post("/:id/bio-page/logo", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "2mb" }), uploadBioPageLogo);
 router.post("/:id/bio-page/cover", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "5mb" }), uploadBioPageCover);
+router.post("/:id/bio-page/agent-image", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "5mb" }), uploadBioPageAgentImage);
+router.post("/:id/bio-page/topic-icon", express.raw({ type: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"], limit: "1mb" }), uploadBioPageTopicIcon);
 router.patch("/:agentId/share-settings", updateShareSettings);
 router.post("/:id/regenerate-prompt-preview", previewRegeneratedPrompt);
 router.post("/:id/test", testAgent);

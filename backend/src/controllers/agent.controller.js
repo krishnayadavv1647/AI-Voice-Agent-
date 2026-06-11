@@ -16,25 +16,94 @@ import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
-import { BIO_PAGE_TEMPLATES, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
+import { BIO_PAGE_TEMPLATES, DEFAULT_QUICK_TOPICS, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
 
 function userFilter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
-const BIO_TEXT_FIELDS = ["headline", "subheadline", "welcomeMessage", "ctaText", "secondaryCtaText"];
-const BIO_STRING_FIELDS = ["template", "logoUrl", "coverImageUrl", "primaryColor", "backgroundColor", "textColor", "buttonColor", "fontStyle", "animation", ...BIO_TEXT_FIELDS];
-const BIO_BOOL_FIELDS = ["showWebCall", "showAppointment", "showContactForm", "showBusinessInfo", "showSocialLinks", "isPublished"];
+const BIO_TEXT_FIELDS = ["headline", "subheadline", "welcomeMessage", "ctaText", "primaryCtaText", "secondaryCtaText", "voiceCallCtaText"];
+const BIO_STRING_FIELDS = [
+  "template",
+  "logoUrl",
+  "coverImageUrl",
+  "agentImageUrl",
+  "primaryColor",
+  "backgroundColor",
+  "textColor",
+  "buttonColor",
+  "cardColor",
+  "accentColor",
+  "fontStyle",
+  "animation",
+  ...BIO_TEXT_FIELDS
+];
+const BIO_BOOL_FIELDS = [
+  "showWebCall",
+  "showWebCallButton",
+  "showAppointment",
+  "showAppointmentButton",
+  "showContactForm",
+  "showBusinessInfo",
+  "showSocialLinks",
+  "showVoiceCallButton",
+  "isPublished"
+];
+const BIO_NESTED_TEXT_FIELDS = {
+  businessInfo: ["businessName", "category", "location", "availability", "responseTime"],
+  socialLinks: ["website", "instagram", "facebook", "whatsapp", "linkedin"]
+};
 const FONT_STYLES = ["modern", "professional", "friendly", "bold", "elegant"];
 const ANIMATIONS = ["none", "fade_in", "slide_up", "zoom_in", "floating_cards", "gradient_motion", "pulse_button"];
+const TOPIC_ICON_TYPES = ["lucide", "emoji", "image"];
 
 function sanitizeText(value) {
   return String(value || "").replace(/[<>]/g, "").trim().slice(0, 600);
 }
 
 function ensureBioPage(agent) {
-  return { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  const current = agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {};
+  const defaults = defaultBioPage(agent);
+  return {
+    ...defaults,
+    ...current,
+    primaryCtaText: current.primaryCtaText || current.ctaText || defaults.primaryCtaText,
+    ctaText: current.ctaText || current.primaryCtaText || defaults.ctaText,
+    showWebCallButton: current.showWebCallButton ?? current.showWebCall ?? defaults.showWebCallButton,
+    showWebCall: current.showWebCall ?? current.showWebCallButton ?? defaults.showWebCall,
+    showAppointmentButton: current.showAppointmentButton ?? current.showAppointment ?? defaults.showAppointmentButton,
+    showAppointment: current.showAppointment ?? current.showAppointmentButton ?? defaults.showAppointment,
+    businessInfo: { ...defaults.businessInfo, ...(current.businessInfo || {}) },
+    socialLinks: { ...defaults.socialLinks, ...(current.socialLinks || {}) },
+    quickTopics: Array.isArray(current.quickTopics) && current.quickTopics.length
+      ? current.quickTopics
+      : DEFAULT_QUICK_TOPICS.map((topic) => ({ ...topic }))
+  };
+}
+
+function sanitizeQuickTopics(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new ApiError(400, "Quick topics must be a list.");
+
+  return value.slice(0, 8).map((topic = {}, index) => {
+    const color = String(topic.color || "#2563EB").trim();
+    if (!HEX_COLOR.test(color)) throw new ApiError(400, "Quick topic color must be a safe hex color.");
+
+    const iconType = TOPIC_ICON_TYPES.includes(topic.iconType) ? topic.iconType : "lucide";
+    return {
+      id: sanitizeText(topic.id || `topic-${index + 1}`).slice(0, 80) || `topic-${index + 1}`,
+      title: sanitizeText(topic.title).slice(0, 80) || `Topic ${index + 1}`,
+      description: sanitizeText(topic.description).slice(0, 160),
+      icon: sanitizeText(topic.icon || "MessageCircle").slice(0, 80),
+      iconType,
+      iconImageUrl: sanitizeText(topic.iconImageUrl).slice(0, 500),
+      color,
+      prompt: sanitizeText(topic.prompt).slice(0, 300),
+      isVisible: topic.isVisible !== false,
+      order: Number.isFinite(Number(topic.order)) ? Number(topic.order) : index
+    };
+  });
 }
 
 function sanitizeBioPagePatch(body = {}) {
@@ -44,7 +113,7 @@ function sanitizeBioPagePatch(body = {}) {
     if (BIO_TEXT_FIELDS.includes(field)) patch[field] = sanitizeText(body[field]);
     else patch[field] = String(body[field] || "").trim().slice(0, 500);
   }
-  for (const field of ["primaryColor", "backgroundColor", "textColor", "buttonColor"]) {
+  for (const field of ["primaryColor", "backgroundColor", "textColor", "buttonColor", "cardColor", "accentColor"]) {
     if (patch[field] !== undefined && !HEX_COLOR.test(patch[field])) throw new ApiError(400, `${field} must be a safe hex color.`);
   }
   if (patch.template && !BIO_PAGE_TEMPLATES.some((item) => item.templateId === patch.template)) throw new ApiError(400, "Bio page template is not valid.");
@@ -53,20 +122,41 @@ function sanitizeBioPagePatch(body = {}) {
   for (const field of BIO_BOOL_FIELDS) {
     if (body[field] !== undefined) patch[field] = Boolean(body[field]);
   }
+  for (const [group, fields] of Object.entries(BIO_NESTED_TEXT_FIELDS)) {
+    if (!body[group] || typeof body[group] !== "object") continue;
+    patch[group] = {};
+    for (const field of fields) {
+      if (body[group][field] !== undefined) patch[group][field] = sanitizeText(body[group][field]).slice(0, 500);
+    }
+  }
+  const quickTopics = sanitizeQuickTopics(body.quickTopics);
+  if (quickTopics) patch.quickTopics = quickTopics;
+  if (patch.primaryCtaText !== undefined && patch.ctaText === undefined) patch.ctaText = patch.primaryCtaText;
+  if (patch.ctaText !== undefined && patch.primaryCtaText === undefined) patch.primaryCtaText = patch.ctaText;
+  if (patch.showWebCallButton !== undefined && patch.showWebCall === undefined) patch.showWebCall = patch.showWebCallButton;
+  if (patch.showWebCall !== undefined && patch.showWebCallButton === undefined) patch.showWebCallButton = patch.showWebCall;
+  if (patch.showAppointmentButton !== undefined && patch.showAppointment === undefined) patch.showAppointment = patch.showAppointmentButton;
+  if (patch.showAppointment !== undefined && patch.showAppointmentButton === undefined) patch.showAppointmentButton = patch.showAppointment;
   patch.updatedAt = new Date();
   return patch;
 }
 
 async function saveBioAsset({ req, agent, kind }) {
   const contentType = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
-  const allowed = kind === "logo"
-    ? { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" }
+  const allowed = kind === "topic-icon"
+    ? { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg" }
     : { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
-  const maxBytes = kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+  const maxBytes = kind === "topic-icon" ? 1 * 1024 * 1024 : kind === "logo" ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
 
-  if (!allowed[contentType]) throw new ApiError(400, `${kind} must be png, jpg, jpeg, or webp.`);
+  if (!allowed[contentType]) throw new ApiError(400, `${kind} must be png, jpg, jpeg, webp${kind === "topic-icon" ? ", or safe svg" : ""}.`);
   if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ApiError(400, `${kind} file is required.`);
   if (req.body.length > maxBytes) throw new ApiError(400, `${kind} file is too large.`);
+  if (contentType === "image/svg+xml") {
+    const svg = req.body.toString("utf8").toLowerCase();
+    if (svg.includes("<script") || /on[a-z]+\s*=/.test(svg) || svg.includes("javascript:")) {
+      throw new ApiError(400, "SVG icon contains unsafe content.");
+    }
+  }
 
   const uploadDir = path.resolve("uploads", "bio-pages", String(agent._id));
   await fs.mkdir(uploadDir, { recursive: true });
@@ -433,7 +523,13 @@ export const updateBioPage = asyncHandler(async (req, res) => {
   const current = ensureBioPage(agent);
   const patch = sanitizeBioPagePatch(req.body);
   const templatePatch = patch.template ? templateDefaults(patch.template) : {};
-  agent.bioPage = { ...current, ...templatePatch, ...patch };
+  agent.bioPage = {
+    ...current,
+    ...templatePatch,
+    ...patch,
+    businessInfo: { ...current.businessInfo, ...(patch.businessInfo || {}) },
+    socialLinks: { ...current.socialLinks, ...(patch.socialLinks || {}) }
+  };
   agent.publicTitle = agent.bioPage.headline || agent.publicTitle;
   agent.publicDescription = agent.bioPage.subheadline || agent.publicDescription;
   agent.publicWelcomeMessage = agent.bioPage.welcomeMessage || agent.publicWelcomeMessage;
@@ -477,6 +573,20 @@ export const uploadBioPageCover = asyncHandler(async (req, res) => {
   agent.bioPage = { ...ensureBioPage(agent), coverImageUrl, updatedAt: new Date() };
   await agent.save();
   res.status(201).json({ success: true, coverImageUrl, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageAgentImage = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const agentImageUrl = await saveBioAsset({ req, agent, kind: "agent" });
+  agent.bioPage = { ...ensureBioPage(agent), agentImageUrl, updatedAt: new Date() };
+  await agent.save();
+  res.status(201).json({ success: true, agentImageUrl, bioPage: agent.bioPage });
+});
+
+export const uploadBioPageTopicIcon = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  const iconImageUrl = await saveBioAsset({ req, agent, kind: "topic-icon" });
+  res.status(201).json({ success: true, iconImageUrl });
 });
 
 export const getAgent = asyncHandler(async (req, res) => {
@@ -776,7 +886,7 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
   }
 
-  const { embedToken } = await createDograhEmbedToken(workflowId);
+  const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId });
   agent.dograhEmbedToken = embedToken;
   agent.dograhWidgetEnabled = true;
   await agent.save();
@@ -806,7 +916,7 @@ export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
   }
 
-  await deleteDograhEmbedToken(workflowId);
+  await deleteDograhEmbedToken(workflowId, { userId: agent.userId });
   agent.dograhEmbedToken = undefined;
   agent.dograhWidgetEnabled = false;
   await agent.save();

@@ -5,6 +5,7 @@ import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 import { loadDograhWidget } from "../utils/loadDograhWidget.js";
+import { requestMicrophoneAccess } from "../utils/microphone.js";
 
 function readWorkflowList(response) {
   if (Array.isArray(response)) return response;
@@ -608,7 +609,8 @@ export default function AgentDetails() {
       const result = await api(`/agents/${id}/dograh/embed-token`, { method: "DELETE" });
       setDograhEmbedToken("");
       setData((current) => ({ ...current, agent: result.agent || { ...current.agent, dograhEmbedToken: "", dograhWidgetEnabled: false } }));
-      document.getElementById("dograh-widget")?.remove();
+      const widgetNode = document.getElementById("dograh-widget");
+      if (widgetNode && widgetNode.parentNode) widgetNode.parentNode.removeChild(widgetNode);
       delete window.DograhWidget;
       setDograhCallStatus("disabled");
       setNotice("Dograh web calling disabled.");
@@ -625,13 +627,7 @@ export default function AgentDetails() {
     setDograhCallStatus("connecting");
 
     try {
-      try {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        micStream.getTracks().forEach((track) => track.stop());
-      } catch {
-        throw new Error("Microphone permission denied.");
-      }
-
+      await requestMicrophoneAccess();
       const token = dograhEmbedToken || agent?.dograhEmbedToken;
       const widget = await loadDograhWidget(token);
       registerDograhWidgetCallbacks(widget);
@@ -789,7 +785,7 @@ export default function AgentDetails() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={schedule.status} />
-                        {schedule.status === "pending" && (
+                        {["pending", "scheduled"].includes(schedule.status) && (
                           <button className="btn-secondary px-3 py-1.5 text-xs" disabled={scheduleLoading} onClick={() => cancelScheduledCall(schedule._id)}>Cancel</button>
                         )}
                       </div>

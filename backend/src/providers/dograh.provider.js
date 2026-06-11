@@ -42,7 +42,7 @@ export const DograhProvider = {
     });
 
     const response = await createDograhWorkflowFromDefinition(agent);
-    const fields = await resolveDograhWorkflowFields(response);
+    const fields = await resolveDograhWorkflowFields(response, agent.userId);
 
     if (!fields.dograhWorkflowId) {
       throw new Error("Dograh create succeeded but workflow ID was not returned");
@@ -75,7 +75,7 @@ export const DograhProvider = {
     });
 
     const response = await updateDograhWorkflowById(workflowId, agent);
-    const fields = await resolveDograhWorkflowFields(response);
+    const fields = await resolveDograhWorkflowFields(response, agent.userId);
 
     return {
       provider: "dograh",
@@ -103,7 +103,7 @@ export const DograhProvider = {
       externalWorkflowCreated: false
     });
 
-    const response = await archiveDograhWorkflowById(workflowId);
+    const response = await archiveDograhWorkflowById(workflowId, { userId: agent.userId });
 
     return {
       provider: "dograh",
@@ -121,7 +121,7 @@ export const DograhProvider = {
       throw new Error("Cannot start Dograh call because workflow UUID is missing");
     }
 
-    const response = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload);
+    const response = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload, { userId: agent.userId });
 
     return {
       provider: "dograh",

@@ -2,6 +2,7 @@ import express from "express";
 import Agent from "../models/Agent.js";
 import Appointment from "../models/Appointment.js";
 import CallLog from "../models/CallLog.js";
+import Campaign from "../models/Campaign.js";
 import EmailCampaign from "../models/EmailCampaign.js";
 import FollowUp from "../models/FollowUp.js";
 import Lead from "../models/Lead.js";
@@ -11,6 +12,7 @@ import {
   adminAgents,
   adminAppointments,
   adminCalls,
+  adminCampaigns,
   adminEmailCampaigns,
   adminEmailLogs,
   adminFollowUps,
@@ -71,6 +73,7 @@ router.post("/users/:id/impersonate", impersonateUser);
 router.get("/users/:id/agents", getUserResource(Agent, []));
 router.get("/users/:id/leads", getUserResource(Lead, []));
 router.get("/users/:id/calls", getUserResource(CallLog, []));
+router.get("/users/:id/campaigns", getUserResource(Campaign, []));
 router.get("/users/:id/appointments", getUserResource(Appointment, []));
 router.get("/users/:id/email-campaigns", getUserResource(EmailCampaign, []));
 router.get("/users/:id/followups", getUserResource(FollowUp, []));
@@ -83,6 +86,7 @@ router.post("/agents/:id/activate", activateAgent);
 router.delete("/agents/:id", deleteAgent);
 
 router.get("/calls", adminCalls);
+router.get("/campaigns", adminCampaigns);
 router.get("/calls/:id", getCall);
 router.delete("/calls/:id", deleteCall);
 

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Bell,
   Bot,
   BookOpen,
@@ -9,6 +9,7 @@ import {
   Headphones,
   Mail,
   MailOpen,
+  Megaphone,
   Languages,
   LayoutTemplate,
   LogOut,
@@ -33,6 +34,7 @@ const links = [
   { to: "/agents", label: "Agents", icon: Bot },
   { to: "/create-agent", label: "Create Agent", icon: PlusCircle },
   { to: "/calls", label: "Call Logs", icon: PhoneCall },
+  { to: "/campaigns", label: "Campaigns", icon: Megaphone },
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/lead-finder", label: "Lead Finder", icon: Search },
   { to: "/email-outreach", label: "Email Outreach", icon: Mail },

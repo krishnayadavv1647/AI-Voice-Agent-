@@ -4,6 +4,7 @@ dotenv.config();
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import { startFollowUpWorker } from "./services/followUpWorker.js";
+import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
 
@@ -17,6 +18,7 @@ connectDB()
   .then(() => {
     console.log("Database connected");
     startScheduledCallWorker();
+    startCampaignWorker();
     startFollowUpWorker();
     startTelegramBot();
   })
