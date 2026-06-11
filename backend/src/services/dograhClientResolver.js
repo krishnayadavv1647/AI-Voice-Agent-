@@ -90,6 +90,8 @@ export async function getDograhClientForUser(userId, { allowGlobalFallbackOnErro
         mode: "user",
         baseUrl,
         maskedApiKey: maskSecret(apiKey),
+        apiKeyExists: Boolean(apiKey),
+        apiKeyPrefix: apiKey ? apiKey.slice(0, 8) : null,
         integration
       };
     } catch (error) {
@@ -116,7 +118,9 @@ export async function getDograhClientForUser(userId, { allowGlobalFallbackOnErro
     client: createDograhClientFromCredentials(global),
     mode: "platform",
     baseUrl: global.baseUrl,
-    maskedApiKey: maskSecret(global.apiKey)
+    maskedApiKey: maskSecret(global.apiKey),
+    apiKeyExists: Boolean(global.apiKey),
+    apiKeyPrefix: global.apiKey ? global.apiKey.slice(0, 8) : null
   };
 }
 

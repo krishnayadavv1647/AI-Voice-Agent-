@@ -256,9 +256,21 @@ function clearDograhWorkflowFields(agent, errorMessage) {
   agent.dograhAgentId = null;
   agent.dograhStatus = "failed";
   agent.dograhSyncStatus = "Workflow Failed";
+  agent.dograhConnection = "Not connected";
   agent.dograhError = errorMessage || "Dograh workflow creation failed.";
   agent.dograhNeedsUpdate = true;
   agent.status = "Draft";
+}
+
+function readProviderErrorMessage(error) {
+  const data = error?.response?.data || error?.details?.dograhError || error?.details;
+  const detail = data?.message || data?.error || data?.detail || data?.userMessage;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return JSON.stringify(detail);
+  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  if (typeof data === "string") return data;
+  if (data && typeof data === "object") return JSON.stringify(data);
+  return error?.message || "Dograh workflow creation failed.";
 }
 
 function assertE164(value, fieldName) {
@@ -368,6 +380,7 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
     set.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
     set.dograhStatus = hasRealDograhWorkflow(set) ? "connected" : result.status || agent.dograhStatus;
     set.dograhSyncStatus = hasRealDograhWorkflow(set) ? "Workflow Synced" : "Workflow Not Connected";
+    set.dograhConnection = hasRealDograhWorkflow(set) ? "Connected" : "Not connected";
     set.dograhRawResponse = result.raw || agent.dograhRawResponse;
     set.dograhLastSyncedAt = syncedAt;
     set.dograhNeedsUpdate = !hasRealDograhWorkflow(set);
@@ -399,6 +412,7 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
     agent.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
     agent.dograhStatus = hasRealDograhWorkflow(agent) ? "connected" : result.status || agent.dograhStatus;
     agent.dograhSyncStatus = hasRealDograhWorkflow(agent) ? "Workflow Synced" : "Workflow Not Connected";
+    agent.dograhConnection = hasRealDograhWorkflow(agent) ? "Connected" : "Not connected";
     agent.dograhError = undefined;
     agent.dograhRawResponse = result.raw || agent.dograhRawResponse;
     agent.dograhLastSyncedAt = syncedAt;
@@ -458,7 +472,7 @@ export const createAgent = asyncHandler(async (req, res) => {
   const agent = new Agent({
     ...body,
     userId: req.user._id,
-    provider: body.provider || "custom",
+    provider: body.provider || "dograh",
     agentName: body.agentName || body.name,
     name: body.name || body.agentName,
     description: body.description || body.businessDescription,
@@ -511,11 +525,15 @@ export const createAgent = asyncHandler(async (req, res) => {
       });
     } catch (error) {
       console.error("Dograh agent creation failed:", error.response?.data || error.message);
+      const dograhError = readProviderErrorMessage(error);
+      clearDograhWorkflowFields(agent, dograhError);
+      await agent.save();
       throw new ApiError(
         error.statusCode || error.response?.status || 502,
-        "Dograh agent creation failed. Please check your API key and Dograh payload.",
+        dograhError,
         {
-          dograhError: error.response?.data || error.message
+          dograhError: error.response?.data || error.details?.dograhError || error.message,
+          agent
         }
       );
     }
@@ -948,6 +966,7 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   agent.telephonyProvider = telephonyProvider || "twilio";
   agent.dograhStatus = "connected";
   agent.dograhSyncStatus = "Workflow Synced";
+  agent.dograhConnection = "Connected";
   agent.dograhError = undefined;
   agent.dograhNeedsUpdate = false;
   agent.status = "Connected";
