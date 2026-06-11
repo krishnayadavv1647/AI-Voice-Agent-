@@ -317,21 +317,32 @@ export async function createDograhWorkflowFromDefinition(agent) {
       workflow_definition
     };
 
+    const endpoint = process.env.DOGRAH_CREATE_WORKFLOW_ENDPOINT || DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT;
+    const resolved = await createDograhClient(agent.userId);
+
     console.log("Creating Dograh workflow from definition:", {
-      endpoint: DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT,
+      endpoint,
+      baseUrl: resolved.baseUrl,
+      credentialMode: resolved.mode,
       name: payload.name,
       nodeCount: workflow_definition.nodes.length,
       edgeCount: workflow_definition.edges.length
     });
+    console.log("Dograh create endpoint:", endpoint);
+    console.log("Dograh create payload:", JSON.stringify(payload, null, 2));
+    console.log("Dograh API key exists:", Boolean(resolved.apiKeyExists));
+    console.log("Dograh API key prefix:", resolved.apiKeyPrefix || null);
 
-    const resolved = await createDograhClient(agent.userId, { allowGlobalFallbackOnError: false });
     const response = await resolved.client.post(
-      DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT,
+      endpoint,
       payload
     );
 
     return response.data;
   } catch (error) {
+    console.error("Dograh create failed status:", error.response?.status);
+    console.error("Dograh create failed data:", error.response?.data);
+    console.error("Dograh create failed message:", error.message);
     console.error("Dograh create workflow failed status:", error.response?.status);
     console.error("Dograh create workflow failed data:", error.response?.data);
     console.error("Dograh create workflow failed message:", error.message);

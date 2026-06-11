@@ -30,7 +30,7 @@ const initialForm = {
   additionalInfo: "",
   leadQuestions: defaultLeadQuestions,
   templateType: "",
-  provider: "custom",
+  provider: "dograh",
   language: "english",
   llmProvider: "gemini",
   llmModel: "gemini-2.5-flash",

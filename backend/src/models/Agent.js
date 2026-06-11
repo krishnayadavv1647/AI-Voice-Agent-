@@ -85,6 +85,7 @@ const agentSchema = new mongoose.Schema(
     connectedPhoneNumber: String,
     callerIdNumber: String,
     telephonyProvider: String,
+    dograhConnection: String,
     dograhStatus: String,
     dograhSyncStatus: String,
     dograhError: String,
