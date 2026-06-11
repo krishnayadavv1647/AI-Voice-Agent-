@@ -92,8 +92,8 @@ export async function getDograhDebugInfo(userId) {
   };
 }
 
-async function createDograhClient(userId) {
-  const resolved = await getDograhClientForUser(userId);
+async function createDograhClient(userId, options = {}) {
+  const resolved = await getDograhClientForUser(userId, options);
   console.log("DOGRAH_BASE_URL:", resolved.baseUrl);
   console.log("DOGRAH_API_KEY:", resolved.maskedApiKey || "MISSING");
   console.log("DOGRAH_CREDENTIAL_MODE:", resolved.mode);
@@ -266,6 +266,18 @@ export function extractDograhWorkflowFields(dograhResponse) {
       workflow?.name ||
       workflow?.workflow_name ||
       workflow?.workflowName ||
+      null,
+
+    dograhAgentId:
+      dograhResponse?.agent_id ||
+      dograhResponse?.agentId ||
+      dograhResponse?.agentID ||
+      dograhResponse?.data?.agent_id ||
+      dograhResponse?.data?.agentId ||
+      dograhResponse?.data?.agentID ||
+      workflow?.agent_id ||
+      workflow?.agentId ||
+      workflow?.agentID ||
       null
   };
 }
@@ -285,7 +297,8 @@ export async function resolveDograhWorkflowFields(dograhResponse, userId) {
     return {
       dograhWorkflowId: fields.dograhWorkflowId || fetchedFields.dograhWorkflowId,
       dograhWorkflowUuid: fetchedFields.dograhWorkflowUuid || fields.dograhWorkflowUuid,
-      dograhWorkflowName: fields.dograhWorkflowName || fetchedFields.dograhWorkflowName
+      dograhWorkflowName: fields.dograhWorkflowName || fetchedFields.dograhWorkflowName,
+      dograhAgentId: fields.dograhAgentId || fetchedFields.dograhAgentId
     };
   } catch (error) {
     console.error("Dograh workflow UUID fetch failed:", error.message);
@@ -311,7 +324,7 @@ export async function createDograhWorkflowFromDefinition(agent) {
       edgeCount: workflow_definition.edges.length
     });
 
-    const resolved = await createDograhClient(agent.userId);
+    const resolved = await createDograhClient(agent.userId, { allowGlobalFallbackOnError: false });
     const response = await resolved.client.post(
       DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT,
       payload

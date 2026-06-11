@@ -239,6 +239,8 @@ function getAgentDograhWorkflowId(agent) {
   return (
     agent.providerWorkflowId ||
     agent.dograhWorkflowId ||
+    agent.dograhAgentId ||
+    agent.providerAgentId ||
     agent.workflowId ||
     agent.dograhWorkflowUuid ||
     null
@@ -319,6 +321,17 @@ async function syncTelephonyConfigForAgent(agent, telephonyConfigId) {
   agent.connectedPhoneNumber = config.phoneNumber;
 }
 
+async function validateTelephonyConfigForAgent(agent, telephonyConfigId) {
+  if (!telephonyConfigId) return;
+
+  const config = await TelephonyConfig.findOne({ _id: telephonyConfigId, userId: agent.userId });
+  if (!config) throw new ApiError(400, "Telephony configuration was not found for this user");
+
+  agent.telephonyConfigId = config._id;
+  agent.telephonyProvider = config.provider;
+  agent.connectedPhoneNumber = config.phoneNumber;
+}
+
 function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
   const set = {
     provider: result.provider || agent.provider || "custom",
@@ -335,6 +348,7 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
   }
 
   if (set.provider === "dograh" || result.dograhWorkflowId) {
+    set.dograhAgentId = result.dograhAgentId || result.providerAgentId || agent.dograhAgentId || agent.providerAgentId || result.dograhWorkflowId || agent.dograhWorkflowId;
     set.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     set.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     set.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
@@ -364,6 +378,7 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
   agent.lastSyncedAt = syncedAt;
 
   if (agent.provider === "dograh" || result.dograhWorkflowId) {
+    agent.dograhAgentId = result.dograhAgentId || result.providerAgentId || agent.dograhAgentId || agent.providerAgentId || result.dograhWorkflowId || agent.dograhWorkflowId;
     agent.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     agent.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     agent.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
@@ -380,7 +395,7 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
 
 async function syncProvider(agent, action, { createIfMissing = false } = {}) {
   const providerName = agent.provider || (agent.dograhWorkflowId ? "dograh" : "custom");
-  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId;
+  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
 
   if (action === "update" && providerName !== "custom" && !providerWorkflowId && !createIfMissing) {
     throw new ApiError(
@@ -456,33 +471,71 @@ export const createAgent = asyncHandler(async (req, res) => {
     agent.telephonyProvider ||
     "twilio";
 
-  await agent.save();
   agent.telephonyConfigId = telephonyConfigId || null;
-  await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+  await validateTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+  await agent.validate();
+
+  if (agent.provider === "dograh") {
+    let providerResult;
+
+    try {
+      providerResult = await getProvider("dograh").create(agent);
+      const dograhAgentId = providerResult.dograhAgentId || providerResult.providerAgentId || providerResult.dograhWorkflowId || providerResult.providerWorkflowId;
+
+      if (!dograhAgentId) {
+        throw new ApiError(502, "Dograh agent creation failed. Please check your API key and Dograh payload.");
+      }
+
+      applyProviderResult(agent, {
+        ...providerResult,
+        dograhAgentId,
+        providerAgentId: providerResult.providerAgentId || dograhAgentId
+      });
+    } catch (error) {
+      console.error("Dograh agent creation failed:", error.response?.data || error.message);
+      throw new ApiError(
+        error.statusCode || error.response?.status || 502,
+        "Dograh agent creation failed. Please check your API key and Dograh payload.",
+        {
+          dograhError: error.response?.data || error.message
+        }
+      );
+    }
+
+    await agent.save();
+    if (agent.telephonyConfigId) {
+      await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+      await agent.save();
+    }
+
+    return res.status(201).json({
+      agent,
+      providerResult,
+      dograhCreated: true,
+      dograhResponse: providerResult.raw,
+      warning: agent.dograhWorkflowUuid ? null : "Dograh workflow created but workflow UUID was not found in response."
+    });
+  }
+
   await agent.save();
+  if (agent.telephonyConfigId) {
+    await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+    await agent.save();
+  }
 
   try {
     const providerResult = await syncProvider(agent, "create");
-    await agent.save();
 
-    const dograhCreated = agent.provider === "dograh" && Boolean(agent.dograhWorkflowUuid);
+    const dograhCreated = false;
 
     return res.status(201).json({
       agent,
       providerResult,
       dograhCreated,
       dograhResponse: providerResult.raw,
-      warning:
-        agent.provider === "dograh" && !agent.dograhWorkflowUuid
-          ? "Dograh workflow created but workflow UUID was not found in response."
-          : null
+      warning: null
     });
   } catch (error) {
-    if (agent.provider === "dograh") {
-      agent.dograhStatus = "failed";
-      agent.dograhError = error.message;
-      agent.dograhNeedsUpdate = true;
-    }
     agent.status = "draft";
     await agent.save();
 
@@ -862,8 +915,10 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   assertE164(callerIdNumber, "Caller ID number");
 
   agent.dograhWorkflowId = dograhWorkflowId;
+  agent.dograhAgentId = dograhWorkflowId;
   agent.provider = "dograh";
   agent.providerWorkflowId = dograhWorkflowId;
+  agent.providerAgentId = agent.providerAgentId || dograhWorkflowId;
   agent.dograhWorkflowUuid = dograhWorkflowUuid;
   agent.dograhWorkflowName = dograhWorkflowName;
   agent.connectedPhoneNumber = connectedPhoneNumber;
@@ -982,7 +1037,7 @@ export const updateDograhWorkflowForAgent = asyncHandler(async (req, res) => {
 
   const agent = await getOwnedAgent(req);
   agent.provider = "dograh";
-  agent.providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId;
+  agent.providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
   const workflowId = agent.providerWorkflowId;
 
   if (!workflowId) {
@@ -1039,7 +1094,7 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
     await agent.save();
   }
 
-  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId;
+  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
   const createIfMissing = Boolean(req.body?.createIfMissing);
 
   if (agent.provider !== "custom" && !providerWorkflowId && !createIfMissing) {
