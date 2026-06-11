@@ -237,14 +237,28 @@ async function getOwnedAgentById(req, agentId) {
 
 function getAgentDograhWorkflowId(agent) {
   return (
-    agent.providerWorkflowId ||
     agent.dograhWorkflowId ||
-    agent.dograhAgentId ||
-    agent.providerAgentId ||
-    agent.workflowId ||
     agent.dograhWorkflowUuid ||
     null
   );
+}
+
+function hasRealDograhWorkflow(agent) {
+  return Boolean(agent?.dograhWorkflowId || agent?.dograhWorkflowUuid);
+}
+
+function clearDograhWorkflowFields(agent, errorMessage) {
+  agent.providerWorkflowId = null;
+  agent.providerAgentId = null;
+  agent.dograhWorkflowId = null;
+  agent.dograhWorkflowUuid = null;
+  agent.dograhWorkflowName = null;
+  agent.dograhAgentId = null;
+  agent.dograhStatus = "failed";
+  agent.dograhSyncStatus = "Workflow Failed";
+  agent.dograhError = errorMessage || "Dograh workflow creation failed.";
+  agent.dograhNeedsUpdate = true;
+  agent.status = "Draft";
 }
 
 function assertE164(value, fieldName) {
@@ -352,12 +366,13 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
     set.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     set.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     set.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
-    set.dograhStatus = result.status || agent.dograhStatus;
+    set.dograhStatus = hasRealDograhWorkflow(set) ? "connected" : result.status || agent.dograhStatus;
+    set.dograhSyncStatus = hasRealDograhWorkflow(set) ? "Workflow Synced" : "Workflow Not Connected";
     set.dograhRawResponse = result.raw || agent.dograhRawResponse;
     set.dograhLastSyncedAt = syncedAt;
-    set.dograhNeedsUpdate = false;
+    set.dograhNeedsUpdate = !hasRealDograhWorkflow(set);
 
-    if (set.dograhWorkflowUuid) {
+    if (hasRealDograhWorkflow(set)) {
       set.status = "Connected";
     }
 
@@ -382,12 +397,13 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
     agent.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     agent.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     agent.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
-    agent.dograhStatus = result.status || agent.dograhStatus;
+    agent.dograhStatus = hasRealDograhWorkflow(agent) ? "connected" : result.status || agent.dograhStatus;
+    agent.dograhSyncStatus = hasRealDograhWorkflow(agent) ? "Workflow Synced" : "Workflow Not Connected";
     agent.dograhError = undefined;
     agent.dograhRawResponse = result.raw || agent.dograhRawResponse;
     agent.dograhLastSyncedAt = syncedAt;
-    agent.dograhNeedsUpdate = false;
-    agent.status = agent.dograhWorkflowUuid ? "Connected" : agent.status;
+    agent.dograhNeedsUpdate = !hasRealDograhWorkflow(agent);
+    agent.status = hasRealDograhWorkflow(agent) ? "Connected" : agent.status;
   }
 
   return agent;
@@ -395,7 +411,9 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
 
 async function syncProvider(agent, action, { createIfMissing = false } = {}) {
   const providerName = agent.provider || (agent.dograhWorkflowId ? "dograh" : "custom");
-  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
+  const providerWorkflowId = providerName === "dograh"
+    ? (hasRealDograhWorkflow(agent) ? (agent.providerWorkflowId || agent.dograhWorkflowId) : null)
+    : (agent.providerWorkflowId || agent.workflowId);
 
   if (action === "update" && providerName !== "custom" && !providerWorkflowId && !createIfMissing) {
     throw new ApiError(
@@ -874,6 +892,10 @@ export const publishAgent = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Agent is missing required fields");
   }
 
+  if (agent.provider === "dograh" && !hasRealDograhWorkflow(agent)) {
+    throw new ApiError(400, "Connect a Dograh workflow before publishing this agent.");
+  }
+
   agent.status = "Active";
   agent.shareableLink = `${process.env.CLIENT_URL}/test/${agent._id}`;
   agent.embedCode = `<script src="${process.env.CLIENT_URL}/widget.js" data-agent-id="${agent._id}"></script>`;
@@ -925,6 +947,8 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   agent.callerIdNumber = callerIdNumber;
   agent.telephonyProvider = telephonyProvider || "twilio";
   agent.dograhStatus = "connected";
+  agent.dograhSyncStatus = "Workflow Synced";
+  agent.dograhError = undefined;
   agent.dograhNeedsUpdate = false;
   agent.status = "Connected";
 
@@ -986,6 +1010,26 @@ export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
 export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
 
+  if (hasRealDograhWorkflow(agent)) {
+    return res.json({
+      agent,
+      dograhCreated: true,
+      providerResult: {
+        provider: "dograh",
+        providerWorkflowId: agent.providerWorkflowId || agent.dograhWorkflowId,
+        providerAgentId: agent.providerAgentId || agent.dograhAgentId,
+        dograhWorkflowId: agent.dograhWorkflowId,
+        dograhWorkflowUuid: agent.dograhWorkflowUuid,
+        dograhWorkflowName: agent.dograhWorkflowName,
+        dograhAgentId: agent.dograhAgentId,
+        status: "already_connected"
+      },
+      dograhResponse: agent.dograhRawResponse,
+      warning: null,
+      message: "Dograh workflow is already connected."
+    });
+  }
+
   if (!agent.systemPrompt) {
     agent.systemPrompt = generateSystemPrompt(agent);
   }
@@ -1003,29 +1047,35 @@ export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
     agent.telephonyProvider ||
     process.env.DEFAULT_TELEPHONY_PROVIDER ||
     "twilio";
+  agent.providerWorkflowId = null;
+  agent.providerAgentId = null;
+  agent.dograhWorkflowId = null;
+  agent.dograhWorkflowUuid = null;
+  agent.dograhWorkflowName = null;
+  agent.dograhAgentId = null;
   await agent.save();
 
   try {
     const providerResult = await syncProvider(agent, "update", { createIfMissing: true });
+    const updatedAgent = await Agent.findById(agent._id);
 
     return res.json({
-      agent,
-      dograhCreated: Boolean(agent.dograhWorkflowUuid),
+      agent: updatedAgent || agent,
+      dograhCreated: hasRealDograhWorkflow(updatedAgent || agent),
       providerResult,
       dograhResponse: providerResult.raw,
-      warning: agent.dograhWorkflowUuid ? null : "Dograh workflow synced but workflow UUID was not found in response."
+      warning: hasRealDograhWorkflow(updatedAgent || agent) ? null : "Dograh workflow synced but workflow ID was not found in response."
     });
   } catch (error) {
-    agent.dograhStatus = "failed";
-    agent.dograhError = error.message;
-    agent.dograhNeedsUpdate = true;
-    agent.status = "Draft";
+    console.error("Dograh workflow creation failed:", error.response?.data || error.message);
+    clearDograhWorkflowFields(agent, error.response?.data?.message || error.response?.data?.error || error.message);
     await agent.save();
 
     return res.status(502).json({
       agent,
       dograhCreated: false,
-      error: error.message
+      error: agent.dograhError,
+      dograhError: error.response?.data || error.message
     });
   }
 });
@@ -1037,11 +1087,11 @@ export const updateDograhWorkflowForAgent = asyncHandler(async (req, res) => {
 
   const agent = await getOwnedAgent(req);
   agent.provider = "dograh";
-  agent.providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
+  agent.providerWorkflowId = hasRealDograhWorkflow(agent) ? (agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId) : null;
   const workflowId = agent.providerWorkflowId;
 
   if (!workflowId) {
-    throw new ApiError(400, "Cannot update Dograh workflow because this agent has no existing workflow ID.");
+    throw new ApiError(400, "Cannot update Dograh workflow because this agent is not connected. Use Retry Dograh Workflow Creation first.");
   }
 
   if (!agent.systemPrompt || !agent.systemPrompt.trim()) {
@@ -1074,6 +1124,7 @@ export const updateDograhWorkflowForAgent = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     agent.dograhStatus = "update_failed";
+    agent.dograhSyncStatus = hasRealDograhWorkflow(agent) ? "Workflow Needs Update" : "Workflow Failed";
     agent.dograhError = error.message;
     agent.dograhNeedsUpdate = true;
     await agent.save();
@@ -1094,7 +1145,7 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
     await agent.save();
   }
 
-  const providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
+  const providerWorkflowId = hasRealDograhWorkflow(agent) ? (agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId) : null;
   const createIfMissing = Boolean(req.body?.createIfMissing);
 
   if (agent.provider !== "custom" && !providerWorkflowId && !createIfMissing) {

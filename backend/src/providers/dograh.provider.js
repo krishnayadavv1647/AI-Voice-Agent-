@@ -7,7 +7,8 @@ import {
 } from "../services/dograh.service.js";
 
 function getExistingWorkflowId(agent) {
-  return agent.providerWorkflowId || agent.dograhWorkflowId || agent.dograhAgentId || agent.providerAgentId || agent.workflowId;
+  const hasRealWorkflow = Boolean(agent.dograhWorkflowId || agent.dograhWorkflowUuid);
+  return hasRealWorkflow ? (agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId) : null;
 }
 
 export const DograhProvider = {

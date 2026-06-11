@@ -86,6 +86,7 @@ const agentSchema = new mongoose.Schema(
     callerIdNumber: String,
     telephonyProvider: String,
     dograhStatus: String,
+    dograhSyncStatus: String,
     dograhError: String,
     dograhRawResponse: { type: mongoose.Schema.Types.Mixed },
     dograhNeedsUpdate: { type: Boolean, default: false },
