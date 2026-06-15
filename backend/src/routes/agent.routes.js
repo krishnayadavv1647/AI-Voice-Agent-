@@ -2,6 +2,8 @@ import express from "express";
 import {
   connectDograhWorkflow,
   createDograhWorkflowForAgent,
+  getDograhBindingForAgent,
+  getDograhMigrationStatus,
   createDograhAgentEmbedToken,
   deleteDograhAgentEmbedToken,
   createAgent,
@@ -19,11 +21,13 @@ import {
   resetBioPage,
   syncDograhRuntimeForAgent,
   syncProviderForAgent,
+  migrateDograhAgent,
   testChatAgent,
   testAgent,
   triggerOutboundCall,
   triggerTestCall,
   updateAgent,
+  updateDograhBindingForAgent,
   updateBioPage,
   updateDograhWorkflowForAgent,
   updateShareSettings,
@@ -58,6 +62,10 @@ router.post("/:id/test-chat", testChatAgent);
 router.post("/:id/publish", publishAgent);
 router.post("/:id/pause", pauseAgent);
 router.post("/:id/connect-dograh", connectDograhWorkflow);
+router.get("/:agentId/dograh-binding", getDograhBindingForAgent);
+router.put("/:agentId/dograh-binding", updateDograhBindingForAgent);
+router.post("/:agentId/migrate-dograh", migrateDograhAgent);
+router.get("/:agentId/migrate-dograh/status", getDograhMigrationStatus);
 router.post("/:agentId/dograh/embed-token", createDograhAgentEmbedToken);
 router.get("/:agentId/dograh/embed-token", getDograhAgentEmbedToken);
 router.delete("/:agentId/dograh/embed-token", deleteDograhAgentEmbedToken);

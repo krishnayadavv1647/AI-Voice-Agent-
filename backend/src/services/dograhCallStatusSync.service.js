@@ -1,4 +1,5 @@
 import CallLog from "../models/CallLog.js";
+import Agent from "../models/Agent.js";
 import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "./callOutcome.service.js";
 import { normalizeDograhRunDetails } from "./callLogMapper.js";
 import { getDograhCallRunDetails } from "./dograh.service.js";
@@ -22,7 +23,8 @@ export async function syncDograhCallStatus(callLogId) {
     runId: callLog.dograhRunId
   });
 
-  const runDetails = await getDograhCallRunDetails(callLog.dograhWorkflowId, callLog.dograhRunId, { userId: callLog.userId });
+  const agent = callLog.agentId ? await Agent.findById(callLog.agentId) : null;
+  const runDetails = await getDograhCallRunDetails(callLog.dograhWorkflowId, callLog.dograhRunId, { userId: callLog.userId, agent });
   const mapped = normalizeDograhRunDetails(runDetails);
   const rawProviderStatus = mapped.status || callLog.rawProviderStatus || callLog.status;
 

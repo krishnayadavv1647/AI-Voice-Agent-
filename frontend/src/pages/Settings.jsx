@@ -191,47 +191,6 @@ export default function Settings() {
           <input value="GEMINI_API_KEY: •••••••••••• connected" readOnly />
         </Panel>
 
-        <Panel icon={KeyRound} title="Dograh API Integration">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Status" value={dograh?.connected ? "Connected" : dograh?.status || "Not connected"} />
-            <Info label="API Key" value={dograh?.maskedApiKey || "Not connected"} />
-            <Info label="Base URL" value={dograh?.baseUrl || "Platform default"} />
-            <Info label="Last Tested" value={dograh?.lastTestedAt ? new Date(dograh.lastTestedAt).toLocaleString() : "Not tested"} />
-          </div>
-
-          <p className="text-sm leading-6 text-slate-500">Your Dograh API key is encrypted and only used to run your agents and calls.</p>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              type="password"
-              placeholder={dograh?.maskedApiKey ? "Enter new API key to replace" : "Dograh API key"}
-              value={dograhForm.apiKey}
-              onChange={(event) => setDograhForm({ ...dograhForm, apiKey: event.target.value })}
-            />
-            <input
-              placeholder="Base URL"
-              value={dograhForm.baseUrl}
-              onChange={(event) => setDograhForm({ ...dograhForm, baseUrl: event.target.value })}
-            />
-          </div>
-
-          <div className="action-row">
-            <button className="btn-primary" disabled={dograhSaving || (!dograhForm.apiKey && !dograh?.connected)} onClick={connectDograh}>
-              <KeyRound size={16} />Save & Connect
-            </button>
-            <button className="btn-secondary" disabled={dograhSaving || (!dograhForm.apiKey && !dograh?.connected)} onClick={testDograh}>
-              Test Connection
-            </button>
-            <button className="btn-danger" disabled={dograhSaving || !dograh?.connected} onClick={disconnectDograh}>
-              Disconnect
-            </button>
-          </div>
-
-          {(dograhMessage || dograh?.lastError) && (
-            <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{dograhMessage || dograh.lastError}</p>
-          )}
-        </Panel>
-
         <Panel icon={CreditCard} title="Billing & Usage Limits">
           <p className="text-sm leading-6 text-slate-500">Billing is ready for Razorpay/Stripe integration. Usage limits can be enforced when plans are connected.</p>
           <div className="grid gap-3 sm:grid-cols-2">

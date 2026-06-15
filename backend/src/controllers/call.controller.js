@@ -240,7 +240,8 @@ export const syncCallByRun = asyncHandler(async (req, res) => {
     });
   }
 
-  const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog?.userId || req.user._id });
+  const existingAgent = callLog?.agentId ? await Agent.findById(callLog.agentId) : null;
+  const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog?.userId || req.user._id, agent: existingAgent });
 
   if (!callLog) {
     const agent = await Agent.findOne({
@@ -268,10 +269,11 @@ export const syncCallByRun = asyncHandler(async (req, res) => {
 
 async function syncCallLogWithDograhRun({ callLog, workflowId, runId }) {
   try {
-    const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog.userId });
+    const agent = callLog.agentId ? await Agent.findById(callLog.agentId) : null;
+    const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog.userId, agent });
     return applyRunDetailsToCallLog(callLog, runDetails);
   } catch (error) {
-    console.log("Dograh run sync failed:", error.response?.data || error.message);
+    console.log("Dograh run sync failed:", { status: error.response?.status, message: error.message });
     throw error;
   }
 }
@@ -348,7 +350,7 @@ async function extractLeadForCallLog(callLog, { failOnGeminiError }) {
         await callLog.save();
       }
     } catch (error) {
-      console.error("Transcript fetch failed:", error.response?.data || error.message);
+      console.error("Transcript fetch failed:", { status: error.response?.status, message: error.message });
       if (failOnGeminiError) {
         throw new ApiError(502, "Transcript fetch failed. Please try again after Dograh transcript is ready.");
       }

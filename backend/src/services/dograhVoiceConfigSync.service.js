@@ -2,7 +2,7 @@ import AgentVoiceConfiguration from "../models/AgentVoiceConfiguration.js";
 import Agent from "../models/Agent.js";
 import VoiceIntegration from "../models/VoiceIntegration.js";
 import { decryptSecret } from "../utils/crypto.js";
-import { getDograhClientForUser } from "./dograhClientResolver.js";
+import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { extractEffectiveRuntime, extractWorkflowDefinition } from "./dograhWorkflowConfig.service.js";
 
 function asObject(value) {
@@ -353,7 +353,7 @@ export async function syncAgentVoiceConfigurationToDograh({ agent, userId }) {
       integrationCredential(config.ttsIntegrationId, userId, config.ttsProvider)
     ]);
 
-    const resolved = await getDograhClientForUser(userId, { allowGlobalFallbackOnError: false });
+    const resolved = await getDograhClientForAgent(agent, userId);
     const current = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
     const existingConfigurations = extractWorkflowConfigurations(current.data);
     const workflowConfigurations = mergeModelOverrides(existingConfigurations, config, { stt, tts });

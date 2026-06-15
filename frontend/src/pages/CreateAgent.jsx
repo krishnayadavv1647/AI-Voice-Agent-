@@ -33,6 +33,8 @@ const initialForm = {
   leadQuestions: defaultLeadQuestions,
   templateType: "",
   provider: "dograh",
+  dograhConnectionType: "platform",
+  dograhIntegrationId: "",
   voiceConfiguration: defaultVoiceConfiguration,
   llmConfiguration: defaultLLMConfiguration,
   language: "english",
@@ -77,6 +79,7 @@ export default function CreateAgent() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(initialForm);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
+  const [dograhStatus, setDograhStatus] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -93,7 +96,24 @@ export default function CreateAgent() {
     }
 
     loadTelephonyConfigs();
+    loadDograhStatus();
   }, []);
+
+  async function loadDograhStatus() {
+    try {
+      const status = await api("/integrations/dograh");
+      setDograhStatus(status);
+      if (status.userDograh?.connected) {
+        setForm((current) => ({
+          ...current,
+          dograhConnectionType: current.dograhConnectionType === "platform" ? "user_integration" : (current.dograhConnectionType || "user_integration"),
+          dograhIntegrationId: status.userDograh.id || ""
+        }));
+      }
+    } catch {
+      setDograhStatus(null);
+    }
+  }
 
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -197,6 +217,18 @@ export default function CreateAgent() {
               { label: "Dograh", value: "dograh" },
               { label: "Vapi", value: "vapi" }
             ]} />
+            {form.provider === "dograh" && (
+              <Field label="Dograh Runtime" name="dograhConnectionType" value={form.dograhConnectionType} onChange={(name, value) => {
+                setForm((current) => ({
+                  ...current,
+                  [name]: value,
+                  dograhIntegrationId: value === "user_integration" ? (dograhStatus?.userDograh?.id || "") : ""
+                }));
+              }} options={[
+                { label: "Platform Dograh - Managed by platform", value: "platform" },
+                { label: dograhStatus?.userDograh?.connected ? "My Dograh - User connected account" : "My Dograh - Not connected", value: "user_integration" }
+              ]} />
+            )}
             <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} onChange={setField} options={[
               { label: "No telephony config", value: "" },
               ...telephonyConfigs.map((config) => ({

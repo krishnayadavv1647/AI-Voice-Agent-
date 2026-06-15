@@ -3,7 +3,7 @@ import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
-import { getDograhClientForUser } from "../services/dograhClientResolver.js";
+import { getDograhClientForAgent } from "../services/dograhClientResolver.js";
 import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "../services/dograhWorkflowConfig.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
@@ -321,7 +321,7 @@ async function assertLinkedAgentRuntimeReady(agent, userId, callType) {
     throw new ApiError(400, "Linked agent is missing Dograh workflow ID. Sync the agent before attaching phone calls.");
   }
 
-  const resolved = await getDograhClientForUser(userId, { allowGlobalFallbackOnError: false });
+  const resolved = await getDograhClientForAgent(agent, userId);
   const verification = await verifyDograhWorkflowRuntime({
     agent,
     userId,
@@ -438,8 +438,8 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
 
   const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
   const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
-  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload, { userId: req.user._id });
-  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload, { userId: req.user._id });
+  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload, { userId: req.user._id, agent: linkedAgent });
+  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload, { userId: req.user._id, agent: linkedAgent });
 
   config.dograhTelephonyConfigId = String(dograhConfig.dograhTelephonyConfigId);
   config.dograhPhoneNumberId = dograhPhone.dograhPhoneNumberId ? String(dograhPhone.dograhPhoneNumberId) : "";
