@@ -73,7 +73,7 @@ function runtimeStatusClass(status) {
   return "border-slate-200 bg-white text-slate-700";
 }
 
-export default function VoiceConfigurationPanel({ value, onChange }) {
+export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime, syncingRuntime = false }) {
   const config = { ...defaultVoiceConfiguration, ...(value || {}), sttSettings: { ...defaultVoiceConfiguration.sttSettings, ...(value?.sttSettings || {}) }, ttsSettings: { ...defaultVoiceConfiguration.ttsSettings, ...(value?.ttsSettings || {}) } };
   const [integrations, setIntegrations] = useState([]);
   const [sttModels, setSttModels] = useState([]);
@@ -279,7 +279,15 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
                 Runtime: {dograhRuntimeSynced ? `${config.dograhEffectiveTtsProvider} / ${config.dograhEffectiveTtsModel || "provider default"} / ${config.dograhEffectiveTtsVoiceId || "default voice"}` : "not verified"}
               </p>
             </div>
-            {dograhRuntimeSynced && <span className="shrink-0 rounded-full bg-white/80 px-3 py-1 text-xs font-bold">Synced with Dograh</span>}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {dograhRuntimeSynced && <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold">Synced with Dograh</span>}
+              {onSyncRuntime && !dograhRuntimeSynced && (
+                <button type="button" className="btn-secondary bg-white/80" disabled={syncingRuntime} onClick={onSyncRuntime}>
+                  {syncingRuntime ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                  {syncingRuntime ? "Verifying..." : "Verify with Dograh"}
+                </button>
+              )}
+            </div>
           </div>
           {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{config.dograhSyncError}</p>}
         </div>

@@ -17,6 +17,7 @@ import {
   publishBioPage,
   removeAgent,
   resetBioPage,
+  syncDograhRuntimeForAgent,
   syncProviderForAgent,
   testChatAgent,
   testAgent,
@@ -64,6 +65,7 @@ router.post("/:id/create-dograh-workflow", createDograhWorkflowForAgent);
 router.post("/:id/update-dograh-workflow", updateDograhWorkflowForAgent);
 router.patch("/:id/dograh-workflow", updateDograhWorkflowForAgent);
 router.patch("/:id/sync-provider", syncProviderForAgent);
+router.patch("/:id/sync-runtime", syncDograhRuntimeForAgent);
 router.post("/:id/test-call", triggerTestCall);
 router.post("/:id/outbound-call", triggerOutboundCall);
 router.get("/:id/calls", listAgentCalls);

@@ -215,10 +215,22 @@ export const testLLMCompletion = asyncHandler(async (req, res) => {
   const result = await adapter.testCompletion({
     credentials,
     model: validatedModel,
-    prompt: cleanString(req.body.prompt || "Reply in one short sentence confirming that the model connection works.", 500),
-    settings: { ...req.body.settings, maxTokens: Math.min(Number(req.body.settings?.maxTokens || 48), 96) }
+    prompt: cleanString(req.body.prompt || "Reply exactly with: LLM connection successful", 500),
+    settings: {
+      ...req.body.settings,
+      temperature: Number(req.body.settings?.temperature ?? 0),
+      maxTokens: Math.min(Number(req.body.settings?.maxOutputTokens ?? req.body.settings?.maxTokens ?? 20), 96)
+    }
   });
-  res.json({ success: true, provider: integration.provider, model: validatedModel, ...result });
+  res.json({
+    success: true,
+    provider: integration.provider,
+    model: validatedModel,
+    responseText: result.text,
+    text: result.text,
+    latencyMs: result.latencyMs,
+    safeErrorCode: null
+  });
 });
 
 async function ownedAgent(req) {

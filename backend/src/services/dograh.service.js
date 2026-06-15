@@ -2,9 +2,7 @@ import { ApiError } from "../utils/apiError.js";
 import { buildDograhWorkflowDefinition, validateLocalWorkflowDefinition } from "./dograhWorkflowBuilder.js";
 import { getDograhClientForUser } from "./dograhClientResolver.js";
 import {
-  assertRuntimeVerification,
-  extractWorkflowConfigurations,
-  verifyDograhWorkflowRuntime
+  extractWorkflowConfigurations
 } from "./dograhWorkflowConfig.service.js";
 
 const DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT = "/workflow/create/definition";
@@ -488,26 +486,6 @@ export async function updateDograhWorkflowById(workflowId, agent) {
       `/workflow/${encodeURIComponent(workflowId)}`,
       payload
     );
-
-    // Fetch again and confirm Dograh saved the workflow.
-    const verified = await resolved.client.get(
-      `/workflow/fetch/${encodeURIComponent(workflowId)}`
-    );
-
-    const runtimeVerification = await verifyDograhWorkflowRuntime({
-      agent,
-      userId: agent.userId,
-      workflowPayload: verified.data,
-      callType: "workflow_update"
-    });
-
-    console.log(
-      "[Dograh Workflow Definition Sync]",
-      runtimeVerification.diagnostics
-    );
-
-    // Do not report successful synchronization when verification failed.
-    assertRuntimeVerification(runtimeVerification);
 
     return response.data;
   } catch (error) {

@@ -1544,6 +1544,36 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
   });
 });
 
+export const syncDograhRuntimeForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+
+  if (agent.provider !== "dograh" || !hasRealDograhWorkflow(agent)) {
+    throw new ApiError(400, "Dograh workflow must be connected before runtime verification.");
+  }
+
+  agent.workflowSyncStatus = "syncing";
+  agent.workflowSyncError = undefined;
+  agent.dograhSyncStatus = "Runtime Syncing";
+  agent.dograhStatus = "syncing";
+  agent.dograhNeedsUpdate = false;
+  agent.workflowVersion = (agent.workflowVersion || 0) + 1;
+  await agent.save();
+
+  const runtimeSync = await syncAgentDograhRuntime(agent);
+  const updatedAgent = await Agent.findById(agent._id);
+
+  res.json({
+    success: !runtimeSync?.error,
+    message: runtimeSync?.error ? `Dograh runtime sync failed: ${runtimeSync.error}` : "Dograh runtime sync completed and verified.",
+    providerResult: publicProviderResult(runtimeSync?.providerResult),
+    voiceConfiguration: runtimeSync?.voiceConfiguration || null,
+    llmConfiguration: runtimeSync?.llmConfiguration || null,
+    verification: runtimeSync?.verification?.diagnostics || null,
+    agent: updatedAgent || agent,
+    warning: runtimeSync?.error || null
+  });
+});
+
 async function triggerCall(req, res, trigger) {
   const agent = await getOwnedAgent(req);
   const { phoneNumber } = req.body;

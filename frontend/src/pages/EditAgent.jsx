@@ -43,6 +43,7 @@ export default function EditAgent() {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const [retryingSync, setRetryingSync] = useState(false);
+  const [syncingRuntime, setSyncingRuntime] = useState(false);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(original), [form, original]);
@@ -210,7 +211,9 @@ export default function EditAgent() {
         dograhWorkflowId: updated.dograhWorkflowId || "",
         dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
-        providerWorkflowId: updated.providerWorkflowId || ""
+        providerWorkflowId: updated.providerWorkflowId || "",
+        voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
+        llmConfiguration: result.llmConfiguration || current.llmConfiguration
       }));
       setOriginal((current) => ({
         ...current,
@@ -224,13 +227,63 @@ export default function EditAgent() {
         dograhWorkflowId: updated.dograhWorkflowId || "",
         dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
-        providerWorkflowId: updated.providerWorkflowId || ""
+        providerWorkflowId: updated.providerWorkflowId || "",
+        voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
+        llmConfiguration: result.llmConfiguration || current.llmConfiguration
       }));
       setNotice(result.message || "Dograh workflow sync started.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
       setRetryingSync(false);
+    }
+  }
+
+  async function syncRuntime() {
+    setSyncingRuntime(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api(`/agents/${id}/sync-runtime`, { method: "PATCH", body: {} });
+      const updated = result.agent;
+      setForm((current) => ({
+        ...current,
+        dograhNeedsUpdate: updated?.dograhNeedsUpdate,
+        dograhStatus: updated?.dograhStatus || "",
+        dograhError: updated?.dograhError || "",
+        workflowSyncStatus: updated?.workflowSyncStatus || "",
+        workflowLastSyncedAt: updated?.workflowLastSyncedAt || "",
+        workflowSyncError: updated?.workflowSyncError || "",
+        workflowVersion: updated?.workflowVersion || 0,
+        dograhWorkflowId: updated?.dograhWorkflowId || current.dograhWorkflowId,
+        dograhWorkflowUuid: updated?.dograhWorkflowUuid || current.dograhWorkflowUuid,
+        provider: updated?.provider || current.provider,
+        providerWorkflowId: updated?.providerWorkflowId || current.providerWorkflowId,
+        voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
+        llmConfiguration: result.llmConfiguration || current.llmConfiguration
+      }));
+      setOriginal((current) => ({
+        ...current,
+        dograhNeedsUpdate: updated?.dograhNeedsUpdate,
+        dograhStatus: updated?.dograhStatus || "",
+        dograhError: updated?.dograhError || "",
+        workflowSyncStatus: updated?.workflowSyncStatus || "",
+        workflowLastSyncedAt: updated?.workflowLastSyncedAt || "",
+        workflowSyncError: updated?.workflowSyncError || "",
+        workflowVersion: updated?.workflowVersion || 0,
+        dograhWorkflowId: updated?.dograhWorkflowId || current.dograhWorkflowId,
+        dograhWorkflowUuid: updated?.dograhWorkflowUuid || current.dograhWorkflowUuid,
+        provider: updated?.provider || current.provider,
+        providerWorkflowId: updated?.providerWorkflowId || current.providerWorkflowId,
+        voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
+        llmConfiguration: result.llmConfiguration || current.llmConfiguration
+      }));
+      if (result.warning) setError(result.warning);
+      else setNotice(result.message || "Dograh runtime verified.");
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setSyncingRuntime(false);
     }
   }
 
@@ -322,7 +375,7 @@ export default function EditAgent() {
             <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
             <Field label="Tone" name="tone" value={form.tone} setField={setField} options={tones} />
             <Field label="Personality" name="personality" value={form.personality} setField={setField} options={personalities} />
-            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} />
+            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} onSyncRuntime={syncRuntime} syncingRuntime={syncingRuntime} />
           </div>
         )}
 
