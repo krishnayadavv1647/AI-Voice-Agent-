@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { CANONICAL_LLM_PROVIDERS, normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
 
 const leadQuestionSchema = new mongoose.Schema(
   {
@@ -55,10 +56,21 @@ const agentSchema = new mongoose.Schema(
     leadCaptureEnabled: { type: Boolean, default: true },
     voiceProvider: { type: String, default: "Dograh Default" },
     voiceId: String,
-    llmProvider: { type: String, enum: ["gemini", "openai"], default: "gemini" },
-    llmModel: String,
-    sttProvider: { type: String, default: "openai_whisper" },
-    ttsProvider: { type: String, default: "openai_tts" },
+    llmProvider: {
+      type: String,
+      enum: CANONICAL_LLM_PROVIDERS,
+      default: "dograh_default",
+      set: (value) => normalizeLLMProvider(value)
+    },
+    llmModel: { type: String, default: "" },
+    sttProvider: { type: String, default: "dograh_default" },
+    sttModel: { type: String, default: "" },
+    sttLanguage: { type: String, default: "en" },
+    sttSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
+    ttsProvider: { type: String, default: "dograh_default" },
+    ttsModel: { type: String, default: "" },
+    ttsLanguage: { type: String, default: "en" },
+    ttsSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
     firstMessage: String,
     voiceSpeed: { type: String, default: "Normal" },
     voice: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -87,6 +99,11 @@ const agentSchema = new mongoose.Schema(
     telephonyProvider: String,
     dograhConnection: String,
     dograhStatus: String,
+    workflowStatus: { type: String, enum: ["creating", "connected", "failed"], default: null },
+    workflowSyncStatus: { type: String, enum: ["syncing", "synced", "failed"], default: null },
+    workflowLastSyncedAt: { type: Date, default: null },
+    workflowSyncError: String,
+    workflowVersion: { type: Number, default: 0 },
     dograhSyncStatus: String,
     dograhError: String,
     dograhRawResponse: { type: mongoose.Schema.Types.Mixed },

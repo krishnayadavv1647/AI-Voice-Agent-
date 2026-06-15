@@ -1,6 +1,11 @@
 import { ApiError } from "../utils/apiError.js";
 import { buildDograhWorkflowDefinition, validateLocalWorkflowDefinition } from "./dograhWorkflowBuilder.js";
 import { getDograhClientForUser } from "./dograhClientResolver.js";
+import {
+  assertRuntimeVerification,
+  extractWorkflowConfigurations,
+  verifyDograhWorkflowRuntime
+} from "./dograhWorkflowConfig.service.js";
 
 const DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT = "/workflow/create/definition";
 const DOGRAH_TELEPHONY_CONFIGS_ENDPOINT = "/organizations/telephony-configs";
@@ -12,11 +17,6 @@ function getDograhBaseUrl() {
 
 function getDograhApiKey() {
   return process.env.DOGRAH_API_KEY?.trim();
-}
-
-function maskKey(value) {
-  if (!value) return "<missing>";
-  return `${value.slice(0, 6)}...`;
 }
 
 function validateWorkflowCall(workflowUuid, payload) {
@@ -52,21 +52,14 @@ function validateWorkflowCall(workflowUuid, payload) {
 
 function logDograhCall({ endpoint, workflowUuid, payload, resolved }) {
   const baseUrl = resolved?.baseUrl || getDograhBaseUrl();
-  console.log("Dograh endpoint:", endpoint);
-  console.log("workflowUuid:", workflowUuid);
-  console.log("phoneNumber:", payload?.phone_number);
-  console.log("callerIdNumber:", payload?.calling_number);
-  console.log("baseURL:", baseUrl);
   console.log("Dograh API call diagnostics:", {
     dograhBaseUrlExists: Boolean(baseUrl),
-    dograhBaseUrl: baseUrl,
     dograhApiKeyExists: Boolean(resolved?.maskedApiKey || getDograhApiKey()),
-    dograhApiKeyPrefix: resolved?.maskedApiKey || maskKey(getDograhApiKey()),
     dograhCredentialMode: resolved?.mode || "platform",
     workflowUuid,
     phone_number: payload?.phone_number,
     calling_number: payload?.calling_number,
-    endpoint: `${baseUrl}${endpoint}`,
+    endpoint,
   });
 }
 
@@ -84,10 +77,9 @@ export async function getDograhDebugInfo(userId) {
     dograhBaseUrlExists: Boolean(baseUrl),
     dograhBaseUrl: baseUrl,
     dograhApiKeyExists: Boolean(apiKey),
-    dograhApiKeyPreview: apiKey ? maskKey(apiKey) : "MISSING",
     activeDograhMode: resolved?.mode,
     activeDograhBaseUrl: resolved?.baseUrl,
-    activeDograhApiKeyPreview: resolved?.maskedApiKey,
+    activeDograhApiKeyExists: Boolean(resolved?.maskedApiKey),
     activeDograhError: resolved?.error
   };
 }
@@ -95,7 +87,7 @@ export async function getDograhDebugInfo(userId) {
 async function createDograhClient(userId, options = {}) {
   const resolved = await getDograhClientForUser(userId, options);
   console.log("DOGRAH_BASE_URL:", resolved.baseUrl);
-  console.log("DOGRAH_API_KEY:", resolved.maskedApiKey || "MISSING");
+  console.log("DOGRAH_API_KEY_EXISTS:", Boolean(resolved.maskedApiKey));
   console.log("DOGRAH_CREDENTIAL_MODE:", resolved.mode);
   return resolved;
 }
@@ -123,7 +115,6 @@ function friendlyDograhErrorMessage(data, fallback) {
 
 function handleDograhError(error, action) {
   console.error("Dograh API Error Status:", error.response?.status);
-  console.error("Dograh API Error Data:", error.response?.data);
   console.error("Dograh API Error Message:", error.message);
 
   const statusCode = error.response?.status || 502;
@@ -136,7 +127,6 @@ function handleDograhError(error, action) {
   throw new ApiError(statusCode, realMessage, {
     success: false,
     dograhStatus: error.response?.status,
-    dograhError: error.response?.data,
     dograhAction: action,
     userMessage: realMessage
   });
@@ -322,16 +312,12 @@ export async function createDograhWorkflowFromDefinition(agent) {
 
     console.log("Creating Dograh workflow from definition:", {
       endpoint,
-      baseUrl: resolved.baseUrl,
       credentialMode: resolved.mode,
       name: payload.name,
       nodeCount: workflow_definition.nodes.length,
-      edgeCount: workflow_definition.edges.length
+      edgeCount: workflow_definition.edges.length,
+      dograhApiKeyExists: Boolean(resolved.maskedApiKey)
     });
-    console.log("Dograh create endpoint:", endpoint);
-    console.log("Dograh create payload:", JSON.stringify(payload, null, 2));
-    console.log("Dograh API key exists:", Boolean(resolved.apiKeyExists));
-    console.log("Dograh API key prefix:", resolved.apiKeyPrefix || null);
 
     const response = await resolved.client.post(
       endpoint,
@@ -341,10 +327,6 @@ export async function createDograhWorkflowFromDefinition(agent) {
     return response.data;
   } catch (error) {
     console.error("Dograh create failed status:", error.response?.status);
-    console.error("Dograh create failed data:", error.response?.data);
-    console.error("Dograh create failed message:", error.message);
-    console.error("Dograh create workflow failed status:", error.response?.status);
-    console.error("Dograh create workflow failed data:", error.response?.data);
     console.error("Dograh create workflow failed message:", error.message);
 
     if (error instanceof ApiError) throw error;
@@ -357,7 +339,6 @@ export async function createDograhWorkflowFromDefinition(agent) {
     throw new ApiError(error.response?.status || 502, message, {
       success: false,
       dograhStatus: error.response?.status,
-      dograhError: error.response?.data,
       dograhAction: "create workflow",
       userMessage: message
     });
@@ -407,7 +388,6 @@ export async function createDograhTelephonyConfiguration(payload, { userId } = {
     };
   } catch (error) {
     console.error("Dograh create telephony config failed status:", error.response?.status);
-    console.error("Dograh create telephony config failed data:", error.response?.data);
     console.error("Dograh create telephony config failed message:", error.message);
 
     if (error instanceof ApiError) throw error;
@@ -420,7 +400,6 @@ export async function createDograhTelephonyConfiguration(payload, { userId } = {
     throw new ApiError(error.response?.status || 502, message, {
       success: false,
       dograhStatus: error.response?.status,
-      dograhError: error.response?.data,
       dograhAction: "create telephony configuration",
       userMessage: message
     });
@@ -442,7 +421,6 @@ export async function addDograhTelephonyPhoneNumber(configId, payload, { userId 
     };
   } catch (error) {
     console.error("Dograh add telephony phone number failed status:", error.response?.status);
-    console.error("Dograh add telephony phone number failed data:", error.response?.data);
     console.error("Dograh add telephony phone number failed message:", error.message);
 
     if (error instanceof ApiError) throw error;
@@ -455,7 +433,6 @@ export async function addDograhTelephonyPhoneNumber(configId, payload, { userId 
     throw new ApiError(error.response?.status || 502, message, {
       success: false,
       dograhStatus: error.response?.status,
-      dograhError: error.response?.data,
       dograhAction: "add telephony phone number",
       userMessage: message
     });
@@ -465,20 +442,41 @@ export async function addDograhTelephonyPhoneNumber(configId, payload, { userId 
 export async function updateDograhWorkflowById(workflowId, agent) {
   try {
     if (!workflowId) {
-      throw new ApiError(400, "dograhWorkflowId is required to update the existing Dograh workflow.");
+      throw new ApiError(
+        400,
+        "dograhWorkflowId is required to update the existing Dograh workflow."
+      );
     }
 
     const workflow_definition = buildDograhWorkflowDefinition(agent);
     validateLocalWorkflowDefinition(workflow_definition);
 
+    const resolved = await createDograhClient(agent.userId);
+
+    // Fetch current workflow so existing LLM, STT and TTS
+    // configurations are not removed during an agent update.
+    const current = await resolved.client.get(
+      `/workflow/fetch/${encodeURIComponent(workflowId)}`
+    );
+
+    const preservedConfigurations =
+      extractWorkflowConfigurations(current.data);
+
+    // IMPORTANT: Create payload before reading or logging payload.name.
     const payload = {
-      name: agent.agentName || `${agent.businessName} Agent`,
-      workflow_definition
+      name:
+        agent.agentName ||
+        agent.name ||
+        `${agent.businessName || "AI"} Agent`,
+
+      workflow_definition,
+
+      workflow_configurations: preservedConfigurations
     };
 
     console.log("Updating existing Dograh workflow:", {
       dograhApiMethod: "PUT",
-      dograhApiUrl: `${getDograhBaseUrl()}/workflow/${workflowId}`,
+      dograhApiUrl: `${resolved.baseUrl}/workflow/${workflowId}`,
       endpoint: `/workflow/${workflowId}`,
       workflowId,
       name: payload.name,
@@ -486,16 +484,56 @@ export async function updateDograhWorkflowById(workflowId, agent) {
       edgeCount: workflow_definition.edges.length
     });
 
-    const resolved = await createDograhClient(agent.userId);
-    const response = await resolved.client.put(`/workflow/${workflowId}`, payload);
+    const response = await resolved.client.put(
+      `/workflow/${encodeURIComponent(workflowId)}`,
+      payload
+    );
+
+    // Fetch again and confirm Dograh saved the workflow.
+    const verified = await resolved.client.get(
+      `/workflow/fetch/${encodeURIComponent(workflowId)}`
+    );
+
+    const runtimeVerification = await verifyDograhWorkflowRuntime({
+      agent,
+      userId: agent.userId,
+      workflowPayload: verified.data,
+      callType: "workflow_update"
+    });
+
+    console.log(
+      "[Dograh Workflow Definition Sync]",
+      runtimeVerification.diagnostics
+    );
+
+    // Do not report successful synchronization when verification failed.
+    assertRuntimeVerification(runtimeVerification);
 
     return response.data;
   } catch (error) {
-    console.error("Dograh update workflow failed status:", error.response?.status);
-    console.error("Dograh update workflow failed data:", error.response?.data);
-    console.error("Dograh update workflow failed message:", error.message);
+    console.error(
+      "Dograh update workflow failed status:",
+      error.response?.status
+    );
 
-    if (error instanceof ApiError) throw error;
+    console.error(
+      "Dograh update workflow failed data:",
+      error.response?.data
+    );
+
+    console.error(
+      "Dograh update workflow failed message:",
+      error.message
+    );
+
+    console.error(
+      "Dograh update workflow failed stack:",
+      error.stack
+    );
+
+    if (error instanceof ApiError) {
+      throw error;
+    }
 
     const message = friendlyDograhErrorMessage(
       error.response?.data,
@@ -510,7 +548,7 @@ export async function updateDograhWorkflowById(workflowId, agent) {
       userMessage: message
     });
   }
-}
+} 
 
 export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
   try {
@@ -536,7 +574,6 @@ export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
     return response.data || { success: true };
   } catch (error) {
     console.error("Dograh archive workflow failed status:", error.response?.status);
-    console.error("Dograh archive workflow failed data:", error.response?.data);
     console.error("Dograh archive workflow failed message:", error.message);
 
     if (error instanceof ApiError) throw error;

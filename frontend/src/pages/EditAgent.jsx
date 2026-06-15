@@ -2,7 +2,9 @@ import { ArrowLeft, RefreshCw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import VoiceConfigurationPanel, { defaultVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
 import { agentTypes, languages, tones, personalities } from "../lib/options.js";
 
@@ -10,10 +12,11 @@ const tabs = ["Basic Info", "Business Information", "System Prompt", "Call Behav
 
 const editableFields = [
   "agentName", "agentType", "businessName", "businessCategory", "businessDescription",
+  "businessWebsite", "businessLocation", "workingHours", "contactNumber",
   "services", "pricing", "faqs", "policies", "offers", "additionalInfo",
   "systemPrompt", "greetingMessage", "fallbackMessage", "endingMessage", "humanTransferMessage",
   "language", "responseStyle", "callMode", "allowInterruption", "fastReplyMode", "leadCaptureEnabled",
-  "voiceGender", "voiceStyle", "voiceProvider", "voiceId", "llmProvider", "llmModel", "sttProvider", "ttsProvider", "firstMessage", "telephonyConfigId",
+  "voiceGender", "voiceStyle", "voiceProvider", "voiceId", "sttProvider", "sttModel", "sttLanguage", "sttSettings", "ttsProvider", "ttsModel", "ttsLanguage", "ttsSettings", "firstMessage", "telephonyConfigId",
   "voiceSpeed", "tone", "speakingSpeed", "personality",
   "provider"
 ];
@@ -26,6 +29,10 @@ function formatApiError(error) {
   return error?.message || "Something went wrong.";
 }
 
+function formatDateTime(value) {
+  return value ? new Date(value).toLocaleString() : "-";
+}
+
 export default function EditAgent() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -35,7 +42,7 @@ export default function EditAgent() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
-  const [updatingDograh, setUpdatingDograh] = useState(false);
+  const [retryingSync, setRetryingSync] = useState(false);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(original), [form, original]);
@@ -74,10 +81,34 @@ export default function EditAgent() {
     next.dograhNeedsUpdate = Boolean(agent.dograhNeedsUpdate);
     next.dograhStatus = agent.dograhStatus || "";
     next.dograhError = agent.dograhError || "";
+    next.workflowSyncStatus = agent.workflowSyncStatus || "";
+    next.workflowLastSyncedAt = agent.workflowLastSyncedAt || "";
+    next.workflowSyncError = agent.workflowSyncError || "";
+    next.workflowVersion = agent.workflowVersion || 0;
     next.dograhWorkflowId = agent.dograhWorkflowId || "";
     next.dograhWorkflowUuid = agent.dograhWorkflowUuid || "";
     next.provider = agent.provider || (agent.dograhWorkflowId ? "dograh" : "custom");
     next.providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || "";
+    next.voiceConfiguration = {
+      ...defaultVoiceConfiguration,
+      ...(result.voiceConfiguration || {}),
+      sttSettings: {
+        ...defaultVoiceConfiguration.sttSettings,
+        ...(result.voiceConfiguration?.sttSettings || {})
+      },
+      ttsSettings: {
+        ...defaultVoiceConfiguration.ttsSettings,
+        ...(result.voiceConfiguration?.ttsSettings || {})
+      }
+    };
+    next.llmConfiguration = {
+      ...defaultLLMConfiguration,
+      ...(result.llmConfiguration || {}),
+      settings: {
+        ...defaultLLMConfiguration.settings,
+        ...(result.llmConfiguration?.settings || {})
+      }
+    };
     setForm(next);
     setOriginal(next);
   }
@@ -88,10 +119,8 @@ export default function EditAgent() {
     if (field === "callMode") return "outbound";
     if (field === "responseStyle") return "short_clear";
     if (field === "voiceProvider") return "Dograh Default";
-    if (field === "llmProvider") return "gemini";
-    if (field === "llmModel") return "gemini-2.5-flash";
-    if (field === "sttProvider") return "openai_whisper";
-    if (field === "ttsProvider") return "openai_tts";
+    if (field === "sttProvider") return "dograh_default";
+    if (field === "ttsProvider") return "dograh_default";
     if (field === "voiceSpeed") return "Normal";
     return "";
   }
@@ -133,14 +162,21 @@ export default function EditAgent() {
         dograhNeedsUpdate: saved.dograhNeedsUpdate,
         dograhStatus: saved.dograhStatus || "",
         dograhError: saved.dograhError || "",
+        workflowSyncStatus: saved.workflowSyncStatus || "",
+        workflowLastSyncedAt: saved.workflowLastSyncedAt || "",
+        workflowSyncError: saved.workflowSyncError || "",
+        workflowVersion: saved.workflowVersion || 0,
         dograhWorkflowId: saved.dograhWorkflowId || form.dograhWorkflowId,
         dograhWorkflowUuid: saved.dograhWorkflowUuid || form.dograhWorkflowUuid,
         provider: saved.provider || form.provider,
-        providerWorkflowId: saved.providerWorkflowId || form.providerWorkflowId
+        providerWorkflowId: saved.providerWorkflowId || form.providerWorkflowId,
+        voiceConfiguration: result.voiceConfiguration || form.voiceConfiguration,
+        llmConfiguration: result.llmConfiguration || form.llmConfiguration
       };
       setForm(next);
       setOriginal(next);
-      setNotice(result.message || "Agent saved locally. Update Dograh Workflow to apply changes to live calls.");
+      if (result.warning) setError(result.warning);
+      else setNotice(result.message || "Agent saved.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -155,20 +191,11 @@ export default function EditAgent() {
     setNotice("Prompt regenerated as a preview. Save Agent to keep it.");
   }
 
-  async function updateDograhWorkflow() {
-    if (dirty && !confirm("You have unsaved local changes. Save Agent first so the provider gets the latest version. Continue anyway?")) return;
-    setUpdatingDograh(true);
+  async function retryWorkflowSync() {
+    setRetryingSync(true);
     setError("");
     setNotice("");
     try {
-      console.log("Update Dograh Flow:", {
-        agentId: id,
-        provider: form?.provider,
-        providerWorkflowId: form?.providerWorkflowId || form?.dograhWorkflowId,
-        apiMethod: "PATCH",
-        apiPath: `/agents/${id}/sync-provider`
-      });
-
       const result = await api(`/agents/${id}/sync-provider`, { method: "PATCH", body: { createIfMissing: false } });
       const updated = result.agent;
       setForm((current) => ({
@@ -176,6 +203,10 @@ export default function EditAgent() {
         dograhNeedsUpdate: updated.dograhNeedsUpdate,
         dograhStatus: updated.dograhStatus || "",
         dograhError: updated.dograhError || "",
+        workflowSyncStatus: updated.workflowSyncStatus || "",
+        workflowLastSyncedAt: updated.workflowLastSyncedAt || "",
+        workflowSyncError: updated.workflowSyncError || "",
+        workflowVersion: updated.workflowVersion || 0,
         dograhWorkflowId: updated.dograhWorkflowId || "",
         dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
@@ -186,16 +217,20 @@ export default function EditAgent() {
         dograhNeedsUpdate: updated.dograhNeedsUpdate,
         dograhStatus: updated.dograhStatus || "",
         dograhError: updated.dograhError || "",
+        workflowSyncStatus: updated.workflowSyncStatus || "",
+        workflowLastSyncedAt: updated.workflowLastSyncedAt || "",
+        workflowSyncError: updated.workflowSyncError || "",
+        workflowVersion: updated.workflowVersion || 0,
         dograhWorkflowId: updated.dograhWorkflowId || "",
         dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
         providerWorkflowId: updated.providerWorkflowId || ""
       }));
-      setNotice(result.message || "Provider synced successfully");
+      setNotice(result.message || "Dograh workflow sync started.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
-      setUpdatingDograh(false);
+      setRetryingSync(false);
     }
   }
 
@@ -210,13 +245,13 @@ export default function EditAgent() {
     <>
       <PageHeader
         title="Edit Agent"
-        description="Update local agent details, then apply changes to the live Dograh workflow when ready."
+        description="Update agent details. Dograh workflow sync starts automatically after saving."
         action={<StatusBadge status={dirty ? "Unsaved" : "Saved"} />}
       />
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
-      {form.dograhNeedsUpdate && <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">Dograh workflow needs update.</div>}
+      {form.workflowSyncStatus === "syncing" && <div className="mb-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">Dograh workflow sync is running in the background.</div>}
 
       <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         <button className="btn-secondary" onClick={goBack}><ArrowLeft size={16} />Back</button>
@@ -262,7 +297,6 @@ export default function EditAgent() {
             <div className="action-row">
               <button className="btn-secondary" onClick={regeneratePrompt}><RefreshCw size={16} />Regenerate System Prompt</button>
               <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
-              <button className="btn-secondary" disabled={updatingDograh} onClick={updateDograhWorkflow}><RefreshCw size={16} />{updatingDograh ? "Updating..." : "Update Dograh Workflow"}</button>
             </div>
           </div>
         )}
@@ -284,22 +318,11 @@ export default function EditAgent() {
 
         {tab === "Voice & Language" && (
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Language" name="language" value={form.language} setField={setField} options={languages} />
-            <Field label="LLM Provider" name="llmProvider" value={form.llmProvider} setField={setField} options={[
-              { label: "Gemini", value: "gemini" },
-              { label: "OpenAI", value: "openai" }
-            ]} />
-            <Field label="LLM Model" name="llmModel" value={form.llmModel} setField={setField} />
-            <Field label="STT Provider" name="sttProvider" value={form.sttProvider} setField={setField} options={["openai_whisper", "deepgram", "google_stt"]} />
-            <Field label="TTS Provider" name="ttsProvider" value={form.ttsProvider} setField={setField} options={["openai_tts", "elevenlabs", "google_tts"]} />
-            <Field label="Voice Provider" name="voiceProvider" value={form.voiceProvider} setField={setField} options={["Dograh Default", "Sarvam", "Cartesia", "ElevenLabs"]} />
-            <Field label="Voice ID" name="voiceId" value={form.voiceId} setField={setField} />
-            <Field label="Voice Speed" name="voiceSpeed" value={form.voiceSpeed} setField={setField} options={["Slow", "Normal", "Fast"]} />
-            <Field label="Voice Gender" name="voiceGender" value={form.voiceGender} setField={setField} options={["Female", "Male", "Neutral"]} />
-            <Field label="Voice Style" name="voiceStyle" value={form.voiceStyle} setField={setField} options={["Natural", "Studio", "Warm", "Crisp", "Custom"]} />
+            <Field label="Conversation Language" name="language" value={form.language} setField={setField} options={languages} />
+            <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
             <Field label="Tone" name="tone" value={form.tone} setField={setField} options={tones} />
-            <Field label="Speaking Speed" name="speakingSpeed" value={form.speakingSpeed} setField={setField} options={["Slow", "Normal", "Fast"]} />
             <Field label="Personality" name="personality" value={form.personality} setField={setField} options={personalities} />
+            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} />
           </div>
         )}
 
@@ -309,12 +332,15 @@ export default function EditAgent() {
             <Info label="Provider Workflow ID" value={form.providerWorkflowId} />
             <Info label="Workflow ID" value={form.dograhWorkflowId} />
             <Info label="Workflow UUID" value={form.dograhWorkflowUuid} />
-            <Info label="Status" value={form.dograhStatus} />
-            <Info label="Error" value={form.dograhError} />
+            <Info label="Workflow Status" value={form.workflowSyncStatus || form.dograhStatus} />
+            <Info label="Last Sync" value={formatDateTime(form.workflowLastSyncedAt)} />
+            <Info label="Last Error" value={form.workflowSyncError || form.dograhError} />
             {!form.providerWorkflowId && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">This agent is not synced with the selected provider yet.</p>}
-            <button className="btn-primary" disabled={updatingDograh} onClick={updateDograhWorkflow}>
-              <RefreshCw size={16} />{updatingDograh ? "Syncing..." : form.provider === "dograh" ? "Update Dograh Flow" : "Sync Custom Engine"}
-            </button>
+            {form.workflowSyncStatus === "failed" && (
+              <button className="btn-primary" disabled={retryingSync} onClick={retryWorkflowSync}>
+                <RefreshCw size={16} />{retryingSync ? "Retrying..." : "Retry Sync"}
+              </button>
+            )}
           </div>
         )}
 

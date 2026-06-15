@@ -16,6 +16,27 @@ import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
+import { syncAgentDograhRuntime } from "../services/dograhWorkflowSync.service.js";
+import {
+  applyVoiceConfigurationToAgent,
+  getAgentVoiceConfiguration,
+  sanitizeVoiceConfiguration,
+  upsertAgentVoiceConfiguration
+} from "../services/agentVoiceConfiguration.service.js";
+import {
+  applyLLMConfigurationToAgent,
+  getAgentLLMConfiguration,
+  sanitizeLLMConfiguration,
+  upsertAgentLLMConfiguration,
+  validateLLMConfigurationOwnership
+} from "../services/agentLLMConfiguration.service.js";
+import {
+  getDograhLLMRuntimeSummary
+} from "../services/dograhLLMConfigSync.service.js";
+import {
+  assertDograhVoiceReadyForWebCall,
+  getDograhVoiceRuntimeSummary
+} from "../services/dograhVoiceConfigSync.service.js";
 import { BIO_PAGE_TEMPLATES, DEFAULT_QUICK_TOPICS, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
 
 function userFilter(req) {
@@ -57,9 +78,90 @@ const BIO_NESTED_TEXT_FIELDS = {
 const FONT_STYLES = ["modern", "professional", "friendly", "bold", "elegant"];
 const ANIMATIONS = ["none", "fade_in", "slide_up", "zoom_in", "floating_cards", "gradient_motion", "pulse_button"];
 const TOPIC_ICON_TYPES = ["lucide", "emoji", "image"];
+const WORKFLOW_LINKED_FIELDS = [
+  "agentName",
+  "name",
+  "description",
+  "agentType",
+  "businessName",
+  "businessCategory",
+  "businessDescription",
+  "businessWebsite",
+  "businessLocation",
+  "workingHours",
+  "contactNumber",
+  "mainGoal",
+  "secondaryGoal",
+  "avoidInstructions",
+  "confusedInstructions",
+  "services",
+  "pricing",
+  "faqs",
+  "policies",
+  "offers",
+  "additionalInfo",
+  "leadQuestions",
+  "systemPrompt",
+  "greetingMessage",
+  "fallbackMessage",
+  "endingMessage",
+  "humanTransferMessage",
+  "language",
+  "responseStyle",
+  "callMode",
+  "allowInterruption",
+  "fastReplyMode",
+  "leadCaptureEnabled",
+  "voiceGender",
+  "voiceStyle",
+  "voiceProvider",
+  "voiceId",
+  "llmProvider",
+  "llmModel",
+  "sttProvider",
+  "ttsProvider",
+  "firstMessage",
+  "voiceSpeed",
+  "voice",
+  "nodes",
+  "workflowNodes",
+  "tools",
+  "settings",
+  "knowledgeBaseIds",
+  "tone",
+  "speakingSpeed",
+  "personality"
+];
 
 function sanitizeText(value) {
   return String(value || "").replace(/[<>]/g, "").trim().slice(0, 600);
+}
+
+function normalizeComparableValue(value) {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (value && typeof value.toString === "function" && value.constructor?.name === "ObjectId") return value.toString();
+  if (Array.isArray(value)) return value.map(normalizeComparableValue);
+  if (value && typeof value === "object") {
+    const plain = value.toObject ? value.toObject() : value;
+    return Object.keys(plain)
+      .filter((key) => key !== "_id")
+      .sort()
+      .reduce((result, key) => {
+        result[key] = normalizeComparableValue(plain[key]);
+        return result;
+      }, {});
+  }
+  return value;
+}
+
+function comparableJson(value) {
+  return JSON.stringify(normalizeComparableValue(value));
+}
+
+function workflowLinkedFieldsChanged(before, after) {
+  return WORKFLOW_LINKED_FIELDS.some((field) => comparableJson(before?.[field]) !== comparableJson(after?.[field]));
 }
 
 function ensureBioPage(agent) {
@@ -204,6 +306,11 @@ async function normalizeAgentProvider(agent) {
     changed = true;
   }
 
+  if (agent.provider === "dograh" && !agent.workflowStatus) {
+    agent.workflowStatus = hasRealDograhWorkflow(agent) ? "connected" : agent.dograhStatus === "failed" ? "failed" : "creating";
+    changed = true;
+  }
+
   if (!agent.publicSlug) {
     agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
     changed = true;
@@ -255,6 +362,9 @@ function clearDograhWorkflowFields(agent, errorMessage) {
   agent.dograhWorkflowName = null;
   agent.dograhAgentId = null;
   agent.dograhStatus = "failed";
+  agent.workflowStatus = "failed";
+  agent.workflowSyncStatus = "failed";
+  agent.workflowSyncError = errorMessage || "Dograh workflow creation failed.";
   agent.dograhSyncStatus = "Workflow Failed";
   agent.dograhConnection = "Not connected";
   agent.dograhError = errorMessage || "Dograh workflow creation failed.";
@@ -267,9 +377,9 @@ function readProviderErrorMessage(error) {
   const detail = data?.message || data?.error || data?.detail || data?.userMessage;
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return JSON.stringify(detail);
-  if (detail && typeof detail === "object") return JSON.stringify(detail);
+  if (detail && typeof detail === "object") return "Dograh workflow operation failed. Check provider configuration.";
   if (typeof data === "string") return data;
-  if (data && typeof data === "object") return JSON.stringify(data);
+  if (data && typeof data === "object") return error?.message || "Dograh workflow operation failed. Check provider configuration.";
   return error?.message || "Dograh workflow creation failed.";
 }
 
@@ -315,6 +425,10 @@ function cleanOptionalObjectId(value, fieldName) {
 
 function sanitizeAgentBody(body = {}) {
   const sanitized = { ...body };
+  delete sanitized.voiceConfiguration;
+  delete sanitized.llmConfiguration;
+  delete sanitized.llmProvider;
+  delete sanitized.llmModel;
   const telephonyConfigId = cleanOptionalObjectId(sanitized.telephonyConfigId, "telephonyConfigId");
 
   if (telephonyConfigId === undefined) {
@@ -379,10 +493,13 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
     set.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     set.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
     set.dograhStatus = hasRealDograhWorkflow(set) ? "connected" : result.status || agent.dograhStatus;
+    set.workflowStatus = hasRealDograhWorkflow(set) ? "connected" : agent.workflowStatus || "failed";
+    set.workflowSyncStatus = hasRealDograhWorkflow(set) ? "synced" : agent.workflowSyncStatus || "failed";
     set.dograhSyncStatus = hasRealDograhWorkflow(set) ? "Workflow Synced" : "Workflow Not Connected";
     set.dograhConnection = hasRealDograhWorkflow(set) ? "Connected" : "Not connected";
     set.dograhRawResponse = result.raw || agent.dograhRawResponse;
     set.dograhLastSyncedAt = syncedAt;
+    set.workflowLastSyncedAt = syncedAt;
     set.dograhNeedsUpdate = !hasRealDograhWorkflow(set);
 
     if (hasRealDograhWorkflow(set)) {
@@ -390,6 +507,7 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
     }
 
     unset.dograhError = "";
+    unset.workflowSyncError = "";
   }
 
   for (const [key, value] of Object.entries(set)) {
@@ -411,16 +529,26 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
     agent.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     agent.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
     agent.dograhStatus = hasRealDograhWorkflow(agent) ? "connected" : result.status || agent.dograhStatus;
+    agent.workflowStatus = hasRealDograhWorkflow(agent) ? "connected" : agent.workflowStatus || "failed";
+    agent.workflowSyncStatus = hasRealDograhWorkflow(agent) ? "synced" : agent.workflowSyncStatus || "failed";
     agent.dograhSyncStatus = hasRealDograhWorkflow(agent) ? "Workflow Synced" : "Workflow Not Connected";
     agent.dograhConnection = hasRealDograhWorkflow(agent) ? "Connected" : "Not connected";
     agent.dograhError = undefined;
+    agent.workflowSyncError = undefined;
     agent.dograhRawResponse = result.raw || agent.dograhRawResponse;
     agent.dograhLastSyncedAt = syncedAt;
+    agent.workflowLastSyncedAt = syncedAt;
     agent.dograhNeedsUpdate = !hasRealDograhWorkflow(agent);
     agent.status = hasRealDograhWorkflow(agent) ? "Connected" : agent.status;
   }
 
   return agent;
+}
+
+function publicProviderResult(result = null) {
+  if (!result) return null;
+  const { raw, ...safeResult } = result;
+  return safeResult;
 }
 
 async function syncProvider(agent, action, { createIfMissing = false } = {}) {
@@ -465,6 +593,8 @@ export const createAgent = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Agent name, type, and business name are required");
   }
 
+  const voiceConfigurationInput = req.body.voiceConfiguration || null;
+  const llmConfigurationInput = req.body.llmConfiguration || null;
   const body = sanitizeAgentBody(req.body);
   const telephonyConfigId = body.telephonyConfigId;
   delete body.telephonyConfigId;
@@ -505,10 +635,37 @@ export const createAgent = asyncHandler(async (req, res) => {
 
   agent.telephonyConfigId = telephonyConfigId || null;
   await validateTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+  if (voiceConfigurationInput) {
+    const cleanVoiceConfiguration = sanitizeVoiceConfiguration(voiceConfigurationInput, agent);
+    applyVoiceConfigurationToAgent(agent, cleanVoiceConfiguration);
+  }
+  if (llmConfigurationInput) {
+    const cleanLLMConfiguration = sanitizeLLMConfiguration(llmConfigurationInput, agent);
+    await validateLLMConfigurationOwnership({ userId: agent.userId, config: cleanLLMConfiguration });
+    applyLLMConfigurationToAgent(agent, cleanLLMConfiguration);
+  }
   await agent.validate();
+
+  let voiceConfiguration = null;
+  let llmConfiguration = null;
 
   if (agent.provider === "dograh") {
     let providerResult;
+    agent.workflowStatus = "creating";
+    agent.workflowSyncStatus = "syncing";
+    agent.workflowSyncError = undefined;
+    agent.dograhStatus = "creating";
+    agent.dograhSyncStatus = "Workflow Creating";
+    agent.dograhConnection = "Creating";
+    await agent.save();
+    if (voiceConfigurationInput) {
+      voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
+      await agent.save();
+    }
+    if (llmConfigurationInput) {
+      llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
+      await agent.save();
+    }
 
     try {
       providerResult = await getProvider("dograh").create(agent);
@@ -524,18 +681,22 @@ export const createAgent = asyncHandler(async (req, res) => {
         providerAgentId: providerResult.providerAgentId || dograhAgentId
       });
     } catch (error) {
-      console.error("Dograh agent creation failed:", error.response?.data || error.message);
+      console.error("Dograh agent creation failed:", error.message);
       const dograhError = readProviderErrorMessage(error);
       clearDograhWorkflowFields(agent, dograhError);
       await agent.save();
-      throw new ApiError(
-        error.statusCode || error.response?.status || 502,
-        dograhError,
-        {
-          dograhError: error.response?.data || error.details?.dograhError || error.message,
-          agent
-        }
-      );
+
+      return res.status(201).json({
+        agent,
+        voiceConfiguration,
+        llmConfiguration,
+        providerResult: null,
+        dograhCreated: false,
+        dograhResponse: null,
+        warning: `Agent created locally, but Dograh workflow creation failed. ${dograhError}`,
+        error: dograhError,
+        dograhError
+      });
     }
 
     await agent.save();
@@ -543,17 +704,45 @@ export const createAgent = asyncHandler(async (req, res) => {
       await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
       await agent.save();
     }
+    const runtimeSync = await syncAgentDograhRuntime(agent);
+    if (runtimeSync?.providerResult) providerResult = runtimeSync.providerResult;
+    voiceConfiguration = runtimeSync?.voiceConfiguration || voiceConfiguration;
+    llmConfiguration = runtimeSync?.llmConfiguration || llmConfiguration;
+    const runtimeSyncWarning = runtimeSync?.error ? `Dograh runtime synchronization did not complete: ${runtimeSync.error}` : null;
+    const refreshedAfterRuntimeSync = await Agent.findById(agent._id);
+    if (refreshedAfterRuntimeSync) agent.set(refreshedAfterRuntimeSync.toObject());
+
+    const creationWarnings = [
+      runtimeSyncWarning,
+      agent.dograhWorkflowUuid ? null : "Dograh workflow created but workflow UUID was not found in response.",
+      ["failed", "configuration_required"].includes(voiceConfiguration?.dograhSyncStatus)
+        ? `Dograh voice synchronization did not complete: ${voiceConfiguration.dograhSyncError || "Check the selected provider configuration."}`
+        : null,
+      ["failed", "configuration_required"].includes(llmConfiguration?.dograhSyncStatus)
+        ? `Dograh LLM synchronization did not complete: ${llmConfiguration.dograhSyncError || "Check the selected provider configuration."}`
+        : null
+    ].filter(Boolean);
 
     return res.status(201).json({
       agent,
-      providerResult,
+      voiceConfiguration,
+      llmConfiguration,
+      providerResult: publicProviderResult(providerResult),
       dograhCreated: true,
-      dograhResponse: providerResult.raw,
-      warning: agent.dograhWorkflowUuid ? null : "Dograh workflow created but workflow UUID was not found in response."
+      dograhResponse: null,
+      warning: creationWarnings.length ? creationWarnings.join(" ") : null
     });
   }
 
   await agent.save();
+  if (voiceConfigurationInput) {
+    voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
+    await agent.save();
+  }
+  if (llmConfigurationInput) {
+    llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
+    await agent.save();
+  }
   if (agent.telephonyConfigId) {
     await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
     await agent.save();
@@ -566,9 +755,11 @@ export const createAgent = asyncHandler(async (req, res) => {
 
     return res.status(201).json({
       agent,
-      providerResult,
+      voiceConfiguration,
+      llmConfiguration,
+      providerResult: publicProviderResult(providerResult),
       dograhCreated,
-      dograhResponse: providerResult.raw,
+      dograhResponse: null,
       warning: null
     });
   } catch (error) {
@@ -577,6 +768,8 @@ export const createAgent = asyncHandler(async (req, res) => {
 
     return res.status(201).json({
       agent,
+      voiceConfiguration,
+      llmConfiguration,
       providerResult: null,
       dograhCreated: false,
       warning: `Agent created locally, but ${agent.provider} provider creation failed. ${error.message}`,
@@ -683,10 +876,14 @@ export const getAgent = asyncHandler(async (req, res) => {
 
   const [recentCalls, recentLeads] = await Promise.all([
     CallLog.find({ agentId: agent._id }).sort({ createdAt: -1 }).limit(5),
-    Lead.find({ agentId: agent._id }).sort({ createdAt: -1 }).limit(5),
+    Lead.find({ agentId: agent._id }).sort({ createdAt: -1 }).limit(5)
+  ]);
+  const [voiceConfiguration, llmConfiguration] = await Promise.all([
+    getAgentVoiceConfiguration({ userId: agent.userId, agent }),
+    getAgentLLMConfiguration({ userId: agent.userId, agent })
   ]);
 
-  res.json({ agent, recentCalls, recentLeads });
+  res.json({ agent, recentCalls, recentLeads, voiceConfiguration, llmConfiguration });
 });
 
 export const updateAgent = asyncHandler(async (req, res) => {
@@ -695,6 +892,9 @@ export const updateAgent = asyncHandler(async (req, res) => {
   }
 
   const agent = await getOwnedAgent(req);
+  const agentBeforeUpdate = agent.toObject();
+  const voiceConfigurationInput = req.body.voiceConfiguration || null;
+  const llmConfigurationInput = req.body.llmConfiguration || null;
   const body = sanitizeAgentBody(req.body);
   const allowedFields = [
     "agentName",
@@ -704,12 +904,17 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "businessName",
     "businessCategory",
     "businessDescription",
+    "businessWebsite",
+    "businessLocation",
+    "workingHours",
+    "contactNumber",
     "services",
     "pricing",
     "faqs",
     "policies",
     "offers",
     "additionalInfo",
+    "leadQuestions",
     "systemPrompt",
     "greetingMessage",
     "fallbackMessage",
@@ -728,7 +933,13 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "llmProvider",
     "llmModel",
     "sttProvider",
+    "sttModel",
+    "sttLanguage",
+    "sttSettings",
     "ttsProvider",
+    "ttsModel",
+    "ttsLanguage",
+    "ttsSettings",
     "firstMessage",
     "voiceSpeed",
     "voice",
@@ -762,30 +973,115 @@ export const updateAgent = asyncHandler(async (req, res) => {
     agent.systemPrompt = body.systemPrompt;
   }
 
+  let voiceConfiguration = null;
+  if (voiceConfigurationInput) {
+    const cleanVoiceConfiguration = sanitizeVoiceConfiguration(voiceConfigurationInput, agent);
+    applyVoiceConfigurationToAgent(agent, cleanVoiceConfiguration);
+  }
+  let llmConfiguration = null;
+  if (llmConfigurationInput) {
+    const cleanLLMConfiguration = sanitizeLLMConfiguration(llmConfigurationInput, agent);
+    await validateLLMConfigurationOwnership({ userId: agent.userId, config: cleanLLMConfiguration });
+    applyLLMConfigurationToAgent(agent, cleanLLMConfiguration);
+  }
+
   validateEditableAgentFields(agent);
   if (Object.prototype.hasOwnProperty.call(body, "telephonyConfigId")) {
     await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
   }
 
-  if (agent.provider === "dograh") {
-    agent.dograhNeedsUpdate = true;
+  const shouldSyncDograhWorkflow =
+    agent.provider === "dograh" &&
+    hasRealDograhWorkflow(agent) &&
+    workflowLinkedFieldsChanged(agentBeforeUpdate, agent);
+
+  if (shouldSyncDograhWorkflow) {
+    agent.workflowSyncStatus = "syncing";
+    agent.workflowSyncError = undefined;
+    agent.dograhSyncStatus = "Workflow Syncing";
+    agent.dograhStatus = "syncing";
+    agent.dograhNeedsUpdate = false;
+    agent.workflowVersion = (agent.workflowVersion || 0) + 1;
   }
+
   await agent.save();
 
   let providerResult = null;
+  let workflowSyncQueued = shouldSyncDograhWorkflow;
+  let runtimeSyncWarning = null;
+
+  if (voiceConfigurationInput) {
+    voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
+    await agent.save();
+  }
+  if (llmConfigurationInput) {
+    llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
+    await agent.save();
+  }
+
+  const shouldSyncRuntimeNow =
+    agent.provider === "dograh" &&
+    hasRealDograhWorkflow(agent) &&
+    (voiceConfigurationInput || llmConfigurationInput || shouldSyncDograhWorkflow);
+
+  if (shouldSyncRuntimeNow) {
+    const runtimeSync = await syncAgentDograhRuntime(agent);
+    providerResult = runtimeSync?.providerResult || providerResult;
+    voiceConfiguration = runtimeSync?.voiceConfiguration || voiceConfiguration;
+    llmConfiguration = runtimeSync?.llmConfiguration || llmConfiguration;
+    workflowSyncQueued = false;
+    runtimeSyncWarning = runtimeSync?.error ? `Dograh runtime synchronization did not complete: ${runtimeSync.error}` : null;
+    const refreshedAgent = await Agent.findById(agent._id);
+    if (refreshedAgent) {
+      agent.set(refreshedAgent.toObject());
+    }
+  }
 
   if (body.syncProvider === true) {
-    providerResult = await syncProvider(agent, "update", {
-      createIfMissing: Boolean(body.createIfMissing)
-    });
+    if (agent.provider === "dograh" && hasRealDograhWorkflow(agent)) {
+      agent.workflowSyncStatus = "syncing";
+      agent.workflowSyncError = undefined;
+      agent.dograhSyncStatus = "Workflow Syncing";
+      agent.dograhStatus = "syncing";
+      agent.dograhNeedsUpdate = false;
+      agent.workflowVersion = (agent.workflowVersion || 0) + 1;
+      await agent.save();
+      const runtimeSync = await syncAgentDograhRuntime(agent);
+      providerResult = runtimeSync?.providerResult || providerResult;
+      voiceConfiguration = runtimeSync?.voiceConfiguration || voiceConfiguration;
+      llmConfiguration = runtimeSync?.llmConfiguration || llmConfiguration;
+      workflowSyncQueued = false;
+      runtimeSyncWarning = runtimeSync?.error ? `Dograh runtime synchronization did not complete: ${runtimeSync.error}` : runtimeSyncWarning;
+      const refreshedAgent = await Agent.findById(agent._id);
+      if (refreshedAgent) {
+        agent.set(refreshedAgent.toObject());
+      }
+    } else {
+      providerResult = await syncProvider(agent, "update", {
+        createIfMissing: Boolean(body.createIfMissing)
+      });
+    }
   }
+
+  const voiceSyncWarning = ["failed", "configuration_required"].includes(voiceConfiguration?.dograhSyncStatus)
+    ? `Agent saved, but Dograh voice synchronization did not complete: ${voiceConfiguration.dograhSyncError || "Check the selected provider configuration."}`
+    : null;
+  const llmSyncWarning = ["failed", "configuration_required"].includes(llmConfiguration?.dograhSyncStatus)
+    ? `Agent saved, but Dograh LLM synchronization did not complete: ${llmConfiguration.dograhSyncError || "Check the selected provider configuration."}`
+    : null;
 
   res.json({
     success: true,
     message: providerResult
       ? "Agent saved locally and provider synced successfully."
-      : "Agent saved locally. Sync Provider to apply changes to live calls.",
-    providerResult,
+      : workflowSyncQueued
+        ? "Agent saved. Dograh workflow sync started."
+        : "Agent saved.",
+    warning: [runtimeSyncWarning, voiceSyncWarning, llmSyncWarning].filter(Boolean).join(" ") || null,
+    providerResult: publicProviderResult(providerResult),
+    voiceConfiguration,
+    llmConfiguration,
+    workflowSyncQueued,
     agent
   });
 });
@@ -853,7 +1149,7 @@ export const removeAgent = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: "Agent archived and provider workflow archived successfully",
-    providerResult,
+    providerResult: publicProviderResult(providerResult),
     agent
   });
 });
@@ -911,7 +1207,7 @@ export const publishAgent = asyncHandler(async (req, res) => {
   }
 
   if (agent.provider === "dograh" && !hasRealDograhWorkflow(agent)) {
-    throw new ApiError(400, "Connect a Dograh workflow before publishing this agent.");
+    throw new ApiError(400, "Dograh workflow sync must finish before publishing this agent.");
   }
 
   agent.status = "Active";
@@ -965,6 +1261,9 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   agent.callerIdNumber = callerIdNumber;
   agent.telephonyProvider = telephonyProvider || "twilio";
   agent.dograhStatus = "connected";
+  agent.workflowStatus = "connected";
+  agent.workflowSyncStatus = "synced";
+  agent.workflowLastSyncedAt = new Date();
   agent.dograhSyncStatus = "Workflow Synced";
   agent.dograhConnection = "Connected";
   agent.dograhError = undefined;
@@ -984,6 +1283,11 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
   }
 
+  const voiceRuntime = await assertDograhVoiceReadyForWebCall({ agent, userId: agent.userId });
+  const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: agent.userId });
+  if (llmRuntime.requiresSync && llmRuntime.dograhSyncStatus !== "synced") {
+    throw new ApiError(400, llmRuntime.dograhSyncError || "Web calling is waiting for Dograh LLM synchronization.");
+  }
   const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId });
   agent.dograhEmbedToken = embedToken;
   agent.dograhWidgetEnabled = true;
@@ -992,17 +1296,23 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     embedToken,
+    voiceRuntime,
+    llmRuntime,
     agent
   });
 });
 
 export const getDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgentById(req, req.params.agentId);
+  const voiceRuntime = await getDograhVoiceRuntimeSummary({ agent, userId: agent.userId });
+  const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: agent.userId });
 
   res.json({
     success: true,
     embedToken: agent.dograhEmbedToken || null,
-    dograhWidgetEnabled: Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken)
+    dograhWidgetEnabled: Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken),
+    voiceRuntime,
+    llmRuntime
   });
 });
 
@@ -1030,6 +1340,16 @@ export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
 
   if (hasRealDograhWorkflow(agent)) {
+    if (agent.workflowStatus !== "connected" || agent.dograhStatus !== "connected") {
+      agent.workflowStatus = "connected";
+      agent.workflowSyncStatus = "synced";
+      agent.dograhStatus = "connected";
+      agent.dograhSyncStatus = "Workflow Synced";
+      agent.dograhConnection = "Connected";
+      agent.dograhNeedsUpdate = false;
+      await agent.save();
+    }
+
     return res.json({
       agent,
       dograhCreated: true,
@@ -1043,7 +1363,7 @@ export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
         dograhAgentId: agent.dograhAgentId,
         status: "already_connected"
       },
-      dograhResponse: agent.dograhRawResponse,
+      dograhResponse: null,
       warning: null,
       message: "Dograh workflow is already connected."
     });
@@ -1072,6 +1392,13 @@ export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
   agent.dograhWorkflowUuid = null;
   agent.dograhWorkflowName = null;
   agent.dograhAgentId = null;
+  agent.workflowStatus = "creating";
+  agent.workflowSyncStatus = "syncing";
+  agent.workflowSyncError = undefined;
+  agent.dograhStatus = "creating";
+  agent.dograhSyncStatus = "Workflow Creating";
+  agent.dograhConnection = "Creating";
+  agent.dograhError = undefined;
   await agent.save();
 
   try {
@@ -1081,20 +1408,20 @@ export const createDograhWorkflowForAgent = asyncHandler(async (req, res) => {
     return res.json({
       agent: updatedAgent || agent,
       dograhCreated: hasRealDograhWorkflow(updatedAgent || agent),
-      providerResult,
-      dograhResponse: providerResult.raw,
+      providerResult: publicProviderResult(providerResult),
+      dograhResponse: null,
       warning: hasRealDograhWorkflow(updatedAgent || agent) ? null : "Dograh workflow synced but workflow ID was not found in response."
     });
   } catch (error) {
-    console.error("Dograh workflow creation failed:", error.response?.data || error.message);
-    clearDograhWorkflowFields(agent, error.response?.data?.message || error.response?.data?.error || error.message);
+    console.error("Dograh workflow creation failed:", error.message);
+    clearDograhWorkflowFields(agent, readProviderErrorMessage(error));
     await agent.save();
 
     return res.status(502).json({
       agent,
       dograhCreated: false,
       error: agent.dograhError,
-      dograhError: error.response?.data || error.message
+      dograhError: agent.dograhError
     });
   }
 });
@@ -1110,7 +1437,7 @@ export const updateDograhWorkflowForAgent = asyncHandler(async (req, res) => {
   const workflowId = agent.providerWorkflowId;
 
   if (!workflowId) {
-    throw new ApiError(400, "Cannot update Dograh workflow because this agent is not connected. Use Retry Dograh Workflow Creation first.");
+    throw new ApiError(400, "Cannot update Dograh workflow because this agent is not connected. Use Retry Workflow Sync first.");
   }
 
   if (!agent.systemPrompt || !agent.systemPrompt.trim()) {
@@ -1122,27 +1449,37 @@ export const updateDograhWorkflowForAgent = asyncHandler(async (req, res) => {
   await agent.save();
 
   try {
-    console.log("[Provider Sync]", {
+    console.log("[Dograh Runtime Sync]", {
       agentId: agent._id.toString(),
       provider: "dograh",
       providerWorkflowId: workflowId,
-      action: "update"
+      action: "manual_update"
     });
 
-    const providerResult = await syncProvider(agent, "update");
+    const runtimeSync = await syncAgentDograhRuntime(agent);
+    if (runtimeSync?.error) {
+      throw new ApiError(400, runtimeSync.error);
+    }
+    const updatedAgent = await Agent.findById(agent._id);
 
     res.json({
-      agent,
-      dograhUpdated: Boolean(agent.dograhWorkflowUuid),
-      providerResult,
-      dograhResponse: providerResult.raw,
+      agent: updatedAgent || agent,
+      dograhUpdated: Boolean((updatedAgent || agent).dograhWorkflowUuid),
+      providerResult: publicProviderResult(runtimeSync?.providerResult),
+      voiceConfiguration: runtimeSync?.voiceConfiguration || null,
+      llmConfiguration: runtimeSync?.llmConfiguration || null,
+      verification: runtimeSync?.verification?.diagnostics || null,
+      dograhResponse: null,
       success: true,
-      message: "Dograh workflow updated successfully",
+      message: "Dograh workflow runtime updated and verified successfully",
       workflowId,
-      warning: agent.dograhWorkflowUuid ? null : "Dograh workflow updated but workflow UUID was not found in response."
+      warning: (updatedAgent || agent).dograhWorkflowUuid ? null : "Dograh workflow updated but workflow UUID was not found in response."
     });
   } catch (error) {
     agent.dograhStatus = "update_failed";
+    agent.workflowStatus = "failed";
+    agent.workflowSyncStatus = "failed";
+    agent.workflowSyncError = error.message;
     agent.dograhSyncStatus = hasRealDograhWorkflow(agent) ? "Workflow Needs Update" : "Workflow Failed";
     agent.dograhError = error.message;
     agent.dograhNeedsUpdate = true;
@@ -1167,6 +1504,29 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
   const providerWorkflowId = hasRealDograhWorkflow(agent) ? (agent.providerWorkflowId || agent.dograhWorkflowId || agent.workflowId) : null;
   const createIfMissing = Boolean(req.body?.createIfMissing);
 
+  if (agent.provider === "dograh" && providerWorkflowId) {
+    agent.workflowSyncStatus = "syncing";
+    agent.workflowSyncError = undefined;
+    agent.dograhSyncStatus = "Runtime Syncing";
+    agent.dograhStatus = "syncing";
+    agent.dograhNeedsUpdate = false;
+    agent.workflowVersion = (agent.workflowVersion || 0) + 1;
+    await agent.save();
+    const runtimeSync = await syncAgentDograhRuntime(agent);
+    const updatedAgent = await Agent.findById(agent._id);
+
+    return res.json({
+      success: !runtimeSync?.error,
+      message: runtimeSync?.error ? `Dograh runtime sync failed: ${runtimeSync.error}` : "Dograh runtime sync completed and verified.",
+      providerResult: publicProviderResult(runtimeSync?.providerResult),
+      voiceConfiguration: runtimeSync?.voiceConfiguration || null,
+      llmConfiguration: runtimeSync?.llmConfiguration || null,
+      verification: runtimeSync?.verification?.diagnostics || null,
+      workflowSyncQueued: false,
+      agent: updatedAgent || agent
+    });
+  }
+
   if (agent.provider !== "custom" && !providerWorkflowId && !createIfMissing) {
     throw new ApiError(
       400,
@@ -1179,7 +1539,7 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: "Provider synced successfully",
-    providerResult,
+    providerResult: publicProviderResult(providerResult),
     agent
   });
 });
@@ -1195,7 +1555,10 @@ async function triggerCall(req, res, trigger) {
     trigger
   });
 
-  res.status(202).json(result);
+  res.status(202).json({
+    dograhResponse: result.dograhResponse,
+    callLog: result.publicCallLog
+  });
 }
 
 export const triggerTestCall = asyncHandler(async (req, res) => {

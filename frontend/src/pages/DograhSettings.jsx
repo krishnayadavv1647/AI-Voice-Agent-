@@ -5,7 +5,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 export default function DograhSettings() {
   return (
     <>
-      <PageHeader title="Dograh Settings" description="Verify Dograh API connectivity, workflow creation settings, caller ID, and manual workflow connection defaults." />
+      <PageHeader title="Dograh Settings" description="Verify Dograh API connectivity, automatic workflow creation settings, and caller ID defaults." />
       <div className="grid min-w-0 gap-5 xl:grid-cols-3 xl:gap-6">
         <section className="card xl:col-span-2">
           <h2 className="panel-title">API Connection</h2>
@@ -19,20 +19,9 @@ export default function DograhSettings() {
 
         <aside className="card">
           <h2 className="panel-title">Workflow Operations</h2>
-          <p className="muted mt-2">Use retries only when Dograh workflow creation fails for an individual agent.</p>
-          <button className="btn-secondary mt-5 w-full"><RefreshCw size={16} />Retry Workflow Creation</button>
+          <p className="muted mt-2">Dograh workflows are created automatically when an agent is created. Retry workflow sync from the agent details page if a specific agent fails.</p>
+          <button className="btn-secondary mt-5 w-full" disabled><RefreshCw size={16} />Retry From Agent Details</button>
         </aside>
-
-        <section className="card xl:col-span-3">
-          <h2 className="panel-title">Manual Workflow Connect</h2>
-          <p className="muted mt-1">Fallback for connecting an existing Dograh workflow UUID to a local app agent.</p>
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <input placeholder="Workflow ID" />
-            <input placeholder="Workflow UUID" />
-            <input placeholder="Caller ID number" />
-            <button className="btn-primary">Connect Workflow</button>
-          </div>
-        </section>
       </div>
     </>
   );

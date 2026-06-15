@@ -1,7 +1,9 @@
-import { Bot, Building2, Check, ChevronLeft, ChevronRight, ClipboardList, Headphones, MessageSquareText, Plus, Sparkles, Volume2, X } from "lucide-react";
+import { Bot, Building2, Check, ChevronLeft, ChevronRight, ClipboardList, Headphones, MessageSquareText, Plus, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
+import VoiceConfigurationPanel, { defaultVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
 import { agentTypes, defaultLeadQuestions, languages, personalities, templateOptions, templates, tones } from "../lib/options.js";
 
@@ -31,11 +33,11 @@ const initialForm = {
   leadQuestions: defaultLeadQuestions,
   templateType: "",
   provider: "dograh",
+  voiceConfiguration: defaultVoiceConfiguration,
+  llmConfiguration: defaultLLMConfiguration,
   language: "english",
-  llmProvider: "gemini",
-  llmModel: "gemini-2.5-flash",
-  sttProvider: "openai_whisper",
-  ttsProvider: "openai_tts",
+  sttProvider: "dograh_default",
+  ttsProvider: "dograh_default",
   voiceId: "",
   firstMessage: "",
   telephonyConfigId: "",
@@ -134,7 +136,7 @@ export default function CreateAgent() {
       navigate(`/agents/${agent._id}`, {
         state: {
           notice: result.dograhCreated ? "Agent created and Dograh workflow created successfully." : null,
-          warning: result.dograhCreated === false ? result.warning || "Agent created locally but Dograh workflow creation failed." : null
+          warning: result.warning || (result.dograhCreated === false ? "Agent created locally but Dograh workflow creation failed." : null)
         }
       });
     } catch (err) {
@@ -255,22 +257,11 @@ export default function CreateAgent() {
 
         {step === 4 && (
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Language" name="language" value={form.language} onChange={setField} options={languages} />
-            <Field label="LLM Provider" name="llmProvider" value={form.llmProvider} onChange={setField} options={[
-              { label: "Gemini", value: "gemini" },
-              { label: "OpenAI", value: "openai" }
-            ]} />
-            <Field label="LLM Model" name="llmModel" value={form.llmModel} onChange={setField} />
-            <Field label="STT Provider" name="sttProvider" value={form.sttProvider} onChange={setField} options={["openai_whisper", "deepgram", "google_stt"]} />
-            <Field label="TTS Provider" name="ttsProvider" value={form.ttsProvider} onChange={setField} options={["openai_tts", "elevenlabs", "google_tts"]} />
-            <Field label="Voice Provider" name="voiceProvider" value={form.voiceProvider} onChange={setField} options={["Dograh Default", "Sarvam", "Cartesia", "ElevenLabs"]} />
-            <Field label="Voice ID" name="voiceId" value={form.voiceId} onChange={setField} />
-            <Field label="Voice Gender" name="voiceGender" value={form.voiceGender} onChange={setField} options={["Female", "Male", "Neutral"]} />
-            <Field label="Voice Style" name="voiceStyle" value={form.voiceStyle} onChange={setField} options={["Natural", "Studio", "Warm", "Crisp", "Custom"]} />
+            <Field label="Conversation Language" name="language" value={form.language} onChange={setField} options={languages} />
+            <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
             <Field label="Tone" name="tone" value={form.tone} onChange={setField} options={tones} />
-            <Field label="Speaking Speed" name="speakingSpeed" value={form.speakingSpeed} onChange={setField} options={["Slow", "Normal", "Fast"]} />
             <Field label="Personality" name="personality" value={form.personality} onChange={setField} options={personalities} />
-            <div className="flex items-end"><button className="btn-secondary" type="button"><Volume2 size={16} />Voice Preview</button></div>
+            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} />
           </div>
         )}
 
@@ -284,7 +275,7 @@ export default function CreateAgent() {
                 ["Goal", form.mainGoal],
                 ["Knowledge", form.services || "No services added"],
                 ["Lead questions", form.leadQuestions.map((q) => q.label).join(", ")],
-                ["Voice", `${form.language}, ${form.voiceProvider}, ${form.voiceGender}, ${form.tone}`],
+                ["Voice", `${form.language}, ${(form.voiceConfiguration?.ttsProvider || "dograh_default").replaceAll("_", " ")}, ${form.voiceConfiguration?.ttsVoiceId || "Dograh default voice"}, ${form.tone}`],
                 ["Rules", form.fallbackMessage]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-slate-200 p-4">

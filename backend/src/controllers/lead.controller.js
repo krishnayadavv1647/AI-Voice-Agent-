@@ -1,12 +1,8 @@
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
-import { applyCallOutcomeToLog } from "../services/callOutcome.service.js";
-import { extractRunId } from "../services/callLogMapper.js";
-import { scheduleDograhStatusSync } from "../services/dograhCallStatusSync.service.js";
-import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
+import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 
 function filter(req) {
   return req.user.role === "admin" ? {} : { userId: req.user._id };
@@ -65,56 +61,29 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
   if (!lead) throw new ApiError(404, "Lead not found");
 
   const agent = lead.agentId;
-  if (!agent?.dograhWorkflowUuid) throw new ApiError(400, "Agent is not connected to a Dograh workflow.");
+  if (!agent?.dograhWorkflowUuid) throw new ApiError(400, "Dograh workflow sync must finish before calling this lead.");
   if (!agent?.callerIdNumber) throw new ApiError(400, "Caller ID number is missing for this agent.");
   if (!lead.phone) throw new ApiError(400, "Lead phone number is missing.");
 
-  const payload = {
-    phone_number: lead.phone,
-    calling_number: agent.callerIdNumber,
-    initial_context: {
+  const { dograhResponse, callLog, publicCallLog } = await triggerOutboundCallForAgent({
+    agent,
+    userId: lead.userId,
+    phoneNumber: lead.phone,
+    leadId: lead._id,
+    source: "lead_call_again",
+    metadata: {
       customerName: lead.name,
       phoneNumber: lead.phone,
       requirement: lead.requirement,
       preferredTime: lead.preferredTime,
       businessName: agent.businessName,
       agentName: agent.agentName,
-      localAgentId: agent._id.toString()
-    },
-    metadata: {
-      localAgentId: agent._id.toString(),
-      leadId: lead._id.toString(),
       source: "lead_call_again"
     }
-  };
-
-  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload, { userId: lead.userId });
-  const dograhRunId = extractRunId(dograhResponse);
-  const rawProviderStatus = dograhResponse?.status || "initiated";
-
-  const callLog = await CallLog.create({
-    userId: lead.userId,
-    agentId: agent._id,
-    leadId: lead._id,
-    source: "lead_call_again",
-    callDirection: "outbound",
-    callerNumber: lead.phone,
-    callingNumber: agent.callerIdNumber,
-    dograhWorkflowId: agent.dograhWorkflowId,
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    status: rawProviderStatus,
-    rawProviderStatus,
-    providerPayload: dograhResponse,
-    rawDograhPayload: dograhResponse,
-    startedAt: new Date()
   });
-  await applyCallOutcomeToLog(callLog, rawProviderStatus);
-  await callLog.save();
-  scheduleDograhStatusSync(callLog._id);
 
   lead.callLogId = callLog._id;
   await lead.save();
 
-  res.status(202).json({ success: true, lead, callLog, dograhResponse });
+  res.status(202).json({ success: true, lead, callLog: publicCallLog, dograhResponse });
 });

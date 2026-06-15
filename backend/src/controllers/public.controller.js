@@ -1,12 +1,8 @@
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import Agent from "../models/Agent.js";
-import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
-import { applyCallOutcomeToLog } from "../services/callOutcome.service.js";
-import { extractRunId } from "../services/callLogMapper.js";
-import { scheduleDograhStatusSync } from "../services/dograhCallStatusSync.service.js";
-import { triggerDograhOutboundCallByWorkflow } from "../services/dograh.service.js";
+import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 import { defaultBioPage } from "../services/bioPageTemplates.js";
@@ -168,49 +164,22 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
 
   const lead = await Lead.create(leadPayload);
 
-  const payload = {
-    phone_number: phoneNumber,
-    calling_number: agent.callerIdNumber,
-    initial_context: {
+  const { callLog } = await triggerOutboundCallForAgent({
+    agent,
+    userId: agent.userId,
+    phoneNumber,
+    leadId: lead._id,
+    source: "callback_form",
+    metadata: {
       customerName: leadPayload.name,
       phoneNumber,
       requirement: leadPayload.requirement,
       preferredTime: leadPayload.preferredTime,
       businessName: agent.businessName,
       agentName: agent.agentName,
-      localAgentId: agent._id.toString()
-    },
-    metadata: {
-      localAgentId: agent._id.toString(),
-      leadId: lead._id.toString(),
       source: "callback_form"
     }
-  };
-
-  const dograhResponse = await triggerDograhOutboundCallByWorkflow(agent.dograhWorkflowUuid, payload, { userId: agent.userId });
-  const dograhRunId = extractRunId(dograhResponse);
-  const rawProviderStatus = dograhResponse?.status || "initiated";
-
-  const callLog = await CallLog.create({
-    userId: agent.userId,
-    agentId: agent._id,
-    leadId: lead._id,
-    source: "callback_form",
-    callDirection: "outbound",
-    callerNumber: phoneNumber,
-    callingNumber: agent.callerIdNumber,
-    dograhWorkflowId: agent.dograhWorkflowId,
-    dograhWorkflowUuid: agent.dograhWorkflowUuid,
-    dograhRunId: dograhRunId ? String(dograhRunId) : null,
-    status: rawProviderStatus,
-    rawProviderStatus,
-    providerPayload: dograhResponse,
-    rawDograhPayload: dograhResponse,
-    startedAt: new Date()
   });
-  await applyCallOutcomeToLog(callLog, rawProviderStatus);
-  await callLog.save();
-  scheduleDograhStatusSync(callLog._id);
 
   lead.callLogId = callLog._id;
   await lead.save();

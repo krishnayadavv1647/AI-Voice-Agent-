@@ -3,6 +3,8 @@ import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
+import { getDograhClientForUser } from "../services/dograhClientResolver.js";
+import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "../services/dograhWorkflowConfig.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -189,6 +191,32 @@ function buildDograhPhonePayload({ body, agent, inboundEnabled, outboundEnabled 
   };
 }
 
+async function assertLinkedAgentRuntimeReady(agent, userId, callType) {
+  if (!agent.dograhWorkflowUuid) {
+    throw new ApiError(400, "Linked agent is missing Dograh workflow UUID. Sync the agent before attaching phone calls.");
+  }
+  if (agent.workflowSyncStatus && agent.workflowSyncStatus !== "synced") {
+    throw new ApiError(400, agent.workflowSyncError || "Linked agent Dograh runtime sync is not complete.");
+  }
+
+  const workflowId = agent.dograhWorkflowId || agent.providerWorkflowId;
+  if (!workflowId) {
+    throw new ApiError(400, "Linked agent is missing Dograh workflow ID. Sync the agent before attaching phone calls.");
+  }
+
+  const resolved = await getDograhClientForUser(userId, { allowGlobalFallbackOnError: false });
+  const verification = await verifyDograhWorkflowRuntime({
+    agent,
+    userId,
+    callType,
+    fetchWorkflow: async () => {
+      const response = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
+      return response.data;
+    }
+  });
+  assertRuntimeVerification(verification);
+}
+
 async function syncLinkedAgent(config) {
   await Agent.updateMany({ telephonyConfigId: config._id }, { $set: { telephonyConfigId: null } });
   if (!config.linkedAgentId) return;
@@ -245,6 +273,7 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
   const config = new TelephonyConfig({ userId: req.user._id });
   applyBody(config, { ...req.body, linkedAgentId, inboundEnabled, outboundEnabled, status: "active" }, req);
   provider.saveConfig(config);
+  await assertLinkedAgentRuntimeReady(linkedAgent, req.user._id, inboundEnabled ? "inbound_phone_call" : "outbound_phone_call");
 
   const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
   const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
@@ -291,6 +320,11 @@ export const updateTelephonyConfig = asyncHandler(async (req, res) => {
   applyBody(config, req.body, req);
   const provider = getTelephonyProvider(config.provider);
   provider.saveConfig(config);
+  if (config.linkedAgentId && (config.inboundEnabled || config.outboundEnabled)) {
+    const linkedAgent = await Agent.findOne({ _id: config.linkedAgentId, userId: config.userId });
+    if (!linkedAgent) throw new ApiError(400, "Linked agent was not found for this user");
+    await assertLinkedAgentRuntimeReady(linkedAgent, config.userId, config.inboundEnabled ? "inbound_phone_call" : "outbound_phone_call");
+  }
   await config.save();
   await syncLinkedAgent(config);
 

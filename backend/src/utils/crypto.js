@@ -6,7 +6,7 @@ const PREFIX = "enc:v1:";
 function getEncryptionKey() {
   const source = process.env.SECRET_ENCRYPTION_KEY?.trim();
   if (!source) {
-    throw new ApiError(500, "SECRET_ENCRYPTION_KEY is missing. Dograh API keys cannot be saved without encryption.");
+    throw new ApiError(500, "SECRET_ENCRYPTION_KEY is missing. Provider API keys cannot be saved without encryption.");
   }
   return crypto.createHash("sha256").update(source).digest();
 }
@@ -28,7 +28,7 @@ export function decryptSecret(value) {
   if (!value) return "";
   const text = String(value);
   if (!text.startsWith(PREFIX)) {
-    throw new ApiError(500, "Stored Dograh API key is not encrypted. Please reconnect Dograh in Settings.");
+    throw new ApiError(500, "Stored provider API key is not encrypted. Please reconnect the integration.");
   }
 
   const raw = Buffer.from(text.slice(PREFIX.length), "base64");
