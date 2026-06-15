@@ -8,6 +8,14 @@ function value(input) {
   return hasText(input) ? String(input).trim() : "Not provided";
 }
 
+function firstSpokenMessage(agent) {
+  return (
+    [agent.firstMessage, agent.greetingMessage]
+      .find((item) => hasText(item)) ||
+    `Hello, welcome to ${value(agent.businessName)}. How can I help you today?`
+  );
+}
+
 function formatLeadQuestions(leadQuestions = []) {
   if (!Array.isArray(leadQuestions) || !leadQuestions.length) {
     return "Not provided";
@@ -224,9 +232,7 @@ export function buildDograhWorkflowDefinition(agent) {
   const endNodeId = `end-${localId}`;
 
   const globalPrompt = buildGlobalPrompt(agent);
-  const startPrompt = hasText(agent.greetingMessage)
-    ? String(agent.greetingMessage).trim()
-    : `Hello, welcome to ${value(agent.businessName)}. How can I help you today?`;
+  const startPrompt = firstSpokenMessage(agent);
   const agentPrompt = buildAgentPrompt(agent);
   console.log("AUTO DOGRAH AGENT PROMPT:", agentPrompt);
   const endPrompt = "Thank the caller and end the call politely after the request is handled or callback details are collected.";

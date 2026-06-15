@@ -28,6 +28,8 @@ import Templates from "./pages/Templates.jsx";
 import TestAgent from "./pages/TestAgent.jsx";
 import Admin from "./pages/Admin.jsx";
 import VoiceLanguage from "./pages/VoiceLanguage.jsx";
+import VoiceProviders from "./pages/VoiceProviders.jsx";
+import LLMProviders from "./pages/LLMProviders.jsx";
 import DograhSettings from "./pages/DograhSettings.jsx";
 import EmailOutreach from "./pages/EmailOutreach.jsx";
 import EmailInbox from "./pages/EmailInbox.jsx";
@@ -80,6 +82,8 @@ function Router() {
         <Route path="messages" element={<Messages />} />
         <Route path="templates" element={<Templates />} />
         <Route path="voice-language" element={<VoiceLanguage />} />
+        <Route path="integrations/voice-providers" element={<VoiceProviders />} />
+        <Route path="integrations/llm-providers" element={<LLMProviders />} />
         <Route path="telephony-configuration" element={<TelephonyConfiguration />} />
         <Route path="dograh-settings" element={<DograhSettings />} />
         <Route path="knowledge" element={<KnowledgeBase />} />

@@ -16,6 +16,7 @@
   Menu,
   MessageSquare,
   PhoneCall,
+  Plug,
   PlusCircle,
   Search,
   Settings,
@@ -45,6 +46,8 @@ const links = [
   { to: "/messages", label: "Messages", icon: MessageSquare },
   { to: "/templates", label: "Templates", icon: LayoutTemplate },
   { to: "/voice-language", label: "Voice & Language", icon: Languages },
+  { to: "/integrations/voice-providers", label: "Voice Providers", icon: Plug },
+  { to: "/integrations/llm-providers", label: "LLM Providers", icon: MessageSquare },
   { to: "/telephony-configuration", label: "Telephony Configuration", icon: PhoneCall },
   { to: "/dograh-settings", label: "Dograh Settings", icon: Workflow },
   { to: "/settings", label: "Settings", icon: Settings }

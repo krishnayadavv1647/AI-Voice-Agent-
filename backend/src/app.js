@@ -23,11 +23,13 @@ import knowledgeRoutes from "./routes/knowledge.routes.js";
 import leadFinderRoutes from "./routes/leadFinder.routes.js";
 import leadRoutes from "./routes/lead.routes.js";
 import llmRoutes from "./routes/llm.routes.js";
+import llmIntegrationRoutes from "./routes/llmIntegration.routes.js";
 import publicRoutes from "./routes/public.routes.js";
 import scheduledCallRoutes from "./routes/scheduledCall.routes.js";
 import telephonyConfigRoutes from "./routes/telephonyConfig.routes.js";
 import telephonyRoutes from "./routes/telephony.routes.js";
 import telegramIntegrationRoutes from "./routes/telegramIntegration.routes.js";
+import voiceIntegrationRoutes from "./routes/voiceIntegration.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 
 import { dograhWebhook } from "./controllers/webhook.controller.js";
@@ -96,6 +98,8 @@ app.use("/api/telephony-configs", telephonyConfigRoutes);
 app.use("/api/telephony", telephonyRoutes);
 app.use("/api/integrations/dograh", dograhIntegrationRoutes);
 app.use("/api/integrations/telegram", telegramIntegrationRoutes);
+app.use("/api", voiceIntegrationRoutes);
+app.use("/api", llmIntegrationRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
 
