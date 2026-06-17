@@ -40,6 +40,15 @@ function validateTwilioWebhookConfig(config) {
   }
 }
 
+function safeUrlLog(value) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}${url.search ? "?..." : ""}`;
+  } catch {
+    return "<invalid-url>";
+  }
+}
+
 function twilioErrorDetails(error) {
   const data = error.response?.data || {};
   return {
@@ -85,7 +94,7 @@ export const TwilioTelephony = {
     const phoneNumberSid = number.sid;
     const body = new URLSearchParams({
       VoiceUrl: config.webhookUrl,
-      VoiceMethod: "POST"
+      VoiceMethod: config.webhookMethod || "POST"
     });
 
     try {
@@ -93,20 +102,41 @@ export const TwilioTelephony = {
         auth: auth(config),
         headers: { "Content-Type": "application/x-www-form-urlencoded" }
       });
+      const verified = await axios.get(`${baseUrl(config)}/IncomingPhoneNumbers/${phoneNumberSid}.json`, {
+        auth: auth(config)
+      });
+      const voiceUrl = verified.data?.voice_url || verified.data?.voiceUrl || response.data?.voice_url || response.data?.voiceUrl || config.webhookUrl;
+      const voiceMethod = verified.data?.voice_method || verified.data?.voiceMethod || response.data?.voice_method || response.data?.voiceMethod || config.webhookMethod || "POST";
 
       return {
         success: true,
         provider: "twilio",
         status: "configured",
         phoneNumberSid,
-        voiceUrl: response.data?.voice_url || response.data?.voiceUrl || config.webhookUrl,
-        voiceMethod: response.data?.voice_method || response.data?.voiceMethod || "POST",
-        message: "Twilio voice webhook configured."
+        voiceUrl,
+        voiceMethod,
+        message: `Twilio voice webhook configured to ${safeUrlLog(voiceUrl)}.`
       };
     } catch (error) {
       logTwilioError("configure voice webhook", error);
       throw new ApiError(error.response?.status || 502, "Twilio webhook configuration failed", twilioErrorDetails(error));
     }
+  },
+
+  async getWebhookConfig(config) {
+    validateTwilioWebhookConfig({ ...config, webhookUrl: config.webhookUrl || "https://example.com" });
+    const number = await findIncomingNumber(config);
+    if (!number?.sid) {
+      throw new ApiError(404, "Twilio phone number not found in this account");
+    }
+
+    return {
+      provider: "twilio",
+      phoneNumberSid: number.sid,
+      voiceUrl: number.voice_url || number.voiceUrl || "",
+      voiceMethod: number.voice_method || number.voiceMethod || "POST",
+      statusCallback: number.status_callback || number.statusCallback || ""
+    };
   },
 
   async makeCall(config, payload) {
@@ -127,7 +157,24 @@ export const TwilioTelephony = {
     return { provider: "twilio", status: response.data?.status, callSid: response.data?.sid };
   },
 
-  handleIncomingCall({ reply, agent }) {
+  handleIncomingCall({ reply, agent, config }) {
+    const inboundMode = config?.inboundMode || (config?.inboundEnabled === false ? "disabled" : "dograh_ai");
+
+    if (inboundMode === "disabled") {
+      return buildFailureResponse("Inbound calling is currently unavailable.");
+    }
+
+    if (inboundMode === "dograh_ai") {
+      if (!config?.dograhInboundWebhookUrl) {
+        return buildFailureResponse("We are unable to connect your call right now. Please try again later.");
+      }
+
+      return {
+        contentType: "text/xml",
+        body: `<Response><Redirect method="POST">${escapeXml(config.dograhInboundWebhookUrl)}</Redirect></Response>`
+      };
+    }
+
     const message = reply || agent?.firstMessage || agent?.greetingMessage || "Hello. How can I help you today?";
     return {
       contentType: "text/xml",
@@ -135,6 +182,13 @@ export const TwilioTelephony = {
     };
   }
 };
+
+function buildFailureResponse(message) {
+  return {
+    contentType: "text/xml",
+    body: `<Response><Say voice="alice">${escapeXml(message)}</Say><Hangup/></Response>`
+  };
+}
 
 function escapeXml(value) {
   return String(value)

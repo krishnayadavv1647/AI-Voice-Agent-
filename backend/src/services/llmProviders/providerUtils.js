@@ -15,14 +15,29 @@ export function safeProviderError(error, providerName) {
     `${providerName} request failed.`;
 
   let message = `${providerName} request failed.`;
-  if (status === 401 || status === 403) message = `${providerName} credentials were rejected.`;
-  else if (status === 404) message = `${providerName} model or endpoint was not found.`;
-  else if (status === 408 || status === 504) message = `${providerName} timed out.`;
-  else if (status === 429 || /rate limit|quota/i.test(rawMessage)) message = `${providerName} rate limit or quota was reached.`;
-  else if (/credit|billing|insufficient/i.test(rawMessage)) message = `${providerName} reported insufficient credits or billing configuration.`;
+  let code = "LLM_PROVIDER_ERROR";
+  if (status === 401 || status === 403) {
+    message = `${providerName} credentials were rejected.`;
+    code = "INVALID_LLM_CREDENTIALS";
+  } else if (status === 404) {
+    message = `${providerName} model or endpoint was not found.`;
+    code = "INVALID_LLM_MODEL";
+  } else if (status === 408 || status === 504 || /timeout|timed out/i.test(rawMessage)) {
+    message = `${providerName} timed out.`;
+    code = "LLM_PROVIDER_TIMEOUT";
+  } else if (status === 429 || /rate limit|quota/i.test(rawMessage)) {
+    message = `${providerName} rate limit or quota was reached.`;
+    code = "LLM_PROVIDER_RATE_LIMITED";
+  } else if (/credit|billing|insufficient/i.test(rawMessage)) {
+    message = `${providerName} reported insufficient credits or billing configuration.`;
+    code = "LLM_PROVIDER_INSUFFICIENT_CREDITS";
+  }
   else if (typeof rawMessage === "string" && rawMessage.length < 220) message = rawMessage;
 
-  return new ApiError(status || 502, message);
+  const apiError = new ApiError(status || 502, message, { code, safeErrorCode: code });
+  apiError.code = code;
+  apiError.safeMessage = message;
+  return apiError;
 }
 
 export function createProviderClient({ baseURL, apiKey, headers = {}, timeout = 30000 }) {

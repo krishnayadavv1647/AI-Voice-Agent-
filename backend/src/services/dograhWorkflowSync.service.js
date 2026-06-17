@@ -1,6 +1,6 @@
 import Agent from "../models/Agent.js";
 import { DograhProvider } from "../providers/dograh.provider.js";
-import { getDograhClientForUser } from "./dograhClientResolver.js";
+import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { syncAgentLLMConfigurationToDograh } from "./dograhLLMConfigSync.service.js";
 import { syncAgentVoiceConfigurationToDograh } from "./dograhVoiceConfigSync.service.js";
 import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "./dograhWorkflowConfig.service.js";
@@ -25,7 +25,7 @@ export async function syncDograhWorkflow(agent) {
 
     const providerResult = await DograhProvider.update(latestAgent);
     const workflowId = providerResult.dograhWorkflowId || providerResult.providerWorkflowId || latestAgent.dograhWorkflowId || latestAgent.providerWorkflowId;
-    const resolved = await getDograhClientForUser(latestAgent.userId, { allowGlobalFallbackOnError: false });
+    const resolved = await getDograhClientForAgent(latestAgent, latestAgent.userId);
     const verification = await verifyDograhWorkflowRuntime({
       agent: latestAgent,
       userId: latestAgent.userId,
@@ -148,7 +148,7 @@ export async function syncAgentDograhRuntime(agent) {
     }
 
     const workflowId = refreshedAgent.dograhWorkflowId || refreshedAgent.providerWorkflowId;
-    const resolved = await getDograhClientForUser(refreshedAgent.userId, { allowGlobalFallbackOnError: false });
+    const resolved = await getDograhClientForAgent(refreshedAgent, refreshedAgent.userId);
     const verification = await verifyDograhWorkflowRuntime({
       agent: refreshedAgent,
       userId: refreshedAgent.userId,

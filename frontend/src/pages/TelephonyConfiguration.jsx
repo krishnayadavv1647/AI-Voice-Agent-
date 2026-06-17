@@ -25,6 +25,7 @@ const emptyForm = {
   webhookUrl: "",
   linkedAgentId: "",
   inboundEnabled: true,
+  inboundMode: "dograh_ai",
   outboundEnabled: true,
   status: "active"
 };
@@ -151,6 +152,22 @@ export default function TelephonyConfiguration() {
     }
   }
 
+  async function verifyInboundRouting(id = form._id) {
+    if (!id) return;
+    setError("");
+    setMessage("");
+    setBusy("verifyInbound");
+    try {
+      const result = await api(`/telephony-configs/${id}/verify-inbound-routing`, { method: "POST", body: {} });
+      setMessage(`Inbound routing verified: ${result.routingStatus || "ready"}.`);
+      await load();
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function deleteConfig(id) {
     if (!confirm("Delete this telephony configuration?")) return;
     setError("");
@@ -215,6 +232,34 @@ export default function TelephonyConfiguration() {
             </label>
             <Toggle label="Inbound Enabled" checked={form.inboundEnabled} onChange={(value) => setField("inboundEnabled", value)} />
             <Toggle label="Outbound Enabled" checked={form.outboundEnabled} onChange={(value) => setField("outboundEnabled", value)} />
+            <div className="md:col-span-2">
+              <div className="mb-2 text-sm font-semibold text-slate-700">Inbound Call Mode</div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <RadioTile
+                  label="Dograh AI Agent"
+                  checked={form.inboundMode === "dograh_ai"}
+                  onChange={() => setField("inboundMode", "dograh_ai")}
+                />
+                <RadioTile
+                  label="Static Greeting Only"
+                  checked={form.inboundMode === "static_greeting"}
+                  onChange={() => setField("inboundMode", "static_greeting")}
+                />
+                <RadioTile
+                  label="Disabled"
+                  checked={form.inboundMode === "disabled"}
+                  onChange={() => setField("inboundMode", "disabled")}
+                />
+              </div>
+            </div>
+            {form.inboundMode === "dograh_ai" && (
+              <div className="md:col-span-2 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 md:grid-cols-2">
+                <InfoLine label="Dograh workflow" ok={Boolean(form.dograhWorkflowId || form.dograhWorkflowUuid)} value={form.dograhWorkflowUuid || form.dograhWorkflowId || "Not connected"} />
+                <InfoLine label="Inbound routing" ok={["verified", "dograh_managed"].includes(form.inboundRoutingStatus)} value={form.inboundRoutingStatus || "Not verified"} />
+                <InfoLine label="Phone number" ok={Boolean(form.phoneNumber)} value={form.phoneNumber || "Not assigned"} />
+                <InfoLine label="Runtime" ok={form.inboundRoutingStatus === "verified" || form.inboundRoutingStatus === "dograh_managed"} value={form.inboundRoutingStatus === "failed" ? "Needs attention" : "Ready after verification"} />
+              </div>
+            )}
             <label className="block text-sm font-semibold text-slate-700">
               Status
               <select className="mt-1" value={form.status} onChange={(event) => setField("status", event.target.value)}>
@@ -231,6 +276,7 @@ export default function TelephonyConfiguration() {
             <button className="btn-primary" disabled={busy === "save"} onClick={saveConfig}><Save size={16} />{busy === "save" ? "Saving..." : form._id ? "Save" : "Add Configuration"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "test"} onClick={() => testConfig()}><Wifi size={16} />{busy === "test" ? "Testing..." : "Test Connection"}</button>
             <button className="btn-secondary" disabled={!form._id || busy === "webhook"} onClick={() => configureWebhook()}><PlugZap size={16} />{busy === "webhook" ? "Configuring..." : "Configure Webhook"}</button>
+            <button className="btn-secondary" disabled={!form._id || busy === "verifyInbound"} onClick={() => verifyInboundRouting()}><CheckCircle2 size={16} />{busy === "verifyInbound" ? "Verifying..." : "Verify Inbound Routing"}</button>
           </div>
         </section>
 
@@ -255,6 +301,7 @@ export default function TelephonyConfiguration() {
                     <button className="min-w-0 text-left" onClick={() => editConfig(config)}>
                       <h3 className="break-anywhere font-bold text-slate-950">{config.name}</h3>
                       <p className="break-anywhere text-sm text-slate-500">{config.provider} - {config.phoneNumber}</p>
+                      <p className="break-anywhere text-xs text-slate-500">Inbound: {config.inboundMode === "dograh_ai" ? "Dograh AI Agent" : config.inboundMode === "static_greeting" ? "Static Greeting Only" : "Disabled"} - {config.inboundRoutingStatus || "not configured"}</p>
                       {config.dograhTelephonyConfigId && <p className="break-anywhere text-xs text-slate-400">Dograh config ID: {config.dograhTelephonyConfigId}</p>}
                       <p className="break-anywhere text-xs text-slate-400">{config.webhookUrl || "Webhook URL will be generated by backend"}</p>
                     </button>
@@ -264,6 +311,7 @@ export default function TelephonyConfiguration() {
                     <button className="btn-secondary" onClick={() => editConfig(config)}>Edit</button>
                     <button className="btn-secondary" onClick={() => testConfig(config._id)}><Wifi size={16} />Test</button>
                     <button className="btn-secondary" onClick={() => configureWebhook(config._id)}><PlugZap size={16} />Webhook</button>
+                    <button className="btn-secondary" onClick={() => verifyInboundRouting(config._id)}><CheckCircle2 size={16} />Verify Inbound</button>
                     <button className="btn-secondary text-rose-600" onClick={() => deleteConfig(config._id)}><Trash2 size={16} />Delete</button>
                   </div>
                 </div>
@@ -298,5 +346,23 @@ function Toggle({ label, checked, onChange }) {
       <span>{label}</span>
       <input className="h-5 w-5" type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} />
     </label>
+  );
+}
+
+function RadioTile({ label, checked, onChange }) {
+  return (
+    <label className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold ${checked ? "border-blue-300 bg-blue-50 text-blue-800" : "border-slate-200 text-slate-700"}`}>
+      <input className="h-4 w-4" type="radio" checked={checked} onChange={onChange} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function InfoLine({ label, value, ok }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className={ok ? "break-anywhere font-semibold text-emerald-700" : "break-anywhere font-semibold text-amber-700"}>{value}</div>
+    </div>
   );
 }

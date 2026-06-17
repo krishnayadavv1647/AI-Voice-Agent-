@@ -1,10 +1,8 @@
 import { ApiError } from "../utils/apiError.js";
 import { buildDograhWorkflowDefinition, validateLocalWorkflowDefinition } from "./dograhWorkflowBuilder.js";
-import { getDograhClientForUser } from "./dograhClientResolver.js";
+import { getDograhClientForAgent, getDograhClientForUser } from "./dograhClientResolver.js";
 import {
-  assertRuntimeVerification,
-  extractWorkflowConfigurations,
-  verifyDograhWorkflowRuntime
+  extractWorkflowConfigurations
 } from "./dograhWorkflowConfig.service.js";
 
 const DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT = "/workflow/create/definition";
@@ -85,9 +83,9 @@ export async function getDograhDebugInfo(userId) {
 }
 
 async function createDograhClient(userId, options = {}) {
-  const resolved = await getDograhClientForUser(userId, options);
-  console.log("DOGRAH_BASE_URL:", resolved.baseUrl);
-  console.log("DOGRAH_API_KEY_EXISTS:", Boolean(resolved.maskedApiKey));
+  const resolved = options.agent
+    ? await getDograhClientForAgent(options.agent, userId)
+    : await getDograhClientForUser(userId, options);
   console.log("DOGRAH_CREDENTIAL_MODE:", resolved.mode);
   return resolved;
 }
@@ -97,8 +95,8 @@ function formatDograhErrorMessage(data, fallback) {
 
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) return JSON.stringify(detail);
-  if (detail && typeof detail === "object") return JSON.stringify(detail);
-  if (data) return JSON.stringify(data);
+  if (detail && typeof detail === "object") return "Dograh returned a structured error.";
+  if (data) return "Dograh returned an error.";
 
   return fallback;
 }
@@ -272,7 +270,7 @@ export function extractDograhWorkflowFields(dograhResponse) {
   };
 }
 
-export async function resolveDograhWorkflowFields(dograhResponse, userId) {
+export async function resolveDograhWorkflowFields(dograhResponse, userId, options = {}) {
   const fields = extractDograhWorkflowFields(dograhResponse);
 
   if (fields.dograhWorkflowUuid || !fields.dograhWorkflowId) {
@@ -281,7 +279,7 @@ export async function resolveDograhWorkflowFields(dograhResponse, userId) {
 
   try {
     console.log("Dograh workflow UUID missing in create response. Fetching workflow by ID:", fields.dograhWorkflowId);
-    const workflowResponse = await getDograhWorkflow(fields.dograhWorkflowId, { userId });
+    const workflowResponse = await getDograhWorkflow(fields.dograhWorkflowId, { userId, agent: options.agent });
     const fetchedFields = extractDograhWorkflowFields(workflowResponse);
 
     return {
@@ -308,7 +306,7 @@ export async function createDograhWorkflowFromDefinition(agent) {
     };
 
     const endpoint = process.env.DOGRAH_CREATE_WORKFLOW_ENDPOINT || DOGRAH_CREATE_FROM_DEFINITION_ENDPOINT;
-    const resolved = await createDograhClient(agent.userId);
+    const resolved = await createDograhClient(agent.userId, { agent });
 
     console.log("Creating Dograh workflow from definition:", {
       endpoint,
@@ -316,7 +314,7 @@ export async function createDograhWorkflowFromDefinition(agent) {
       name: payload.name,
       nodeCount: workflow_definition.nodes.length,
       edgeCount: workflow_definition.edges.length,
-      dograhApiKeyExists: Boolean(resolved.maskedApiKey)
+      dograhCredentialMode: resolved.mode
     });
 
     const response = await resolved.client.post(
@@ -370,16 +368,14 @@ function extractDograhPhoneNumberId(responseData = {}) {
   );
 }
 
-export async function createDograhTelephonyConfiguration(payload, { userId } = {}) {
+export async function createDograhTelephonyConfiguration(payload, { userId, agent } = {}) {
   try {
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.post(DOGRAH_TELEPHONY_CONFIGS_ENDPOINT, payload);
     const dograhTelephonyConfigId = extractDograhTelephonyConfigId(response.data);
 
     if (!dograhTelephonyConfigId) {
-      throw new ApiError(502, "Dograh telephony configuration was created but no configuration ID was returned.", {
-        dograhResponse: response.data
-      });
+      throw new ApiError(502, "Dograh telephony configuration was created but no configuration ID was returned.");
     }
 
     return {
@@ -406,9 +402,9 @@ export async function createDograhTelephonyConfiguration(payload, { userId } = {
   }
 }
 
-export async function addDograhTelephonyPhoneNumber(configId, payload, { userId } = {}) {
+export async function addDograhTelephonyPhoneNumber(configId, payload, { userId, agent } = {}) {
   try {
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.post(
       `${DOGRAH_TELEPHONY_CONFIGS_ENDPOINT}/${configId}/phone-numbers`,
       payload
@@ -451,7 +447,7 @@ export async function updateDograhWorkflowById(workflowId, agent) {
     const workflow_definition = buildDograhWorkflowDefinition(agent);
     validateLocalWorkflowDefinition(workflow_definition);
 
-    const resolved = await createDograhClient(agent.userId);
+    const resolved = await createDograhClient(agent.userId, { agent });
 
     // Fetch current workflow so existing LLM, STT and TTS
     // configurations are not removed during an agent update.
@@ -476,9 +472,10 @@ export async function updateDograhWorkflowById(workflowId, agent) {
 
     console.log("Updating existing Dograh workflow:", {
       dograhApiMethod: "PUT",
-      dograhApiUrl: `${resolved.baseUrl}/workflow/${workflowId}`,
       endpoint: `/workflow/${workflowId}`,
       workflowId,
+      dograhConnectionType: resolved.dograhConnectionType || resolved.mode,
+      dograhIntegrationId: resolved.dograhIntegrationId ? String(resolved.dograhIntegrationId) : null,
       name: payload.name,
       nodeCount: workflow_definition.nodes.length,
       edgeCount: workflow_definition.edges.length
@@ -489,26 +486,6 @@ export async function updateDograhWorkflowById(workflowId, agent) {
       payload
     );
 
-    // Fetch again and confirm Dograh saved the workflow.
-    const verified = await resolved.client.get(
-      `/workflow/fetch/${encodeURIComponent(workflowId)}`
-    );
-
-    const runtimeVerification = await verifyDograhWorkflowRuntime({
-      agent,
-      userId: agent.userId,
-      workflowPayload: verified.data,
-      callType: "workflow_update"
-    });
-
-    console.log(
-      "[Dograh Workflow Definition Sync]",
-      runtimeVerification.diagnostics
-    );
-
-    // Do not report successful synchronization when verification failed.
-    assertRuntimeVerification(runtimeVerification);
-
     return response.data;
   } catch (error) {
     console.error(
@@ -517,18 +494,8 @@ export async function updateDograhWorkflowById(workflowId, agent) {
     );
 
     console.error(
-      "Dograh update workflow failed data:",
-      error.response?.data
-    );
-
-    console.error(
       "Dograh update workflow failed message:",
       error.message
-    );
-
-    console.error(
-      "Dograh update workflow failed stack:",
-      error.stack
     );
 
     if (error instanceof ApiError) {
@@ -543,25 +510,24 @@ export async function updateDograhWorkflowById(workflowId, agent) {
     throw new ApiError(error.response?.status || 502, message, {
       success: false,
       dograhStatus: error.response?.status,
-      dograhError: error.response?.data,
       dograhAction: "update workflow",
       userMessage: message
     });
   }
 } 
 
-export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
+export async function archiveDograhWorkflowById(workflowId, { userId, agent } = {}) {
   try {
     if (!workflowId) {
       throw new ApiError(400, "dograhWorkflowId is required to archive the existing Dograh workflow.");
     }
 
     const endpoint = `/workflow/${workflowId}/status`;
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
 
     console.log("Archiving Dograh workflow:", {
       workflowId,
-      dograhArchiveUrl: `${resolved.baseUrl}${endpoint}`,
+      dograhConnectionType: resolved.dograhConnectionType || resolved.mode,
       dograhApiMethod: "PUT"
     });
 
@@ -569,7 +535,7 @@ export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
       status: "archived"
     });
 
-    console.log("Dograh workflow archive response:", response.data || { status: response.status });
+    console.log("Dograh workflow archive response:", { status: response.status });
 
     return response.data || { success: true };
   } catch (error) {
@@ -582,7 +548,7 @@ export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
       error.response?.data?.message ||
       error.response?.data?.error ||
       error.response?.data?.detail ||
-      (error.response?.data ? JSON.stringify(error.response.data) : null) ||
+      (error.response?.data ? "Dograh returned an error." : null) ||
       error.message ||
       "Dograh workflow archive failed";
 
@@ -590,13 +556,13 @@ export async function archiveDograhWorkflowById(workflowId, { userId } = {}) {
   }
 }
 
-export async function getDograhWorkflow(workflowId, { userId } = {}) {
+export async function getDograhWorkflow(workflowId, { userId, agent } = {}) {
   try {
     if (!workflowId) {
       throw new ApiError(400, "workflowId is required");
     }
 
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.get(
       `/workflow/fetch/${workflowId}`
     );
@@ -607,13 +573,13 @@ export async function getDograhWorkflow(workflowId, { userId } = {}) {
   }
 }
 
-export async function createDograhEmbedToken(workflowId, { userId } = {}) {
+export async function createDograhEmbedToken(workflowId, { userId, agent } = {}) {
   try {
     if (!workflowId) {
       throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
     }
 
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.post(`/workflow/${workflowId}/embed-token`, {});
     const embedToken = readDograhEmbedToken(response.data);
 
@@ -628,13 +594,13 @@ export async function createDograhEmbedToken(workflowId, { userId } = {}) {
   }
 }
 
-export async function fetchDograhEmbedToken(workflowId, { userId } = {}) {
+export async function fetchDograhEmbedToken(workflowId, { userId, agent } = {}) {
   try {
     if (!workflowId) {
       throw new ApiError(400, "dograhWorkflowId is required before reading Dograh web calling token.");
     }
 
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.get(`/workflow/${workflowId}/embed-token`);
     const embedToken = readDograhEmbedToken(response.data);
 
@@ -645,13 +611,13 @@ export async function fetchDograhEmbedToken(workflowId, { userId } = {}) {
   }
 }
 
-export async function deleteDograhEmbedToken(workflowId, { userId } = {}) {
+export async function deleteDograhEmbedToken(workflowId, { userId, agent } = {}) {
   try {
     if (!workflowId) {
       throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
     }
 
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.delete(`/workflow/${workflowId}/embed-token`);
 
     return response.data || { success: true };
@@ -661,11 +627,11 @@ export async function deleteDograhEmbedToken(workflowId, { userId } = {}) {
   }
 }
 
-export async function triggerDograhTestCallByWorkflow(workflowUuid, payload, { userId } = {}) {
+export async function triggerDograhTestCallByWorkflow(workflowUuid, payload, { userId, agent } = {}) {
   const endpoint = `/public/agent/test/workflow/${workflowUuid}`;
 
   validateWorkflowCall(workflowUuid, payload);
-  const resolved = await createDograhClient(userId);
+  const resolved = await createDograhClient(userId, { agent });
   logDograhCall({ endpoint, workflowUuid, payload, resolved });
 
   try {
@@ -677,11 +643,11 @@ export async function triggerDograhTestCallByWorkflow(workflowUuid, payload, { u
   }
 }
 
-export async function triggerDograhOutboundCallByWorkflow(workflowUuid, payload, { userId } = {}) {
+export async function triggerDograhOutboundCallByWorkflow(workflowUuid, payload, { userId, agent } = {}) {
   const endpoint = `/public/agent/workflow/${workflowUuid}`;
 
   validateWorkflowCall(workflowUuid, payload);
-  const resolved = await createDograhClient(userId);
+  const resolved = await createDograhClient(userId, { agent });
   logDograhCall({ endpoint, workflowUuid, payload, resolved });
 
   try {
@@ -693,13 +659,13 @@ export async function triggerDograhOutboundCallByWorkflow(workflowUuid, payload,
   }
 }
 
-export async function getDograhCallRunDetails(workflowId, runId, { userId } = {}) {
+export async function getDograhCallRunDetails(workflowId, runId, { userId, agent } = {}) {
   try {
     if (!workflowId || !runId) {
       throw new ApiError(400, "workflowId and runId are required");
     }
 
-    const resolved = await createDograhClient(userId);
+    const resolved = await createDograhClient(userId, { agent });
     const response = await resolved.client.get(
       `/workflow/${workflowId}/runs/${runId}`
     );

@@ -3,7 +3,7 @@ import { applyCallOutcomeToLog } from "./callOutcome.service.js";
 import { extractCallFields, extractRunId } from "./callLogMapper.js";
 import { scheduleDograhStatusSync } from "./dograhCallStatusSync.service.js";
 import { triggerDograhOutboundCallByWorkflow } from "./dograh.service.js";
-import { getDograhClientForUser } from "./dograhClientResolver.js";
+import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { getDograhLLMRuntimeSummary } from "./dograhLLMConfigSync.service.js";
 import { assertDograhVoiceReadyForWebCall } from "./dograhVoiceConfigSync.service.js";
 import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "./dograhWorkflowConfig.service.js";
@@ -144,7 +144,7 @@ export async function triggerOutboundCallForAgent({
     throw new ApiError(400, "dograhWorkflowId is required before triggering calls.");
   }
 
-  const resolved = await getDograhClientForUser(userId || agent.userId, { allowGlobalFallbackOnError: false });
+  const resolved = await getDograhClientForAgent(agent, userId || agent.userId);
   const runtimeVerification = await verifyDograhWorkflowRuntime({
     agent,
     userId: userId || agent.userId,
@@ -157,7 +157,7 @@ export async function triggerOutboundCallForAgent({
   assertRuntimeVerification(runtimeVerification);
 
   const payload = dograhCallPayload(agent, phoneNumber, metadata);
-  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload, { userId: userId || agent.userId });
+  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload, { userId: userId || agent.userId, agent });
   const dograhRunId = extractRunId(dograhResponse);
   const responseFields = extractCallFields(dograhResponse);
 
@@ -204,6 +204,8 @@ export async function triggerOutboundCallForAgent({
     localAgentId: agent._id.toString(),
     workflowId,
     dograhWorkflowUuid: agent.dograhWorkflowUuid,
+    dograhConnectionType: agent.dograhConnectionType || "platform",
+    dograhIntegrationId: agent.dograhIntegrationId ? String(agent.dograhIntegrationId) : null,
     dograhRunId,
     callerNumber: phoneNumber,
     callingNumber: agent.callerIdNumber,

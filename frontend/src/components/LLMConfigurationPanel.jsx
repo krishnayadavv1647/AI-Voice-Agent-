@@ -94,7 +94,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
   const [category, setCategory] = useState("recommended");
   const [loadingModels, setLoadingModels] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testPrompt, setTestPrompt] = useState("Reply in one short sentence confirming that the model connection works.");
+  const [testPrompt, setTestPrompt] = useState("Reply exactly with: LLM connection successful");
   const [testResult, setTestResult] = useState(null);
   const [error, setError] = useState("");
 
@@ -159,7 +159,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
     try {
       const result = await api(`/integrations/llm/${config.integrationId}/test-completion`, {
         method: "POST",
-        body: { model: config.model, prompt: testPrompt, settings: { ...config.settings, maxTokens: 48 } }
+        body: { model: config.model, prompt: testPrompt, settings: { ...config.settings, temperature: 0, maxOutputTokens: 20 } }
       });
       setTestResult(result);
     } catch (err) {
@@ -180,6 +180,8 @@ export default function LLMConfigurationPanel({ value, onChange }) {
   }, [models, modelQuery, category, config.provider]);
 
   const dograhSynced = config.dograhSyncStatus === "synced";
+  const credentialsConnected = config.provider === "dograh_default" || Boolean(config.integrationId);
+  const agentConfigured = config.provider === "dograh_default" || Boolean(config.integrationId && config.model);
 
   return (
     <section className="space-y-4 md:col-span-2">
@@ -272,18 +274,36 @@ export default function LLMConfigurationPanel({ value, onChange }) {
                 {testing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Test Model
               </button>
             </div>
-            {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.text}</div>}
+            {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.responseText || testResult.text}</div>}
           </div>
         )}
 
         <div className={`mt-4 rounded-xl border px-3 py-3 text-sm ${statusClass(config.dograhSyncStatus)}`}>
-          <p className="font-bold">Dograh Sync: {String(config.dograhSyncStatus || "not_configured").replaceAll("_", " ")}</p>
+          <p className="font-bold">LLM Runtime Status</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <StatusLine label="Credentials" value={credentialsConnected ? "Connected" : "Not connected"} ok={credentialsConnected} />
+            <StatusLine label="Agent" value={agentConfigured ? "Configured" : "Not configured"} ok={agentConfigured} />
+            <StatusLine label="Dograh Runtime" value={String(config.dograhSyncStatus || "not_configured").replaceAll("_", " ")} ok={dograhSynced} />
+            <StatusLine label="Last Call Runtime" value="Not verified here" ok={false} />
+          </div>
           <p className="mt-1 text-xs leading-5">
             Agent configured: {providerLabel(config.provider)} {config.model ? `/ ${config.model}` : ""}. Runtime: {dograhSynced ? `${config.dograhEffectiveProvider || "dograh_default"} ${config.dograhEffectiveModel ? `/ ${config.dograhEffectiveModel}` : ""}` : "not verified"}.
           </p>
+          {credentialsConnected && !dograhSynced && config.provider !== "dograh_default" && (
+            <p className="mt-2 text-xs leading-5">Provider credentials are valid, but the LLM is not active in Dograh.</p>
+          )}
           {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{config.dograhSyncError}</p>}
         </div>
       </div>
     </section>
+  );
+}
+
+function StatusLine({ label, value, ok }) {
+  return (
+    <div className="rounded-lg bg-white/70 px-3 py-2">
+      <p className="text-[11px] font-bold uppercase tracking-wide opacity-70">{label}</p>
+      <p className={ok ? "font-semibold text-emerald-700" : "font-semibold"}>{value}</p>
+    </div>
   );
 }

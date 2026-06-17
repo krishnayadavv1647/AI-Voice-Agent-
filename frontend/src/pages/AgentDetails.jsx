@@ -66,6 +66,7 @@ export default function AgentDetails() {
   const [notice, setNotice] = useState("");
   const [warning, setWarning] = useState("");
   const [callLoading, setCallLoading] = useState(false);
+  const [migratingDograh, setMigratingDograh] = useState(false);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
@@ -381,6 +382,23 @@ export default function AgentDetails() {
     }
   }
 
+  async function migrateDograh() {
+    setError("");
+    setWarning("");
+    setNotice("");
+    setMigratingDograh(true);
+    try {
+      const targetConnectionType = (agent?.dograhConnectionType || "platform") === "platform" ? "user_integration" : "platform";
+      await api(`/agents/${id}/migrate-dograh`, { method: "POST", body: { targetConnectionType } });
+      setNotice("Dograh migration completed and verified.");
+      await load();
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setMigratingDograh(false);
+    }
+  }
+
   async function copyCallbackLink() {
     await navigator.clipboard.writeText(`${window.location.origin}/call/${id}`);
     setNotice("Callback link copied.");
@@ -623,11 +641,23 @@ export default function AgentDetails() {
                 <Info label="Location" value={agent.businessLocation} />
                 <Info label="Working Hours" value={agent.workingHours} />
                 <Info label="Contact" value={agent.contactNumber} />
-                <Info label="Dograh Connection" value={connected ? "Connected" : "Not connected"} />
+                <Info label="Dograh Connection" value={agent.dograhConnectionType === "user_integration" ? "My Dograh" : connected ? "Platform Dograh" : "Not connected"} />
+                <Info label="Workflow ID" value={agent.dograhWorkflowId || agent.providerWorkflowId} />
+                <Info label="Workflow UUID" value={agent.dograhWorkflowUuid} />
                 <Info label="Workflow Status" value={workflowSyncStatus} />
                 <Info label="Last Sync" value={formatDateTime(agent.workflowLastSyncedAt || agent.dograhLastSyncedAt || agent.lastSyncedAt)} />
                 <Info label="Last Error" value={agent.workflowSyncError || agent.dograhError} />
               </div>
+              {connected && (agent.dograhConnectionType || "platform") === "platform" && (
+                <p className="mt-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">
+                  This agent currently runs on Platform Dograh. Connecting My Dograh does not automatically move this agent.
+                </p>
+              )}
+              {connected && (
+                <button className="btn-secondary mt-4" disabled={migratingDograh} onClick={migrateDograh}>
+                  <RefreshCw size={16} />{migratingDograh ? "Migrating..." : "Migrate Agent"}
+                </button>
+              )}
               {agent.dograhNeedsUpdate && (
                 <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                   Agent changes are waiting for Dograh workflow sync.

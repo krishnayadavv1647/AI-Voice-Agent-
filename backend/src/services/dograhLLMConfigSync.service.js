@@ -2,7 +2,7 @@ import Agent from "../models/Agent.js";
 import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
 import LLMIntegration from "../models/LLMIntegration.js";
 import { decryptSecret } from "../utils/crypto.js";
-import { getDograhClientForUser } from "./dograhClientResolver.js";
+import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { extractWorkflowDefinition } from "./dograhWorkflowConfig.service.js";
 import { getLLMProvider } from "./llmProviders/LLMProviderFactory.js";
 import { validateLLMModel } from "./llmProviders/llmModelValidation.service.js";
@@ -214,7 +214,7 @@ export async function syncAgentLLMConfigurationToDograh({ agent, userId }) {
       });
     }
 
-    const resolved = await getDograhClientForUser(userId, { allowGlobalFallbackOnError: false });
+    const resolved = await getDograhClientForAgent(agent, userId);
     const current = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
     const workflowConfigurations = mergeLLMConfigurations(extractWorkflowConfigurations(current.data), override, config);
 

@@ -6,6 +6,8 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
+import UserIntegration from "../models/UserIntegration.js";
+import DograhAgentMigration from "../models/DograhAgentMigration.js";
 import {
   createDograhEmbedToken,
   deleteDograhEmbedToken,
@@ -14,9 +16,11 @@ import {
 import { generateAgentTextReply } from "../services/gemini.service.js";
 import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
+import { DograhProvider } from "../providers/dograh.provider.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { syncAgentDograhRuntime } from "../services/dograhWorkflowSync.service.js";
+import { getDograhClientForAgent, getDograhClientForIntegration, getPlatformDograhClient } from "../services/dograhClientResolver.js";
 import {
   applyVoiceConfigurationToAgent,
   getAgentVoiceConfiguration,
@@ -440,6 +444,44 @@ function sanitizeAgentBody(body = {}) {
   return sanitized;
 }
 
+async function resolveRequestedDograhBinding(userId, body = {}) {
+  const requestedType = body.dograhConnectionType || body.dograhRuntime || body.dograhRuntimeConnectionType;
+  const requestedIntegrationId = cleanOptionalObjectId(body.dograhIntegrationId, "dograhIntegrationId");
+
+  if (requestedType === "platform") {
+    getPlatformDograhClient();
+    return { dograhConnectionType: "platform", dograhIntegrationId: null };
+  }
+
+  if (requestedType === "user_integration") {
+    const integration = requestedIntegrationId
+      ? await UserIntegration.findOne({ _id: requestedIntegrationId, userId, provider: "dograh", status: "connected" })
+      : await UserIntegration.findOne({ userId, provider: "dograh", status: "connected" });
+    if (!integration) {
+      throw new ApiError(400, "DOGRAH_INTEGRATION_INVALID", { code: "DOGRAH_INTEGRATION_INVALID" });
+    }
+    return { dograhConnectionType: "user_integration", dograhIntegrationId: integration._id };
+  }
+
+  const integration = await UserIntegration.findOne({ userId, provider: "dograh", status: "connected" });
+  if (integration) return { dograhConnectionType: "user_integration", dograhIntegrationId: integration._id };
+  return { dograhConnectionType: "platform", dograhIntegrationId: null };
+}
+
+function dograhBindingSummary(agent) {
+  const type = agent?.dograhConnectionType || (agent?.dograhIntegrationId ? "user_integration" : "platform");
+  return {
+    dograhConnectionType: type,
+    dograhIntegrationId: agent?.dograhIntegrationId || null,
+    label: type === "user_integration" ? "My Dograh" : "Platform Dograh",
+    workflowId: agent?.dograhWorkflowId || agent?.providerWorkflowId || "",
+    workflowUuid: agent?.dograhWorkflowUuid || "",
+    runtimeSyncStatus: agent?.workflowSyncStatus || agent?.dograhSyncStatus || "",
+    lastSyncedAt: agent?.workflowLastSyncedAt || agent?.dograhLastSyncedAt || null,
+    syncError: agent?.workflowSyncError || agent?.dograhError || ""
+  };
+}
+
 async function syncTelephonyConfigForAgent(agent, telephonyConfigId) {
   const unlinkFilter = { userId: agent.userId, linkedAgentId: agent._id };
   if (telephonyConfigId) unlinkFilter._id = { $ne: telephonyConfigId };
@@ -492,6 +534,8 @@ function buildProviderResultPatch(agent, result = {}, syncedAt = new Date()) {
     set.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     set.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     set.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
+    set.dograhConnectionType = result.dograhConnectionType || agent.dograhConnectionType || "platform";
+    set.dograhIntegrationId = result.dograhIntegrationId || agent.dograhIntegrationId || null;
     set.dograhStatus = hasRealDograhWorkflow(set) ? "connected" : result.status || agent.dograhStatus;
     set.workflowStatus = hasRealDograhWorkflow(set) ? "connected" : agent.workflowStatus || "failed";
     set.workflowSyncStatus = hasRealDograhWorkflow(set) ? "synced" : agent.workflowSyncStatus || "failed";
@@ -528,6 +572,8 @@ function applyProviderResult(agent, result = {}, syncedAt = new Date()) {
     agent.dograhWorkflowId = result.dograhWorkflowId || agent.dograhWorkflowId || result.providerWorkflowId;
     agent.dograhWorkflowUuid = result.dograhWorkflowUuid || agent.dograhWorkflowUuid;
     agent.dograhWorkflowName = result.dograhWorkflowName || agent.dograhWorkflowName || agent.agentName;
+    agent.dograhConnectionType = result.dograhConnectionType || agent.dograhConnectionType || "platform";
+    agent.dograhIntegrationId = result.dograhIntegrationId || agent.dograhIntegrationId || null;
     agent.dograhStatus = hasRealDograhWorkflow(agent) ? "connected" : result.status || agent.dograhStatus;
     agent.workflowStatus = hasRealDograhWorkflow(agent) ? "connected" : agent.workflowStatus || "failed";
     agent.workflowSyncStatus = hasRealDograhWorkflow(agent) ? "synced" : agent.workflowSyncStatus || "failed";
@@ -610,6 +656,11 @@ export const createAgent = asyncHandler(async (req, res) => {
     publicDescription: body.publicDescription || body.businessDescription || body.description,
     publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
+  if (agent.provider === "dograh") {
+    const binding = await resolveRequestedDograhBinding(req.user._id, req.body);
+    agent.dograhConnectionType = binding.dograhConnectionType;
+    agent.dograhIntegrationId = binding.dograhIntegrationId;
+  }
 
   agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
 
@@ -1253,6 +1304,11 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
   agent.dograhWorkflowId = dograhWorkflowId;
   agent.dograhAgentId = dograhWorkflowId;
   agent.provider = "dograh";
+  if (!agent.dograhConnectionType) {
+    const binding = await resolveRequestedDograhBinding(req.user._id, req.body);
+    agent.dograhConnectionType = binding.dograhConnectionType;
+    agent.dograhIntegrationId = binding.dograhIntegrationId;
+  }
   agent.providerWorkflowId = dograhWorkflowId;
   agent.providerAgentId = agent.providerAgentId || dograhWorkflowId;
   agent.dograhWorkflowUuid = dograhWorkflowUuid;
@@ -1288,7 +1344,7 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   if (llmRuntime.requiresSync && llmRuntime.dograhSyncStatus !== "synced") {
     throw new ApiError(400, llmRuntime.dograhSyncError || "Web calling is waiting for Dograh LLM synchronization.");
   }
-  const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId });
+  const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId, agent });
   agent.dograhEmbedToken = embedToken;
   agent.dograhWidgetEnabled = true;
   await agent.save();
@@ -1324,7 +1380,7 @@ export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
     throw new ApiError(400, "dograhWorkflowId is required before disabling Dograh web calling.");
   }
 
-  await deleteDograhEmbedToken(workflowId, { userId: agent.userId });
+  await deleteDograhEmbedToken(workflowId, { userId: agent.userId, agent });
   agent.dograhEmbedToken = undefined;
   agent.dograhWidgetEnabled = false;
   await agent.save();
@@ -1542,6 +1598,217 @@ export const syncProviderForAgent = asyncHandler(async (req, res) => {
     providerResult: publicProviderResult(providerResult),
     agent
   });
+});
+
+export const syncDograhRuntimeForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+
+  if (agent.provider !== "dograh" || !hasRealDograhWorkflow(agent)) {
+    throw new ApiError(400, "Dograh workflow must be connected before runtime verification.");
+  }
+
+  agent.workflowSyncStatus = "syncing";
+  agent.workflowSyncError = undefined;
+  agent.dograhSyncStatus = "Runtime Syncing";
+  agent.dograhStatus = "syncing";
+  agent.dograhNeedsUpdate = false;
+  agent.workflowVersion = (agent.workflowVersion || 0) + 1;
+  await agent.save();
+
+  const runtimeSync = await syncAgentDograhRuntime(agent);
+  const updatedAgent = await Agent.findById(agent._id);
+
+  res.json({
+    success: !runtimeSync?.error,
+    message: runtimeSync?.error ? `Dograh runtime sync failed: ${runtimeSync.error}` : "Dograh runtime sync completed and verified.",
+    providerResult: publicProviderResult(runtimeSync?.providerResult),
+    voiceConfiguration: runtimeSync?.voiceConfiguration || null,
+    llmConfiguration: runtimeSync?.llmConfiguration || null,
+    verification: runtimeSync?.verification?.diagnostics || null,
+    agent: updatedAgent || agent,
+    warning: runtimeSync?.error || null
+  });
+});
+
+export const getDograhBindingForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  res.json({
+    success: true,
+    binding: dograhBindingSummary(agent)
+  });
+});
+
+export const updateDograhBindingForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  if (hasRealDograhWorkflow(agent)) {
+    throw new ApiError(400, "Existing Dograh workflows must be migrated instead of changing the binding directly.", {
+      code: "DOGRAH_WORKFLOW_ACCOUNT_MISMATCH"
+    });
+  }
+  const binding = await resolveRequestedDograhBinding(agent.userId, req.body);
+  agent.dograhConnectionType = binding.dograhConnectionType;
+  agent.dograhIntegrationId = binding.dograhIntegrationId;
+  await agent.save();
+  res.json({ success: true, agent, binding: dograhBindingSummary(agent) });
+});
+
+export const getDograhMigrationStatus = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  const migration = await DograhAgentMigration.findOne({ agentId: agent._id, userId: agent.userId }).sort({ createdAt: -1 });
+  res.json({ success: true, migration });
+});
+
+export const migrateDograhAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgentById(req, req.params.agentId);
+  if (agent.provider !== "dograh" || !hasRealDograhWorkflow(agent)) {
+    throw new ApiError(400, "Dograh workflow must exist before migration.", { code: "DOGRAH_AGENT_BINDING_MISSING" });
+  }
+
+  const targetBinding = await resolveRequestedDograhBinding(agent.userId, {
+    dograhConnectionType: req.body.targetConnectionType,
+    dograhIntegrationId: req.body.targetIntegrationId
+  });
+  const sourceBinding = {
+    dograhConnectionType: agent.dograhConnectionType || "platform",
+    dograhIntegrationId: agent.dograhIntegrationId || null
+  };
+
+  if (
+    sourceBinding.dograhConnectionType === targetBinding.dograhConnectionType &&
+    String(sourceBinding.dograhIntegrationId || "") === String(targetBinding.dograhIntegrationId || "")
+  ) {
+    throw new ApiError(400, "Agent already uses the selected Dograh connection.");
+  }
+
+  let migration = await DograhAgentMigration.findOne({
+    agentId: agent._id,
+    userId: agent.userId,
+    status: { $in: ["pending", "exporting", "creating_target", "syncing_models", "verifying"] }
+  });
+  if (!migration) {
+    migration = await DograhAgentMigration.create({
+      userId: agent.userId,
+      agentId: agent._id,
+      sourceConnectionType: sourceBinding.dograhConnectionType,
+      sourceIntegrationId: sourceBinding.dograhIntegrationId,
+      sourceWorkflowId: agent.dograhWorkflowId || agent.providerWorkflowId,
+      sourceWorkflowUuid: agent.dograhWorkflowUuid || "",
+      targetConnectionType: targetBinding.dograhConnectionType,
+      targetIntegrationId: targetBinding.dograhIntegrationId,
+      status: "pending"
+    });
+  }
+
+  try {
+    migration.status = "exporting";
+    migration.errorSafeMessage = "";
+    await migration.save();
+
+    const sourceResolved = await getDograhClientForAgent(agent, agent.userId);
+    await sourceResolved.client.get(`/workflow/fetch/${encodeURIComponent(agent.dograhWorkflowId || agent.providerWorkflowId)}`);
+
+    let providerResult = null;
+    if (!migration.targetWorkflowId) {
+      migration.status = "creating_target";
+      await migration.save();
+      const targetAgent = {
+        ...(agent.toObject ? agent.toObject() : agent),
+        provider: "dograh",
+        providerWorkflowId: null,
+        dograhWorkflowId: null,
+        dograhWorkflowUuid: null,
+        dograhAgentId: null,
+        dograhConnectionType: targetBinding.dograhConnectionType,
+        dograhIntegrationId: targetBinding.dograhIntegrationId,
+        userId: agent.userId,
+        _id: agent._id
+      };
+      providerResult = await DograhProvider.create(targetAgent);
+      migration.targetWorkflowId = providerResult.dograhWorkflowId || providerResult.providerWorkflowId;
+      migration.targetWorkflowUuid = providerResult.dograhWorkflowUuid || "";
+      await migration.save();
+    }
+
+    const migratedAgent = {
+      ...(agent.toObject ? agent.toObject() : agent),
+      provider: "dograh",
+      providerWorkflowId: migration.targetWorkflowId,
+      dograhWorkflowId: migration.targetWorkflowId,
+      dograhWorkflowUuid: migration.targetWorkflowUuid,
+      dograhConnectionType: targetBinding.dograhConnectionType,
+      dograhIntegrationId: targetBinding.dograhIntegrationId,
+      userId: agent.userId,
+      _id: agent._id
+    };
+
+    migration.status = "syncing_models";
+    await migration.save();
+    const llmConfiguration = await syncAgentLLMConfigurationToDograh({ agent: migratedAgent, userId: agent.userId });
+    const voiceConfiguration = await syncAgentVoiceConfigurationToDograh({ agent: migratedAgent, userId: agent.userId });
+    const providerSyncErrors = [
+      ["failed", "configuration_required"].includes(llmConfiguration?.dograhSyncStatus) ? llmConfiguration.dograhSyncError : "",
+      ["failed", "configuration_required"].includes(voiceConfiguration?.dograhSyncStatus) ? voiceConfiguration.dograhSyncError : ""
+    ].filter(Boolean);
+    if (providerSyncErrors.length) throw new Error(providerSyncErrors.join(" "));
+
+    migration.status = "verifying";
+    await migration.save();
+    const targetResolved = targetBinding.dograhConnectionType === "user_integration"
+      ? await getDograhClientForIntegration(targetBinding.dograhIntegrationId, agent.userId)
+      : getPlatformDograhClient();
+    const verification = await verifyDograhWorkflowRuntime({
+      agent: migratedAgent,
+      userId: agent.userId,
+      callType: "dograh_migration",
+      fetchWorkflow: async () => {
+        const response = await targetResolved.client.get(`/workflow/fetch/${encodeURIComponent(migration.targetWorkflowId)}`);
+        return response.data;
+      }
+    });
+    assertRuntimeVerification(verification);
+
+    const updatedAgent = await Agent.findOneAndUpdate(
+      { _id: agent._id, userId: agent.userId, dograhWorkflowId: agent.dograhWorkflowId },
+      {
+        $set: {
+          dograhConnectionType: targetBinding.dograhConnectionType,
+          dograhIntegrationId: targetBinding.dograhIntegrationId,
+          providerWorkflowId: migration.targetWorkflowId,
+          dograhWorkflowId: migration.targetWorkflowId,
+          dograhWorkflowUuid: migration.targetWorkflowUuid,
+          dograhWorkflowName: providerResult?.dograhWorkflowName || agent.dograhWorkflowName,
+          workflowSyncStatus: "synced",
+          dograhSyncStatus: "Runtime Synced",
+          dograhStatus: "connected",
+          dograhConnection: targetBinding.dograhConnectionType === "user_integration" ? "My Dograh" : "Platform Dograh",
+          dograhNeedsUpdate: false,
+          dograhLastSyncedAt: new Date(),
+          workflowLastSyncedAt: new Date(),
+          lastSyncedAt: new Date()
+        },
+        $unset: { workflowSyncError: "", dograhError: "", dograhEmbedToken: "" }
+      },
+      { new: true, runValidators: true }
+    );
+    if (!updatedAgent) throw new Error("Agent changed during migration. Please retry.");
+
+    migration.status = "completed";
+    migration.completedAt = new Date();
+    await migration.save();
+
+    res.json({
+      success: true,
+      migration,
+      agent: updatedAgent,
+      binding: dograhBindingSummary(updatedAgent),
+      verification: verification.diagnostics || null
+    });
+  } catch (error) {
+    migration.status = "failed";
+    migration.errorSafeMessage = error?.safeMessage || error?.message || "Dograh migration failed.";
+    await migration.save();
+    throw new ApiError(502, migration.errorSafeMessage, { code: "DOGRAH_MIGRATION_FAILED" });
+  }
 });
 
 async function triggerCall(req, res, trigger) {
