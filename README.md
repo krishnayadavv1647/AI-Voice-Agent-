@@ -23,11 +23,7 @@ The application connects agent settings with Dograh workflows and can support LL
 13. [Developer Installation](#developer-installation)
 14. [Environment Variables](#environment-variables)
 15. [Project Structure](#project-structure)
-16. [API Flow](#api-flow)
-17. [Common Problems](#common-problems)
-18. [Deployment](#deployment)
-19. [Security Recommendations](#security-recommendations)
-20. [Future Improvements](#future-improvements)
+
 
 ---
 
