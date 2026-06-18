@@ -1,6 +1,8 @@
 import { Bell, CreditCard, KeyRound, Lock, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import Section from "../components/Section.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
 
@@ -11,10 +13,6 @@ export default function Settings() {
   const [telegram, setTelegram] = useState(null);
   const [telegramCode, setTelegramCode] = useState("");
   const [telegramMessage, setTelegramMessage] = useState("");
-  const [dograh, setDograh] = useState(null);
-  const [dograhForm, setDograhForm] = useState({ apiKey: "", baseUrl: "" });
-  const [dograhMessage, setDograhMessage] = useState("");
-  const [dograhSaving, setDograhSaving] = useState(false);
   const [agents, setAgents] = useState([]);
   const [telephonyForm, setTelephonyForm] = useState({
     name: "",
@@ -35,61 +33,7 @@ export default function Settings() {
   useEffect(() => {
     loadTelephonyConfigs();
     loadTelegramStatus();
-    loadDograhStatus();
   }, []);
-
-  async function loadDograhStatus() {
-    try {
-      const status = await api("/integrations/dograh");
-      setDograh(status);
-      setDograhForm((current) => ({ ...current, baseUrl: status.baseUrl || current.baseUrl || "" }));
-    } catch (error) {
-      setDograhMessage(error.response?.message || error.message);
-    }
-  }
-
-  async function connectDograh() {
-    setDograhMessage("");
-    setDograhSaving(true);
-    try {
-      const result = await api("/integrations/dograh/connect", { method: "POST", body: dograhForm });
-      setDograh(result);
-      setDograhForm({ apiKey: "", baseUrl: result.baseUrl || dograhForm.baseUrl });
-      setDograhMessage("Dograh connected successfully.");
-    } catch (error) {
-      setDograhMessage(error.response?.message || error.message);
-    } finally {
-      setDograhSaving(false);
-    }
-  }
-
-  async function testDograh() {
-    setDograhMessage("");
-    setDograhSaving(true);
-    try {
-      const result = await api("/integrations/dograh/test", { method: "POST", body: dograhForm });
-      setDograh(result);
-      setDograhMessage("Dograh connection test passed.");
-    } catch (error) {
-      setDograhMessage(error.response?.message || error.message);
-    } finally {
-      setDograhSaving(false);
-    }
-  }
-
-  async function disconnectDograh() {
-    setDograhMessage("");
-    setDograhSaving(true);
-    try {
-      const result = await api("/integrations/dograh/disconnect", { method: "DELETE" });
-      setDograh(result);
-      setDograhMessage("Dograh disconnected. Your agents will use the platform Dograh account if available.");
-    } catch (error) {
-      setDograhMessage(error.response?.message || error.message);
-    } finally {
-      setDograhSaving(false);
-    }
-  }
 
   async function loadTelegramStatus() {
     try {
@@ -170,156 +114,166 @@ export default function Settings() {
   }
 
   return (
-    <>
-      <PageHeader title="Settings" description="Manage profile, team, API keys, billing placeholders, usage limits, notifications, and security." />
-      <div className="grid min-w-0 gap-5 xl:grid-cols-2 xl:gap-6">
-        <Panel icon={Users} title="Profile">
-          <label className="block text-sm font-semibold text-slate-700">Profile name<input className="mt-1" value={user?.name || ""} readOnly /></label>
-          <label className="block text-sm font-semibold text-slate-700">Email<input className="mt-1" value={user?.email || ""} readOnly /></label>
-          <button className="btn-secondary" onClick={() => alert("Profile editing can be connected next.")}><Save size={16} />Save Changes</button>
-        </Panel>
+    <div className="page-stack">
+      <PageHeader title="Settings" description="Manage account preferences, notifications, team controls, and supporting integrations." />
 
-        <Panel icon={Lock} title="Security">
-          <input type="password" aria-label="Current password" placeholder="Current password" />
-          <input type="password" aria-label="New password" placeholder="New password" />
-          <button className="btn-secondary" onClick={() => alert("Password change endpoint can be connected next.")}>Update Password</button>
-        </Panel>
-
-        <Panel icon={KeyRound} title="API Keys">
-          <p className="text-sm leading-6 text-slate-500">Dograh and Gemini credentials are server-only. Full keys are never exposed in the frontend.</p>
-          <input value="DOGRAH_API_KEY: •••••••••••• connected" readOnly />
-          <input value="GEMINI_API_KEY: •••••••••••• connected" readOnly />
-        </Panel>
-
-        <Panel icon={CreditCard} title="Billing & Usage Limits">
-          <p className="text-sm leading-6 text-slate-500">Billing is ready for Razorpay/Stripe integration. Usage limits can be enforced when plans are connected.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Plan" value={user?.plan || "Free"} />
-            <Info label="Minutes limit" value="Placeholder" />
-          </div>
-        </Panel>
-
-        <Panel icon={Bell} title="Notifications">
-          {Object.entries(notifications).map(([key, value]) => (
-            <label key={key} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3 text-sm font-semibold capitalize">
-              {key}
-              <input className="h-5 w-5" type="checkbox" checked={value} onChange={(event) => setNotifications({ ...notifications, [key]: event.target.checked })} />
-            </label>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside className="self-start rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+          {["General", "Notifications", "Messaging", "Telephony", "Team"].map((item) => (
+            <a key={item} className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" href={`#${item.toLowerCase()}`}>{item}</a>
           ))}
-        </Panel>
+          <div className="my-2 border-t border-slate-100" />
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/dograh-settings">Dograh</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/llm-providers">LLM Providers</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/voice-providers">Voice Providers</Link>
+        </aside>
 
-        <Panel icon={MessageCircle} title="Telegram Integration">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="Status" value={telegram?.status || "Not connected"} />
-            <Info label="Bot" value={telegram?.botUsername || "Configure TELEGRAM_BOT_USERNAME"} />
-            <Info label="Telegram User" value={telegram?.telegramUsername || "Not connected"} />
-            <Info label="Connected At" value={telegram?.connectedAt ? new Date(telegram.connectedAt).toLocaleString() : "Not connected"} />
-          </div>
+        <div className="min-w-0 space-y-8">
+          <Section className="scroll-mt-24" title="General" description="Profile, access, billing, and API visibility.">
+            <div id="general" className="grid min-w-0 gap-6 xl:grid-cols-2">
+              <Panel icon={Users} title="Profile" description="Read-only account identity for this workspace.">
+                <label className="field-label">Profile name<input value={user?.name || ""} readOnly /></label>
+                <label className="field-label">Email<input value={user?.email || ""} readOnly /></label>
+                <button className="btn-secondary" onClick={() => alert("Profile editing can be connected next.")}><Save size={16} />Save Changes</button>
+              </Panel>
 
-          {telegram?.botLink && (
-            <a className="btn-secondary" href={telegram.botLink} target="_blank" rel="noreferrer">
-              <Send size={16} />Open Telegram Bot
-            </a>
-          )}
+              <Panel icon={Lock} title="Security" description="Password settings for the current account.">
+                <input type="password" aria-label="Current password" placeholder="Current password" />
+                <input type="password" aria-label="New password" placeholder="New password" />
+                <button className="btn-secondary" onClick={() => alert("Password change endpoint can be connected next.")}>Update Password</button>
+              </Panel>
 
-          <div className="rounded-2xl border border-slate-200 p-4">
-            <p className="font-semibold text-slate-950">Connect Telegram</p>
-            <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-500">
-              <li>Generate a connect code.</li>
-              <li>Open the Telegram bot.</li>
-              <li>Send <span className="font-semibold text-slate-700">/connect CODE</span>.</li>
-            </ol>
-            {telegramCode && (
-              <div className="mt-3 rounded-2xl bg-brand-50 p-3">
-                <p className="text-xs font-semibold uppercase text-brand-700">Connect Code</p>
-                <p className="mt-1 text-2xl font-bold tracking-wide text-brand-700">{telegramCode}</p>
-                <p className="mt-1 break-anywhere text-sm text-slate-600">Send: /connect {telegramCode}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="action-row">
-            <button className="btn-primary" onClick={generateTelegramCode}><MessageCircle size={16} />Generate Connect Code</button>
-            <button className="btn-secondary" onClick={loadTelegramStatus}><RefreshIcon />Refresh Status</button>
-            <button className="btn-danger" disabled={telegram?.status !== "connected"} onClick={disconnectTelegram}>Disconnect</button>
-          </div>
-
-          <div className="space-y-2">
-            {[
-              ["dailySummaryEnabled", "Send daily summary on Telegram"],
-              ["appointmentBookedEnabled", "Notify when appointment booked"],
-              ["hotLeadEnabled", "Notify when hot lead captured"],
-              ["callFailedEnabled", "Notify when call failed"]
-            ].map(([field, label]) => (
-              <label key={field} className="flex items-center justify-between rounded-2xl border border-slate-200 p-3 text-sm font-semibold">
-                {label}
-                <input className="h-5 w-5" type="checkbox" disabled={telegram?.status !== "connected"} checked={Boolean(telegram?.[field])} onChange={(event) => updateTelegramSetting(field, event.target.checked)} />
-              </label>
-            ))}
-          </div>
-          {telegramMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telegramMessage}</p>}
-        </Panel>
-
-        <Panel icon={PhoneCall} title="Telephony Settings">
-          <p className="text-sm leading-6 text-slate-500">Add Twilio, Exotel, or Vonage numbers. Secret values are masked after saving.</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <input placeholder="Config name" value={telephonyForm.name} onChange={(event) => setTelephonyForm({ ...telephonyForm, name: event.target.value })} />
-            <select value={telephonyForm.provider} onChange={(event) => setTelephonyForm({ ...telephonyForm, provider: event.target.value })}>
-              <option value="twilio">Twilio</option>
-              <option value="exotel">Exotel</option>
-              <option value="vonage">Vonage</option>
-            </select>
-            <input placeholder="Phone number" value={telephonyForm.phoneNumber} onChange={(event) => setTelephonyForm({ ...telephonyForm, phoneNumber: event.target.value })} />
-            <input placeholder="Account SID / API key" value={telephonyForm.accountSid} onChange={(event) => setTelephonyForm({ ...telephonyForm, accountSid: event.target.value, apiKey: event.target.value })} />
-            <input placeholder="Auth token / API secret" type="password" value={telephonyForm.authToken} onChange={(event) => setTelephonyForm({ ...telephonyForm, authToken: event.target.value, apiSecret: event.target.value })} />
-            <select value={telephonyForm.linkedAgentId} onChange={(event) => setTelephonyForm({ ...telephonyForm, linkedAgentId: event.target.value })}>
-              <option value="">Select linked agent</option>
-              {agents.map((agent) => (
-                <option key={agent._id} value={agent._id}>{agent.agentName || agent.name}</option>
-              ))}
-            </select>
-            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <input className="h-4 w-4" type="checkbox" checked={telephonyForm.inboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, inboundEnabled: event.target.checked })} />
-              Inbound enabled
-            </label>
-            <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-              <input className="h-4 w-4" type="checkbox" checked={telephonyForm.outboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, outboundEnabled: event.target.checked })} />
-              Outbound enabled
-            </label>
-            <input placeholder="Generated by backend after saving" value={telephonyForm.webhookUrl || ""} readOnly />
-          </div>
-          <button className="btn-secondary" onClick={saveTelephonyConfig}>Add Configuration</button>
-          {telephonyMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telephonyMessage}</p>}
-          <div className="space-y-2">
-            {telephonyConfigs.map((config) => (
-              <div key={config._id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-950">{config.name}</p>
-                    <p className="break-anywhere text-sm text-slate-500">{config.provider} · {config.phoneNumber}</p>
-                  </div>
-                  <button className="btn-secondary" onClick={() => testTelephonyConfig(config._id)}>Test Connection</button>
+              <Panel icon={KeyRound} title="API Keys" description="Credentials are managed in dedicated integration pages. Full keys are never exposed in the browser.">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Link className="btn-secondary" to="/dograh-settings">Manage Dograh</Link>
+                  <Link className="btn-secondary" to="/integrations/llm-providers">Manage LLM Providers</Link>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
+              </Panel>
 
-        <Panel icon={ShieldCheck} title="Team">
-          <p className="text-sm leading-6 text-slate-500">Team access and role controls are reserved for the next plan level.</p>
-          <button className="btn-secondary" disabled>Invite Member</button>
-        </Panel>
+              <Panel icon={CreditCard} title="Billing & Usage Limits" description="Plan details and limits for the workspace.">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Info label="Plan" value={user?.plan || "Free"} />
+                  <Info label="Minutes limit" value="Placeholder" />
+                </div>
+              </Panel>
+            </div>
+          </Section>
+
+          <Section className="scroll-mt-24" title="Notifications" description="Choose which operational events should notify your team.">
+            <Panel icon={Bell} title="Notification Preferences">
+              <div id="notifications" className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(notifications).map(([key, value]) => (
+                  <label key={key} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-medium capitalize">
+                    {key}
+                    <input className="h-5 w-5" type="checkbox" checked={value} onChange={(event) => setNotifications({ ...notifications, [key]: event.target.checked })} />
+                  </label>
+                ))}
+              </div>
+            </Panel>
+          </Section>
+
+          <Section className="scroll-mt-24" title="Messaging" description="Connect Telegram for operational alerts and summaries.">
+            <Panel icon={MessageCircle} title="Telegram Integration" description="Generate a code, connect the bot, and control alert types.">
+              <div id="messaging" className="grid gap-3 sm:grid-cols-2">
+                <Info label="Status" value={telegram?.status || "Not connected"} />
+                <Info label="Bot" value={telegram?.botUsername || "Configure TELEGRAM_BOT_USERNAME"} />
+                <Info label="Telegram User" value={telegram?.telegramUsername || "Not connected"} />
+                <Info label="Connected At" value={telegram?.connectedAt ? new Date(telegram.connectedAt).toLocaleString() : "Not connected"} />
+              </div>
+
+              {telegram?.botLink && <a className="btn-secondary" href={telegram.botLink} target="_blank" rel="noreferrer"><Send size={16} />Open Telegram Bot</a>}
+
+              {telegramCode && (
+                <div className="rounded-xl bg-brand-50 p-4">
+                  <p className="text-xs font-semibold uppercase text-brand-700">Connect Code</p>
+                  <p className="mt-1 text-2xl font-semibold tracking-wide text-brand-700">{telegramCode}</p>
+                  <p className="mt-1 break-anywhere text-sm text-slate-600">Send: /connect {telegramCode}</p>
+                </div>
+              )}
+
+              <div className="action-row">
+                <button className="btn-primary" onClick={generateTelegramCode}><MessageCircle size={16} />Generate Connect Code</button>
+                <button className="btn-secondary" onClick={loadTelegramStatus}><RefreshIcon />Refresh Status</button>
+                <button className="btn-danger" disabled={telegram?.status !== "connected"} onClick={disconnectTelegram}>Disconnect</button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ["dailySummaryEnabled", "Daily summary"],
+                  ["appointmentBookedEnabled", "Appointments booked"],
+                  ["hotLeadEnabled", "Hot leads"],
+                  ["callFailedEnabled", "Failed calls"]
+                ].map(([field, label]) => (
+                  <label key={field} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-medium">
+                    {label}
+                    <input className="h-5 w-5" type="checkbox" disabled={telegram?.status !== "connected"} checked={Boolean(telegram?.[field])} onChange={(event) => updateTelegramSetting(field, event.target.checked)} />
+                  </label>
+                ))}
+              </div>
+              {telegramMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telegramMessage}</p>}
+            </Panel>
+          </Section>
+
+          <Section className="scroll-mt-24" title="Telephony" description="Add calling providers and link numbers to agents.">
+            <Panel icon={PhoneCall} title="Telephony Settings" description="Add Twilio, Exotel, or Vonage numbers. Secret values are masked after saving.">
+              <div id="telephony" className="field-grid">
+                <input placeholder="Config name" value={telephonyForm.name} onChange={(event) => setTelephonyForm({ ...telephonyForm, name: event.target.value })} />
+                <select value={telephonyForm.provider} onChange={(event) => setTelephonyForm({ ...telephonyForm, provider: event.target.value })}>
+                  <option value="twilio">Twilio</option>
+                  <option value="exotel">Exotel</option>
+                  <option value="vonage">Vonage</option>
+                </select>
+                <input placeholder="Phone number" value={telephonyForm.phoneNumber} onChange={(event) => setTelephonyForm({ ...telephonyForm, phoneNumber: event.target.value })} />
+                <input placeholder="Account SID / API key" value={telephonyForm.accountSid} onChange={(event) => setTelephonyForm({ ...telephonyForm, accountSid: event.target.value, apiKey: event.target.value })} />
+                <input placeholder="Auth token / API secret" type="password" value={telephonyForm.authToken} onChange={(event) => setTelephonyForm({ ...telephonyForm, authToken: event.target.value, apiSecret: event.target.value })} />
+                <select value={telephonyForm.linkedAgentId} onChange={(event) => setTelephonyForm({ ...telephonyForm, linkedAgentId: event.target.value })}>
+                  <option value="">Select linked agent</option>
+                  {agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName || agent.name}</option>)}
+                </select>
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.inboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, inboundEnabled: event.target.checked })} />Inbound enabled</label>
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.outboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, outboundEnabled: event.target.checked })} />Outbound enabled</label>
+              </div>
+              <button className="btn-primary" onClick={saveTelephonyConfig}>Add Configuration</button>
+              {telephonyMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telephonyMessage}</p>}
+              <div className="space-y-3">
+                {telephonyConfigs.map((config) => (
+                  <div key={config._id} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-950">{config.name}</p>
+                        <p className="break-anywhere text-sm text-slate-500">{config.provider} - {config.phoneNumber}</p>
+                      </div>
+                      <button className="btn-secondary" onClick={() => testTelephonyConfig(config._id)}>Test Connection</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </Section>
+
+          <Section className="scroll-mt-24" title="Team" description="Role and member controls for future collaboration workflows.">
+            <Panel icon={ShieldCheck} title="Team">
+              <div id="team">
+                <p className="text-sm leading-6 text-slate-500">Team access and role controls are reserved for the next plan level.</p>
+                <button className="btn-secondary mt-4" disabled>Invite Member</button>
+              </div>
+            </Panel>
+          </Section>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
-function Panel({ icon: Icon, title, children }) {
+function Panel({ icon: Icon, title, description, children }) {
   return (
     <section className="card space-y-4">
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <div className="icon-tile"><Icon size={18} /></div>
-        <h2 className="panel-title min-w-0 break-anywhere">{title}</h2>
+        <div className="min-w-0">
+          <h2 className="panel-title min-w-0 break-anywhere">{title}</h2>
+          {description && <p className="mt-1 text-[13px] leading-5 text-slate-500">{description}</p>}
+        </div>
       </div>
       {children}
     </section>
@@ -327,7 +281,7 @@ function Panel({ icon: Icon, title, children }) {
 }
 
 function Info({ label, value }) {
-  return <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{label}</p><p className="break-anywhere font-bold text-slate-950">{value}</p></div>;
+  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="break-anywhere text-sm font-semibold text-slate-950">{value}</p></div>;
 }
 
 function RefreshIcon() {
