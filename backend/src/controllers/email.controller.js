@@ -6,8 +6,12 @@ import EmailMessage from "../models/EmailMessage.js";
 import EmailThread from "../models/EmailThread.js";
 import Lead from "../models/Lead.js";
 import WebhookEvent from "../models/WebhookEvent.js";
-import { getEmailProvider, listEmailProviders } from "../services/email/index.js";
-import { findInboundEmailMatch, normalizeEmailSubject, pollInboundEmails } from "../services/email/imapInboundPoller.js";
+import { listEmailProviders } from "../services/email/index.js";
+import { findInboundEmailMatch, normalizeEmailSubject } from "../services/email/imapInboundPoller.js";
+import { sendUserBrevoEmail } from "../services/brevoService.js";
+import { emitToUser } from "../services/emailRealtime.service.js";
+import { getOrCreateEmailIntegration } from "../services/emailIntegrationStatus.service.js";
+import { syncEmailIntegration } from "../services/emailInboundSyncService.js";
 import { createEmailSentFollowUp, pauseEmailSentFollowUpsForLead } from "../services/followUp.service.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -62,6 +66,10 @@ function senderEmail() {
   return clean(process.env.FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM).toLowerCase();
 }
 
+function integrationSenderEmail(integration) {
+  return clean(integration?.brevo?.senderEmail || "").toLowerCase();
+}
+
 function replyDomain() {
   const configured = clean(process.env.INBOUND_REPLY_DOMAIN || process.env.REPLY_DOMAIN);
   if (configured) return configured.replace(/^@/, "");
@@ -74,6 +82,14 @@ function replyToFor({ leadId, campaignId }) {
   if (inbox) return inbox;
   if (!leadId || !campaignId) return senderEmail();
   return `reply+${leadId}+${campaignId}@${replyDomain()}`;
+}
+
+async function requireUserEmailIntegration(userId) {
+  const integration = await getOrCreateEmailIntegration(userId);
+  if (!integration?.brevo?.connected) {
+    throw new ApiError(400, "Connect your Brevo account before sending emails.");
+  }
+  return integration;
 }
 
 function canonicalSubject(subject = "") {
@@ -203,6 +219,7 @@ async function findOrCreateThread({ userId, agentId, leadId, campaignId, subject
 
 async function saveOutboundEmailMessage({
   userId,
+  emailIntegrationId,
   agentId,
   leadId,
   campaignId,
@@ -215,7 +232,7 @@ async function saveOutboundEmailMessage({
   sentAt = new Date(),
   rawPayload = {}
 }) {
-  const fromEmail = senderEmail();
+  const fromEmail = normalizeEmail(rawPayload.fromEmail) || senderEmail();
   const replyToEmail = normalizeEmail(rawPayload.replyTo || process.env.IMAP_USER || process.env.FROM_EMAIL);
   const thread = await findOrCreateThread({
     userId,
@@ -230,22 +247,29 @@ async function saveOutboundEmailMessage({
   });
 
   const message = await EmailMessage.create({
-    userId,
-    threadId: thread._id,
+      userId,
+      emailIntegrationId,
+      threadId: thread._id,
     agentId,
     leadId,
     campaignId,
     direction: "outbound",
-    fromEmail,
-    toEmail,
-    subject,
-    body,
-    textBody: body,
-    htmlBody: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
-    provider: providerKey,
-    providerMessageId,
-    sentAt,
-    status: "sent",
+      fromEmail,
+      toEmail,
+      from: [{ email: fromEmail }],
+      to: [{ email: toEmail, name: toName }],
+      subject,
+      body,
+      text: body,
+      html: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
+      textBody: body,
+      htmlBody: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
+      provider: providerKey,
+      providerMessageId,
+      internetMessageId: rawPayload.internetMessageId || providerMessageId || "",
+      sentAt,
+      isRead: true,
+      status: "sent",
     rawPayload: { ...rawPayload, toName }
   });
 
@@ -504,7 +528,7 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
   const toEmail = clean(testEmail || req.user.email).toLowerCase();
   if (!toEmail) throw new ApiError(400, "Test email address is required.");
 
-  const provider = getEmailProvider();
+  const integration = await requireUserEmailIntegration(req.user._id);
   const fakeLead = {
     businessName: "Sample Business",
     contactName: req.user.name,
@@ -518,8 +542,9 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
 
   try {
     const sentAt = new Date();
-    const replyTo = replyToFor({ leadId: null, campaignId: null });
-    const result = await provider.service.sendEmail({
+    const replyTo = integration.brevo.replyToEmail || integration.inbound?.email;
+    const result = await sendUserBrevoEmail({
+      integration,
       toEmail,
       toName: req.user.name,
       subject: finalSubject,
@@ -529,6 +554,7 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
 
     const { thread, message } = await saveOutboundEmailMessage({
       userId: req.user._id,
+      emailIntegrationId: integration._id,
       agentId: agent._id,
       leadId: null,
       campaignId: null,
@@ -536,10 +562,10 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
       body: finalBody,
       toEmail,
       toName: req.user.name,
-      providerKey: provider.key,
+      providerKey: "brevo",
       providerMessageId: result.messageId,
       sentAt,
-      rawPayload: { source: "test_email", replyTo }
+      rawPayload: { source: "test_email", replyTo, fromEmail: integrationSenderEmail(integration) }
     });
 
     console.info("[email] test send saved", {
@@ -553,7 +579,7 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
 
     res.json({
       success: true,
-      provider: provider.key,
+      provider: "brevo",
       simulated: result.provider === "mock",
       messageId: result.messageId,
       threadId: thread._id,
@@ -570,7 +596,7 @@ export const sendCampaign = asyncHandler(async (req, res) => {
 
   const agent = await ensureAgentAccess(req, campaign.agentId);
   const leads = await Lead.find({ _id: { $in: campaign.selectedLeadIds }, ...filter(req) });
-  const provider = getEmailProvider();
+  const integration = await requireUserEmailIntegration(req.user._id);
 
   const uniqueByEmail = new Map();
   const skipped = [];
@@ -616,7 +642,7 @@ export const sendCampaign = asyncHandler(async (req, res) => {
       toEmail: skippedItem.toEmail || skippedItem.lead?.email || "missing",
       subject: campaign.subject,
       body: ensureFooter(campaign.body),
-      provider: provider.key,
+      provider: "brevo",
       status: "skipped",
       error: skippedItem.error,
       sentAt: new Date()
@@ -631,10 +657,11 @@ export const sendCampaign = asyncHandler(async (req, res) => {
       const subject = personalize(campaign.subject, { lead, agent });
       const body = personalize(ensureFooter(campaign.body), { lead, agent });
       const sentAt = new Date();
-      const replyTo = replyToFor({ leadId: lead._id, campaignId: campaign._id });
+      const replyTo = integration.brevo.replyToEmail || integration.inbound?.email;
 
       try {
-        const result = await provider.service.sendEmail({
+        const result = await sendUserBrevoEmail({
+          integration,
           toEmail,
           toName: leadName(lead),
           subject,
@@ -650,7 +677,7 @@ export const sendCampaign = asyncHandler(async (req, res) => {
           toEmail,
           subject,
           body,
-          provider: provider.key,
+          provider: "brevo",
           providerMessageId: result.messageId,
           status: "sent",
           sentAt
@@ -658,6 +685,7 @@ export const sendCampaign = asyncHandler(async (req, res) => {
 
         const { thread, message: savedMessage } = await saveOutboundEmailMessage({
           userId: req.user._id,
+          emailIntegrationId: integration._id,
           agentId: campaign.agentId,
           leadId: lead._id,
           campaignId: campaign._id,
@@ -665,10 +693,10 @@ export const sendCampaign = asyncHandler(async (req, res) => {
           body,
           toEmail,
           toName: leadName(lead),
-          providerKey: provider.key,
+          providerKey: "brevo",
           providerMessageId: result.messageId,
           sentAt,
-          rawPayload: { replyTo }
+          rawPayload: { replyTo, fromEmail: integrationSenderEmail(integration) }
         });
 
         console.info("[email] campaign send saved", {
@@ -698,7 +726,7 @@ export const sendCampaign = asyncHandler(async (req, res) => {
           toEmail,
           subject,
           body,
-          provider: provider.key,
+          provider: "brevo",
           status: "failed",
           error: message,
           sentAt
@@ -797,13 +825,17 @@ export const markThreadRead = asyncHandler(async (req, res) => {
   const now = new Date();
   const result = await EmailMessage.updateMany(
     unreadInboundQuery(req, { threadId: thread._id }),
-    { $set: { readAt: now, status: "read" } }
+    { $set: { readAt: now, status: "read", isRead: true } }
   );
+  const unreadCount = await EmailMessage.countDocuments(unreadInboundQuery(req));
+  emitToUser(req.user._id, "email:read", { threadId: thread._id, markedCount: result.modifiedCount || 0, unreadCount });
+  emitToUser(req.user._id, "email:unread-count", { unreadCount });
 
   res.json({
     success: true,
     markedCount: result.modifiedCount || 0,
-    readAt: now
+    readAt: now,
+    unreadCount
   });
 });
 
@@ -826,15 +858,20 @@ export const simulateInboundReply = asyncHandler(async (req, res) => {
     leadId: thread.leadId,
     campaignId: thread.campaignId,
     direction: "inbound",
+    from: [{ email: normalizedFromEmail }],
+    to: [{ email: thread.toEmail || senderEmail() }],
     fromEmail: normalizedFromEmail,
     toEmail: thread.toEmail || senderEmail(),
     subject: thread.subject,
     body: textBody,
     textBody,
+    text: textBody,
     htmlBody: "",
+    html: "",
     provider: "simulated",
     receivedAt,
     status: "received",
+    isRead: false,
     rawPayload: {
       source: "simulate_inbound_reply",
       createdByUserId: req.user._id
@@ -843,8 +880,11 @@ export const simulateInboundReply = asyncHandler(async (req, res) => {
 
   thread.status = "needs_reply";
   thread.lastMessageAt = receivedAt;
-  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(thread.subject || subject);
+  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(thread.subject || "");
   await thread.save();
+  const unreadCount = await EmailMessage.countDocuments(unreadInboundQuery(req));
+  emitToUser(req.user._id, "email:received", { threadId: thread._id, messageId: message._id, receivedAt, unreadCount });
+  emitToUser(req.user._id, "email:unread-count", { unreadCount });
 
   console.info("[email] simulated inbound message saved", {
     campaignId: thread.campaignId ? String(thread.campaignId) : null,
@@ -858,7 +898,11 @@ export const simulateInboundReply = asyncHandler(async (req, res) => {
 });
 
 export const pollInboundNow = asyncHandler(async (req, res) => {
-  const result = await pollInboundEmails();
+  const integration = await getOrCreateEmailIntegration(req.user._id);
+  if (!integration.inbound?.connected) {
+    throw new ApiError(400, "Connect a receiving mailbox before syncing replies.");
+  }
+  const result = await syncEmailIntegration(integration);
   res.json(result);
 });
 
@@ -1062,42 +1106,51 @@ export const sendThreadReply = asyncHandler(async (req, res) => {
   const toEmail = normalizeEmail(thread.leadId?.email || thread.fromEmail);
   if (!validEmail(toEmail)) throw new ApiError(400, "Thread lead email is missing or invalid.");
 
-  const provider = getEmailProvider();
+  const integration = await requireUserEmailIntegration(req.user._id);
   const finalSubject = clean(subject || thread.subject || "Following up");
   const replySubject = finalSubject.toLowerCase().startsWith("re:") ? finalSubject : `Re: ${finalSubject}`;
   const sentAt = new Date();
-  const result = await provider.service.sendEmail({
+  const result = await sendUserBrevoEmail({
+    integration,
     toEmail,
     toName: leadName(thread.leadId || {}),
     subject: replySubject,
     body,
-    replyTo: thread.replyToEmail || replyToFor({ leadId: thread.leadId?._id || thread.leadId, campaignId: thread.campaignId })
+    replyTo: integration.brevo.replyToEmail || integration.inbound?.email || thread.replyToEmail
   });
 
   const message = await EmailMessage.create({
     userId: req.user._id,
+    emailIntegrationId: integration._id,
     threadId: thread._id,
     agentId: thread.agentId,
     leadId: thread.leadId?._id || thread.leadId,
     campaignId: thread.campaignId,
     direction: "outbound",
-    fromEmail: senderEmail(),
+    fromEmail: integrationSenderEmail(integration),
     toEmail,
+    from: [{ email: integrationSenderEmail(integration), name: integration.brevo.senderName }],
+    to: [{ email: toEmail, name: leadName(thread.leadId || {}) }],
     subject: replySubject,
     body,
+    text: body,
+    html: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
     textBody: body,
     htmlBody: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
-    provider: provider.key,
+    provider: "brevo",
     providerMessageId: result.messageId,
+    internetMessageId: result.messageId || "",
     sentAt,
+    isRead: true,
     status: "sent"
   });
 
   thread.status = "replied";
   thread.lastMessageAt = sentAt;
   thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(replySubject);
-  thread.replyToEmail = thread.replyToEmail || normalizeEmail(process.env.IMAP_USER || process.env.FROM_EMAIL);
+  thread.replyToEmail = integration.brevo.replyToEmail || integration.inbound?.email || thread.replyToEmail;
   await thread.save();
+  emitToUser(req.user._id, "email:sent", { threadId: thread._id, messageId: message._id, sentAt });
 
   res.status(201).json({ success: true, thread, message });
 });

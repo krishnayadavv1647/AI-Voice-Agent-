@@ -17,6 +17,7 @@ import dashboardRoutes from "./routes/dashboard.routes.js";
 import dograhIntegrationRoutes from "./routes/dograhIntegration.routes.js";
 import dograhRoutes from "./routes/dograh.routes.js";
 import emailRoutes from "./routes/email.routes.js";
+import emailIntegrationRoutes from "./routes/emailIntegration.routes.js";
 import followUpRoutes from "./routes/followUp.routes.js";
 import importCallsRoutes from "./routes/importCalls.routes.js";
 import knowledgeRoutes from "./routes/knowledge.routes.js";
@@ -79,6 +80,7 @@ app.post("/api/dograh/webhook", dograhWebhook);
 app.use("/api/dograh", dograhRoutes);
 
 app.use("/api/email", emailRoutes);
+app.use("/api/email-integrations", emailIntegrationRoutes);
 app.use("/api/followups", followUpRoutes);
 app.use("/api/import-calls", importCallsRoutes);
 app.use("/api/agents", agentRoutes);

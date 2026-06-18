@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const emailThreadSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    emailIntegrationId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailIntegration", index: true },
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent", index: true },
     leadId: { type: mongoose.Schema.Types.ObjectId, ref: "Lead", index: true },
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "EmailCampaign", index: true },
@@ -11,6 +12,11 @@ const emailThreadSchema = new mongoose.Schema(
     fromEmail: { type: String, default: "" },
     toEmail: { type: String, default: "" },
     replyToEmail: { type: String, default: "", index: true },
+    threadHeaders: {
+      messageId: String,
+      references: [String],
+      providerThreadId: String
+    },
     status: { type: String, enum: ["open", "unread", "needs_reply", "replied", "closed"], default: "open", index: true },
     lastMessageAt: { type: Date, default: Date.now, index: true }
   },
