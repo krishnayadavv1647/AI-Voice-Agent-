@@ -41,7 +41,10 @@ export default function DograhSettings() {
     setMessage("");
     setError("");
     try {
-      await api("/integrations/dograh/connect", { method: "POST", body: form });
+      await api("/integrations/dograh/connect", {
+        method: "POST",
+        body: { apiKey: form.apiKey, baseUrl: form.baseUrl }
+      });
       setForm((current) => ({ ...current, apiKey: "" }));
       setMessage("My Dograh connected and verified.");
       await load();
