@@ -162,9 +162,12 @@ async function upsertDograhIntegration({ userId, apiKey, baseUrl, testResult, st
     update.keyLastFour = keyLastFour(apiKey);
   }
 
+  const setOnInsert = { userId };
+  if (allowPlatformFallback === undefined) setOnInsert.allowPlatformFallback = false;
+
   return UserIntegration.findOneAndUpdate(
     { userId, provider: "dograh" },
-    { $set: update, $setOnInsert: { userId, allowPlatformFallback: false } },
+    { $set: update, $setOnInsert: setOnInsert },
     { new: true, upsert: true, runValidators: true }
   );
 }
