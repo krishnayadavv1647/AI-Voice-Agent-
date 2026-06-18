@@ -53,10 +53,7 @@ html {
 body {
   margin: 0;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28rem),
-    radial-gradient(circle at top right, rgba(124, 58, 237, 0.08), transparent 24rem),
-    #f7f9fc;
+  background: #f7f9fc;
   color: #0f172a;
   font-family: "App Body Stack Sans", "App Body Inter", "App Body Manrope", "App Body Rethink Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -81,7 +78,8 @@ input,
 select,
 textarea {
   max-width: 100%;
-  @apply w-full rounded-xl border border-slate-200 bg-white/95 px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  min-height: 42px;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
 }
 
 textarea {
@@ -93,24 +91,28 @@ button {
 }
 
 .btn-primary {
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-brand-600/20 hover:from-brand-700 hover:to-violet-700 disabled:cursor-not-allowed disabled:opacity-60;
+  min-height: 42px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .btn-secondary {
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:border-brand-200 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60;
+  min-height: 42px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-brand-200 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60;
 }
 
 .btn-danger {
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100;
+  min-height: 42px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100;
 }
 
 .btn-success {
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100;
+  min-height: 42px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100;
 }
 
 .card {
   max-width: 100%;
-  @apply rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-soft backdrop-blur;
+  @apply rounded-xl border border-slate-200 bg-white p-6 shadow-sm;
 }
 
 .glass-card {
@@ -119,11 +121,77 @@ button {
 }
 
 .panel-title {
-  @apply text-base font-bold text-slate-950;
+  @apply text-base font-semibold leading-6 text-slate-950;
 }
 
 .muted {
-  @apply text-sm text-slate-500;
+  @apply text-sm leading-[22px] text-slate-500;
+}
+
+.page-stack {
+  @apply space-y-8;
+}
+
+.page-header {
+  @apply flex min-w-0 max-w-full flex-col gap-4 sm:flex-row sm:items-start sm:justify-between;
+}
+
+.page-breadcrumb {
+  @apply mb-2 text-xs font-medium uppercase tracking-wide text-slate-500;
+}
+
+.page-title {
+  @apply break-anywhere text-2xl font-semibold leading-8 text-slate-950;
+}
+
+.page-description {
+  @apply mt-1.5 max-w-3xl text-sm font-normal leading-[22px] text-slate-500;
+}
+
+.page-actions {
+  @apply flex w-full min-w-0 flex-col gap-3 sm:w-auto sm:shrink-0 sm:flex-row sm:flex-wrap sm:justify-end;
+}
+
+.section {
+  @apply min-w-0 space-y-4;
+}
+
+.section-header {
+  @apply flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between;
+}
+
+.section-title {
+  @apply text-base font-semibold leading-6 text-slate-950;
+}
+
+.section-description {
+  @apply mt-1 text-[13px] font-normal leading-5 text-slate-500;
+}
+
+.section-actions {
+  @apply flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end;
+}
+
+.summary-grid {
+  @apply grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4;
+}
+
+.content-grid {
+  @apply grid min-w-0 gap-6;
+}
+
+.field-grid {
+  @apply grid min-w-0 gap-4 md:grid-cols-2;
+}
+
+.field-label {
+  @apply block min-w-0 text-[13px] font-medium leading-5 text-slate-700;
+}
+
+.field-label input,
+.field-label select,
+.field-label textarea {
+  @apply mt-2;
 }
 
 .badge {
@@ -131,11 +199,11 @@ button {
 }
 
 .table th {
-  @apply bg-slate-50 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500;
+  @apply bg-slate-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500;
 }
 
 .table td {
-  @apply border-t border-slate-100 px-4 py-3 text-sm text-slate-700;
+  @apply h-12 border-t border-slate-100 px-4 py-3 text-sm text-slate-700;
 }
 
 .table-wrap {
@@ -166,11 +234,339 @@ button {
 }
 
 .metric-card {
-  @apply rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft;
+  @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft;
 }
 
 .icon-tile {
   @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700;
+}
+
+.agent-card-grid {
+  display: grid;
+  min-width: 0;
+  gap: 24px;
+  grid-template-columns: 1fr;
+}
+
+.agent-card {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
+  color: #0f172a;
+  font-family: "App Body Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.agent-card h2,
+.agent-card p,
+.agent-card span,
+.agent-card a,
+.agent-card button,
+.agent-card dt,
+.agent-card dd {
+  font-family: inherit;
+}
+
+.agent-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(37, 99, 235, 0.34);
+  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.12);
+}
+
+.agent-card:focus-within {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12), 0 16px 36px rgba(37, 99, 235, 0.1);
+}
+
+.agent-card-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 24px 24px 18px;
+}
+
+.agent-card-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.agent-card-heading {
+  min-width: 0;
+}
+
+.agent-card-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agent-card-business {
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-card-category {
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.agent-status-badge {
+  display: inline-flex;
+  min-height: 34px;
+  max-width: 42%;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-status-badge-active {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.agent-status-badge-draft {
+  background: #f8fafc;
+  color: #475569;
+}
+
+.agent-status-badge-neutral {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.agent-card-divider {
+  height: 1px;
+  margin: 18px 0 12px;
+  background: #dbeafe;
+}
+
+.agent-info-list {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+  margin: 0;
+}
+
+.agent-info-row {
+  display: grid;
+  min-height: 38px;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.agent-info-row dt,
+.agent-info-row dd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-info-row dt {
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.agent-info-row dd {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.connected-app-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 16px;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.dograh-integration-badge {
+  position: relative;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.dograh-integration-mark {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dograh-connected-dot {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #16a34a;
+}
+
+.agent-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.agent-actions > * {
+  min-height: 36px;
+  flex: 1 1 92px;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.agent-card-footer {
+  display: flex;
+  min-height: 60px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #dbeafe;
+  border-radius: 0 0 20px 20px;
+  background: #f8fbff;
+  padding: 12px 24px;
+}
+
+.agent-scenarios,
+.agent-footer-status {
+  min-width: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-scenarios strong {
+  color: #0f172a;
+  font-weight: 650;
+}
+
+.agent-toggle-group {
+  display: flex;
+  min-width: 0;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-status-toggle {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  flex: 0 0 48px;
+  border: 0;
+  border-radius: 999px;
+  background: #d1d5db;
+  padding: 3px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+
+.agent-status-toggle span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  transition: transform 200ms ease;
+}
+
+.agent-status-toggle-on {
+  background: #2563eb;
+}
+
+.agent-status-toggle-on span {
+  transform: translateX(20px);
+}
+
+.agent-status-toggle:focus-visible,
+.agent-card a:focus-visible,
+.agent-card button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .agent-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .agent-card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .tab-button {
@@ -211,6 +607,23 @@ pre {
   .glass-card,
   .metric-card {
     @apply rounded-2xl p-4;
+  }
+
+  .agent-card-body {
+    padding: 20px 20px 16px;
+  }
+
+  .agent-card-footer {
+    padding: 12px 20px;
+  }
+
+  .agent-status-badge {
+    max-width: 38%;
+    padding: 0 12px;
+  }
+
+  .agent-actions > * {
+    flex-basis: calc(50% - 4px);
   }
 }
 ::-webkit-scrollbar {

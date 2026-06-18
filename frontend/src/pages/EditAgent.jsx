@@ -332,23 +332,39 @@ export default function EditAgent() {
       <PageHeader
         title="Edit Agent"
         description="Update agent details. Dograh workflow sync starts automatically after saving."
-        action={<StatusBadge status={dirty ? "Unsaved" : "Saved"} />}
+        action={
+          <>
+            <button className="btn-secondary" onClick={goBack}><ArrowLeft size={16} />Back</button>
+            <StatusBadge status={dirty ? "Unsaved" : "Saved"} />
+          </>
+        }
       />
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {form.workflowSyncStatus === "syncing" && <div className="mb-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">Dograh workflow sync is running in the background.</div>}
 
-      <div className="mb-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
-        <button className="btn-secondary" onClick={goBack}><ArrowLeft size={16} />Back</button>
-        {tabs.map((item) => (
-          <button key={item} className={`${item === tab ? "btn-primary" : "btn-secondary"} shrink-0`} onClick={() => setTab(item)}>{item}</button>
-        ))}
-      </div>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,900px)]">
+        <aside className="self-start rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+          {tabs.map((item) => (
+            <button
+              key={item}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${item === tab ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
+              onClick={() => setTab(item)}
+            >
+              <span>{item}</span>
+              {item !== tab && !dirty && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+            </button>
+          ))}
+        </aside>
 
-      <div className="card">
+      <div className="card min-w-0">
+        <div className="mb-6">
+          <h2 className="section-title">{tab}</h2>
+          <p className="section-description">Edit this section without leaving the agent editor.</p>
+        </div>
         {tab === "Basic Info" && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="field-grid">
             <Field label="Provider" name="provider" value={form.provider} setField={setField} options={[
               { label: "Custom Engine", value: "custom" },
               { label: "Dograh", value: "dograh" },
@@ -370,7 +386,7 @@ export default function EditAgent() {
         )}
 
         {tab === "Business Information" && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="field-grid">
             {["services", "pricing", "faqs", "policies", "offers", "additionalInfo"].map((field) => (
               <Field key={field} label={labelFor(field)} name={field} value={form[field]} setField={setField} textarea />
             ))}
@@ -382,13 +398,12 @@ export default function EditAgent() {
             <Field label="System Prompt" name="systemPrompt" value={form.systemPrompt} setField={setField} textarea tall />
             <div className="action-row">
               <button className="btn-secondary" onClick={regeneratePrompt}><RefreshCw size={16} />Regenerate System Prompt</button>
-              <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
             </div>
           </div>
         )}
 
         {tab === "Call Behavior" && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="field-grid">
             <Field label="Greeting Message" name="greetingMessage" value={form.greetingMessage} setField={setField} textarea />
             <Field label="First Message" name="firstMessage" value={form.firstMessage} setField={setField} textarea />
             <Field label="Fallback Message" name="fallbackMessage" value={form.fallbackMessage} setField={setField} textarea />
@@ -403,7 +418,7 @@ export default function EditAgent() {
         )}
 
         {tab === "Voice & Language" && (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="field-grid">
             <Field label="Conversation Language" name="language" value={form.language} setField={setField} options={languages} />
             <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
             <Field label="Tone" name="tone" value={form.tone} setField={setField} options={tones} />
@@ -442,11 +457,15 @@ export default function EditAgent() {
           </div>
         )}
 
-        {tab !== "System Prompt" && (
-          <div className="mt-6 flex justify-end">
-            <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
+        {dirty && (
+          <div className="sticky bottom-0 -mx-6 mt-6 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-500">You have unsaved changes in this agent.</p>
+              <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
+            </div>
           </div>
         )}
+      </div>
       </div>
     </>
   );
@@ -454,7 +473,7 @@ export default function EditAgent() {
 
 function Field({ label, name, value, setField, textarea = false, tall = false, options }) {
   return (
-    <label className="block text-sm font-medium text-slate-700">
+    <label className="field-label">
       {label}
       {options ? (
         <select className="mt-1" value={value} onChange={(event) => setField(name, event.target.value)}>

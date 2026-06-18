@@ -30,6 +30,10 @@ function timeLabel(value) {
   return value ? new Date(value).toLocaleString() : "-";
 }
 
+function refreshUnreadBadge() {
+  window.dispatchEvent(new Event("email-unread-count-changed"));
+}
+
 export default function EmailInbox() {
   const [searchParams] = useSearchParams();
   const threadParam = searchParams.get("thread") || "";
@@ -45,9 +49,11 @@ export default function EmailInbox() {
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [checkingReplies, setCheckingReplies] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [simulateForm, setSimulateForm] = useState({ fromEmail: "", body: "" });
+  const [replyCheck, setReplyCheck] = useState({ lastCheckedAt: "", importedCount: 0 });
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -57,14 +63,14 @@ export default function EmailInbox() {
     return threads.filter((thread) => thread.status === filter);
   }, [threads, filter]);
 
-  async function loadThreads(nextSelectedId = selectedId) {
-    setLoading(true);
+  async function loadThreads(nextSelectedId = selectedId, options = {}) {
+    if (!options.silent) setLoading(true);
     const query = filter === "all" ? "" : `?status=${filter}`;
     const list = await api(`/email/threads${query}`);
     setThreads(list);
     const id = nextSelectedId || list[0]?._id || "";
     setSelectedId(id);
-    setLoading(false);
+    if (!options.silent) setLoading(false);
     if (id) await loadThread(id);
     else setSelected(null);
   }
@@ -75,6 +81,8 @@ export default function EmailInbox() {
       api(`/email/threads/${id}`),
       api(`/email/threads/${id}/messages`)
     ]);
+    const readResult = await api(`/email/threads/${id}/read`, { method: "POST" });
+    if (readResult.markedCount) refreshUnreadBadge();
     setSelected({ ...detail, messages });
     setReply({
       subject: detail.thread.subject?.toLowerCase().startsWith("re:") ? detail.thread.subject : `Re: ${detail.thread.subject || "Following up"}`,
@@ -83,12 +91,34 @@ export default function EmailInbox() {
     setThreadLoading(false);
   }
 
+  async function pollReplies({ showNotice = false, silent = false, nextSelectedId = selectedId } = {}) {
+    const result = await api("/email/inbound/poll-now", { method: "POST" });
+    setReplyCheck({
+      lastCheckedAt: new Date().toISOString(),
+      importedCount: result.importedCount || 0
+    });
+    refreshUnreadBadge();
+    if (showNotice) {
+      setNotice(`Reply check complete: ${result.importedCount || 0} imported, ${result.duplicateCount || 0} duplicates skipped, ${result.skippedNoMatchCount || 0} without a matching lead/thread.`);
+    }
+    await loadThreads(nextSelectedId, { silent });
+    return result;
+  }
+
   useEffect(() => {
-    loadThreads(threadParam).catch((err) => {
+    pollReplies({ silent: false, nextSelectedId: threadParam }).catch((err) => {
       setLoading(false);
       setError(errorText(err));
     });
   }, [filter, threadParam]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      pollReplies({ silent: true }).catch((err) => setError(errorText(err)));
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [filter, selectedId]);
 
   async function selectThread(id) {
     setSelectedId(id);
@@ -159,6 +189,19 @@ export default function EmailInbox() {
     }
   }
 
+  async function checkReplies() {
+    setCheckingReplies(true);
+    setNotice("");
+    setError("");
+    try {
+      await pollReplies({ showNotice: true, nextSelectedId: selectedId });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setCheckingReplies(false);
+    }
+  }
+
   function openSimulateModal() {
     if (!selected?.thread) return;
     setSimulateForm({
@@ -201,6 +244,7 @@ export default function EmailInbox() {
         action={(
           <div className="action-row">
             <button className="btn-secondary" disabled={backfilling} onClick={backfillThreads}><History size={16} />{backfilling ? "Backfilling..." : "Backfill Sent Emails"}</button>
+            <button className="btn-secondary" disabled={checkingReplies} onClick={checkReplies}><MailOpen size={16} />{checkingReplies ? "Checking..." : "Check Replies"}</button>
             <button className="btn-secondary" onClick={() => loadThreads(selectedId).catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>
           </div>
         )}
@@ -208,6 +252,9 @@ export default function EmailInbox() {
 
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      <div className="mb-4 text-xs font-semibold text-slate-500">
+        Last checked: {replyCheck.lastCheckedAt ? new Date(replyCheck.lastCheckedAt).toLocaleTimeString() : "Not yet"} · Imported: {replyCheck.importedCount}
+      </div>
 
       <div className="grid min-h-[calc(100vh-12rem)] gap-4 xl:grid-cols-[25rem_minmax(0,1fr)]">
         <aside className="card flex min-h-0 flex-col p-0">

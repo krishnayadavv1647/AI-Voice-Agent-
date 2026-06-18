@@ -1,17 +1,27 @@
-import dotenv from "dotenv";
-dotenv.config();
+import "dotenv/config";
 
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import { startFollowUpWorker } from "./services/followUpWorker.js";
 import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
+import { startImapInboundPoller } from "./services/email/imapInboundPoller.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`AI Voice Agent API running on port ${PORT}`);
+});
+
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Backend port ${PORT} is already in use. Another backend server is probably already running.`);
+    process.exit(1);
+  }
+
+  console.error("Backend server failed to start", error.message);
+  process.exit(1);
 });
 
 connectDB()
@@ -20,6 +30,7 @@ connectDB()
     startScheduledCallWorker();
     startCampaignWorker();
     startFollowUpWorker();
+    startImapInboundPoller();
     startTelegramBot();
   })
   .catch((error) => {

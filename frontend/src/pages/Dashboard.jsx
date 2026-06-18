@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import Section from "../components/Section.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -36,52 +37,56 @@ export default function Dashboard() {
     { label: "Total Agents", value: totalAgents, icon: Bot, trend: "+12%", tone: "blue" },
     { label: "Active Agents", value: activeAgents, icon: Activity, trend: "+8%", tone: "green" },
     { label: "Total Calls", value: totalCalls, icon: PhoneCall, trend: "+23%", tone: "purple" },
-    { label: "Total Leads", value: totalLeads, icon: Users, trend: "+18%", tone: "green" },
-    { label: "Total Call Minutes", value: stats.minutesUsed || 0, icon: Clock, trend: "+6%", tone: "blue" },
-    { label: "Success Rate", value: `${successRate}%`, icon: Target, trend: "+4%", tone: "green" },
-    { label: "Dograh Credits Used", value: stats.dograhCreditsUsed || "0", icon: WalletCards, trend: "Live", tone: "purple" },
-    { label: "Failed Calls", value: stats.failedCalls || 0, icon: TrendingDown, trend: "Monitor", tone: "red" }
+    { label: "Success Rate", value: `${successRate}%`, icon: Target, trend: "+4%", tone: "green" }
   ];
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Dashboard"
         description="Monitor outbound AI calls, lead capture, Dograh workflow health, and agent performance from one control room."
-        action={<Link to="/create-agent" className="btn-primary"><Plus size={18} />Create Agent</Link>}
+        action={
+          <>
+            <button className="btn-secondary" type="button">Last 30 days</button>
+            <Link to="/create-agent" className="btn-primary"><Plus size={18} />Create Agent</Link>
+          </>
+        }
       />
 
-      {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
       {!data ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, index) => <div key={index} className="skeleton h-32" />)}
+        <div className="summary-grid">
+          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-32" />)}
         </div>
       ) : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {cards.map(({ label, value, icon: Icon, trend, tone }) => (
-              <div className="metric-card" key={label}>
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div className={`grid h-11 w-11 place-items-center rounded-2xl ${
-                    tone === "green" ? "bg-emerald-50 text-emerald-700" :
-                    tone === "purple" ? "bg-violet-50 text-violet-700" :
-                    tone === "red" ? "bg-rose-50 text-rose-700" : "bg-brand-50 text-brand-700"
-                  }`}>
-                    <Icon size={19} />
+          <Section title="Overview" description="The four numbers that best describe current account activity.">
+            <div className="summary-grid">
+              {cards.map(({ label, value, icon: Icon, trend, tone }) => (
+                <div className="metric-card" key={label}>
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div className={`grid h-11 w-11 place-items-center rounded-xl ${
+                      tone === "green" ? "bg-emerald-50 text-emerald-700" :
+                      tone === "purple" ? "bg-violet-50 text-violet-700" :
+                      tone === "red" ? "bg-rose-50 text-rose-700" : "bg-brand-50 text-brand-700"
+                    }`}>
+                      <Icon size={18} />
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                      <TrendingUp size={12} />
+                      {trend}
+                    </span>
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                    <TrendingUp size={12} />
-                    {trend}
-                  </span>
+                  <p className="text-sm font-medium text-slate-500">{label}</p>
+                  <p className="mt-2 break-anywhere text-2xl font-semibold leading-8 text-slate-950">{value}</p>
                 </div>
-                <p className="text-sm font-medium text-slate-500">{label}</p>
-                <p className="mt-2 break-anywhere text-3xl font-bold tracking-tight text-slate-950">{value}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </Section>
 
-          <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+          <Section title="Call Activity" description="Volume and lead outcomes for the selected date range.">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
             <section className="card min-w-0">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -125,10 +130,38 @@ export default function Dashboard() {
               </div>
             </section>
           </div>
+          </Section>
 
-          <div className="mt-6 grid min-w-0 gap-6 xl:grid-cols-3">
+          <Section title="Recent Calls" description="Latest call records with agent and duration context." action={<Link className="btn-secondary" to="/calls">View all calls</Link>}>
+            <div className="card table-wrap p-0">
+              <table className="table w-full min-w-[680px]">
+                <thead>
+                  <tr>
+                    <th>Caller</th>
+                    <th>Agent</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data?.recentCalls || []).slice(0, 6).map((call) => (
+                    <tr key={call._id}>
+                      <td>{call.callerNumber || "Unknown caller"}</td>
+                      <td>{call.agentId?.agentName || "Agent"}</td>
+                      <td>{durationLabel(call)}</td>
+                      <td><StatusBadge status={call.status || "Logged"} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data && !data.recentCalls?.length && <div className="p-6"><EmptyState title="No calls yet" description="Start a test call to see call logs." /></div>}
+            </div>
+          </Section>
+
+          <Section title="Needs Attention" description="Agent and lead activity that may require follow-up.">
+          <div className="grid min-w-0 gap-6 xl:grid-cols-2">
             <section className="card min-w-0">
-              <h2 className="mb-4 panel-title">Top Performing Agents</h2>
+              <h2 className="mb-4 panel-title">Agents Requiring Attention</h2>
               {!data?.recentAgents?.length ? (
                 <EmptyState title="No agents yet" description="Create your first AI voice agent." />
               ) : (
@@ -149,19 +182,6 @@ export default function Dashboard() {
             </section>
 
             <section className="card min-w-0">
-              <h2 className="mb-4 panel-title">Recent Calls</h2>
-              <div className="space-y-3">
-                {(data?.recentCalls || []).map((call) => (
-                  <div key={call._id} className="rounded-2xl border border-slate-100 p-3">
-                    <p className="break-anywhere font-semibold text-slate-950">{call.callerNumber || "Unknown caller"}</p>
-                    <p className="text-sm text-slate-500">{call.agentId?.agentName || "Agent"} · {durationLabel(call)}</p>
-                  </div>
-                ))}
-                {data && !data.recentCalls?.length && <EmptyState title="No calls yet" description="Start a test call to see call logs." />}
-              </div>
-            </section>
-
-            <section className="card min-w-0">
               <h2 className="mb-4 panel-title">Recent Leads</h2>
               <div className="space-y-3">
                 {(data?.recentLeads || []).map((lead) => (
@@ -174,8 +194,9 @@ export default function Dashboard() {
               </div>
             </section>
           </div>
+          </Section>
         </>
       )}
-    </>
+    </div>
   );
 }

@@ -26,8 +26,9 @@
   Workflow,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
 
 const links = [
@@ -53,7 +54,7 @@ const links = [
   { to: "/settings", label: "Settings", icon: Settings }
 ];
 
-function NavItems({ onClick }) {
+function NavItems({ onClick, unreadEmailCount = 0 }) {
   const { user } = useAuth();
   const items = ["admin", "super_admin"].includes(user?.role) ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
 
@@ -72,6 +73,11 @@ function NavItems({ onClick }) {
     >
       <Icon size={18} className="shrink-0" />
       <span className="truncate">{label}</span>
+      {to === "/email-inbox" && unreadEmailCount > 0 && (
+        <span className="ml-auto grid min-w-5 place-items-center rounded-full bg-rose-600 px-1.5 py-0.5 text-xs font-black leading-none text-white">
+          {unreadEmailCount > 99 ? "99+" : unreadEmailCount}
+        </span>
+      )}
     </NavLink>
   ));
 }
@@ -85,6 +91,7 @@ function pageTitle(pathname) {
 
 export default function AppShell() {
   const [open, setOpen] = useState(false);
+  const [unreadEmailCount, setUnreadEmailCount] = useState(0);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -99,6 +106,26 @@ export default function AppShell() {
     logout();
     navigate("/login");
   }
+
+  async function loadUnreadEmailCount() {
+    try {
+      const result = await api("/email/unread-count");
+      setUnreadEmailCount(result.count || 0);
+    } catch {
+      setUnreadEmailCount(0);
+    }
+  }
+
+  useEffect(() => {
+    loadUnreadEmailCount();
+    const interval = setInterval(loadUnreadEmailCount, 30000);
+    window.addEventListener("email-unread-count-changed", loadUnreadEmailCount);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("email-unread-count-changed", loadUnreadEmailCount);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-slate-50">
@@ -118,7 +145,7 @@ export default function AppShell() {
           </button>
         </div>
       )}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-slate-200 bg-white/90 p-4 backdrop-blur-xl lg:flex lg:flex-col">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-slate-200 bg-white p-4 lg:flex lg:flex-col">
         <Link to="/dashboard" className="mb-6 flex min-w-0 items-center gap-3 px-2">
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 text-white shadow-lg shadow-brand-600/25">
             <Headphones size={22} />
@@ -130,7 +157,7 @@ export default function AppShell() {
         </Link>
 
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-          <NavItems />
+          <NavItems unreadEmailCount={unreadEmailCount} />
         </nav>
 
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -149,8 +176,8 @@ export default function AppShell() {
       </aside>
 
       <div className="min-w-0 max-w-full lg:pl-72">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur-xl">
-          <div className="flex min-h-16 min-w-0 max-w-full items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 lg:px-8">
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6 lg:px-8">
             <button className="shrink-0 rounded-xl border border-slate-200 p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
               <Menu size={20} />
             </button>
@@ -170,7 +197,7 @@ export default function AppShell() {
           </div>
         </header>
 
-        <main className="mx-auto min-w-0 max-w-[1500px] overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <main className="mx-auto min-w-0 max-w-[1440px] overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>
@@ -189,7 +216,7 @@ export default function AppShell() {
               <button className="rounded-xl border border-slate-200 p-2" onClick={() => setOpen(false)}><X size={18} /></button>
             </div>
             <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-              <NavItems onClick={() => setOpen(false)} />
+              <NavItems onClick={() => setOpen(false)} unreadEmailCount={unreadEmailCount} />
             </nav>
           </div>
         </div>

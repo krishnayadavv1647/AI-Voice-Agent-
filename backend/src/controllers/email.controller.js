@@ -7,6 +7,7 @@ import EmailThread from "../models/EmailThread.js";
 import Lead from "../models/Lead.js";
 import WebhookEvent from "../models/WebhookEvent.js";
 import { getEmailProvider, listEmailProviders } from "../services/email/index.js";
+import { findInboundEmailMatch, normalizeEmailSubject, pollInboundEmails } from "../services/email/imapInboundPoller.js";
 import { createEmailSentFollowUp, pauseEmailSentFollowUpsForLead } from "../services/followUp.service.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -69,6 +70,9 @@ function replyDomain() {
 }
 
 function replyToFor({ leadId, campaignId }) {
+  const inbox = normalizeEmail(process.env.IMAP_USER || process.env.FROM_EMAIL);
+  if (inbox) return inbox;
+  if (!leadId || !campaignId) return senderEmail();
   return `reply+${leadId}+${campaignId}@${replyDomain()}`;
 }
 
@@ -81,6 +85,16 @@ function canonicalSubject(subject = "") {
 
 function previewBody(message) {
   return clean(message.textBody || message.body || String(message.htmlBody || "").replace(/<[^>]+>/g, " ")).slice(0, 240);
+}
+
+function unreadInboundQuery(req, extra = {}) {
+  return {
+    ...filter(req),
+    direction: "inbound",
+    status: "received",
+    $or: [{ readAt: { $exists: false } }, { readAt: null }],
+    ...extra
+  };
 }
 
 function looksPositive(text = "") {
@@ -124,6 +138,8 @@ function parseTrackableReplyAddress(toEmail = "") {
 }
 
 async function findOrCreateThread({ userId, agentId, leadId, campaignId, subject, fromEmail, toEmail, status = "open", lastMessageAt = new Date() }) {
+  const normalizedSubject = normalizeEmailSubject(subject);
+  const replyToEmail = normalizeEmail(process.env.IMAP_USER || process.env.FROM_EMAIL);
   const lookup = { userId };
   if (leadId) lookup.leadId = leadId;
   if (campaignId) lookup.campaignId = campaignId;
@@ -132,14 +148,28 @@ async function findOrCreateThread({ userId, agentId, leadId, campaignId, subject
   if (!thread && !leadId && !campaignId && toEmail) {
     thread = await EmailThread.findOne({
       userId,
-      $or: [{ leadId: { $exists: false } }, { leadId: null }],
-      $and: [{ $or: [{ campaignId: { $exists: false } }, { campaignId: null }] }],
       toEmail: normalizeEmail(toEmail),
-      subject
+      $and: [
+        { $or: [{ leadId: { $exists: false } }, { leadId: null }] },
+        { $or: [{ campaignId: { $exists: false } }, { campaignId: null }] },
+        {
+          $or: [
+            { normalizedSubject },
+            { subject: { $regex: `^${canonicalSubject(subject).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } }
+          ]
+        }
+      ]
     });
   }
   if (!thread && leadId) {
-    thread = await EmailThread.findOne({ userId, leadId, subject: { $regex: `^${canonicalSubject(subject).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } });
+    thread = await EmailThread.findOne({
+      userId,
+      leadId,
+      $or: [
+        { normalizedSubject },
+        { subject: { $regex: `^${canonicalSubject(subject).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } }
+      ]
+    });
   }
   if (!thread) {
     thread = await EmailThread.create({
@@ -148,8 +178,10 @@ async function findOrCreateThread({ userId, agentId, leadId, campaignId, subject
       leadId,
       campaignId,
       subject,
+      normalizedSubject,
       fromEmail,
       toEmail,
+      replyToEmail,
       status,
       lastMessageAt
     });
@@ -158,8 +190,10 @@ async function findOrCreateThread({ userId, agentId, leadId, campaignId, subject
     thread.leadId = thread.leadId || leadId;
     thread.campaignId = thread.campaignId || campaignId;
     thread.subject = thread.subject || subject;
+    thread.normalizedSubject = thread.normalizedSubject || normalizedSubject;
     thread.fromEmail = thread.fromEmail || fromEmail;
     thread.toEmail = thread.toEmail || toEmail;
+    thread.replyToEmail = thread.replyToEmail || replyToEmail;
     thread.status = status || thread.status;
     thread.lastMessageAt = lastMessageAt;
     await thread.save();
@@ -182,6 +216,7 @@ async function saveOutboundEmailMessage({
   rawPayload = {}
 }) {
   const fromEmail = senderEmail();
+  const replyToEmail = normalizeEmail(rawPayload.replyTo || process.env.IMAP_USER || process.env.FROM_EMAIL);
   const thread = await findOrCreateThread({
     userId,
     agentId,
@@ -218,6 +253,8 @@ async function saveOutboundEmailMessage({
   thread.lastMessageAt = sentAt;
   thread.fromEmail = thread.fromEmail || fromEmail;
   thread.toEmail = thread.toEmail || toEmail;
+  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(subject);
+  thread.replyToEmail = thread.replyToEmail || replyToEmail;
   await thread.save();
 
   console.info("[email] outbound message saved", {
@@ -448,6 +485,11 @@ export const listProviders = asyncHandler(async (req, res) => {
   res.json(listEmailProviders());
 });
 
+export const getUnreadEmailCount = asyncHandler(async (req, res) => {
+  const count = await EmailMessage.countDocuments(unreadInboundQuery(req));
+  res.json({ count });
+});
+
 export const generateEmail = asyncHandler(async (req, res) => {
   const { agentId, goal = "", offer = "", tone = "Professional", selectedLeadIds = [] } = req.body;
   const agent = await ensureAgentAccess(req, agentId);
@@ -476,11 +518,13 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
 
   try {
     const sentAt = new Date();
+    const replyTo = replyToFor({ leadId: null, campaignId: null });
     const result = await provider.service.sendEmail({
       toEmail,
       toName: req.user.name,
       subject: finalSubject,
-      body: finalBody
+      body: finalBody,
+      replyTo
     });
 
     const { thread, message } = await saveOutboundEmailMessage({
@@ -495,7 +539,7 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
       providerKey: provider.key,
       providerMessageId: result.messageId,
       sentAt,
-      rawPayload: { source: "test_email" }
+      rawPayload: { source: "test_email", replyTo }
     });
 
     console.info("[email] test send saved", {
@@ -712,7 +756,7 @@ export const listThreads = asyncHandler(async (req, res) => {
     const key = String(message.threadId);
     acc[key] = acc[key] || { messagesCount: 0, unreadCount: 0 };
     acc[key].messagesCount += 1;
-    if (message.direction === "inbound" && message.status === "received") acc[key].unreadCount += 1;
+    if (message.direction === "inbound" && message.status === "received" && !message.readAt) acc[key].unreadCount += 1;
     return acc;
   }, {});
 
@@ -744,6 +788,23 @@ export const getThreadMessages = asyncHandler(async (req, res) => {
 
   const messages = await EmailMessage.find({ threadId: thread._id, ...filter(req) }).sort({ createdAt: 1 });
   res.json(messages);
+});
+
+export const markThreadRead = asyncHandler(async (req, res) => {
+  const thread = await EmailThread.findOne({ _id: req.params.id, ...filter(req) });
+  if (!thread) throw new ApiError(404, "Email thread not found.");
+
+  const now = new Date();
+  const result = await EmailMessage.updateMany(
+    unreadInboundQuery(req, { threadId: thread._id }),
+    { $set: { readAt: now, status: "read" } }
+  );
+
+  res.json({
+    success: true,
+    markedCount: result.modifiedCount || 0,
+    readAt: now
+  });
 });
 
 export const simulateInboundReply = asyncHandler(async (req, res) => {
@@ -782,6 +843,7 @@ export const simulateInboundReply = asyncHandler(async (req, res) => {
 
   thread.status = "needs_reply";
   thread.lastMessageAt = receivedAt;
+  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(thread.subject || subject);
   await thread.save();
 
   console.info("[email] simulated inbound message saved", {
@@ -793,6 +855,41 @@ export const simulateInboundReply = asyncHandler(async (req, res) => {
   });
 
   res.status(201).json({ success: true, thread, message });
+});
+
+export const pollInboundNow = asyncHandler(async (req, res) => {
+  const result = await pollInboundEmails();
+  res.json(result);
+});
+
+export const testInboundMatch = asyncHandler(async (req, res) => {
+  const fromEmail = normalizeEmail(req.body.fromEmail);
+  const subject = clean(req.body.subject);
+  if (!validEmail(fromEmail)) throw new ApiError(400, "A valid fromEmail is required.");
+  if (!subject) throw new ApiError(400, "Subject is required.");
+
+  const result = await findInboundEmailMatch({
+    fromEmail,
+    subject,
+    userId: req.user.role === "admin" ? undefined : req.user._id
+  });
+
+  res.json({
+    matchedThread: result.matchedThread ? {
+      _id: result.matchedThread._id,
+      subject: result.matchedThread.subject,
+      normalizedSubject: result.matchedThread.normalizedSubject || normalizeEmailSubject(result.matchedThread.subject),
+      toEmail: result.matchedThread.toEmail,
+      leadId: result.matchedThread.leadId?._id || result.matchedThread.leadId || null,
+      status: result.matchedThread.status
+    } : null,
+    matchedLead: result.matchedLead ? {
+      _id: result.matchedLead._id,
+      email: result.matchedLead.email,
+      name: result.matchedLead.businessName || result.matchedLead.contactName || result.matchedLead.name || ""
+    } : null,
+    reason: result.reason
+  });
 });
 
 export const inboundBrevo = asyncHandler(async (req, res) => {
@@ -821,6 +918,11 @@ export const inboundBrevo = asyncHandler(async (req, res) => {
     lastMessageAt: receivedAt
   });
 
+  if (messageId) {
+    const duplicate = await EmailMessage.findOne({ provider: "brevo", providerMessageId: messageId });
+    if (duplicate) return res.status(200).json({ success: true, matched: true, duplicate: true, threadId: duplicate.threadId });
+  }
+
   await EmailMessage.create({
     userId,
     threadId: thread._id,
@@ -846,6 +948,8 @@ export const inboundBrevo = asyncHandler(async (req, res) => {
   thread.lastMessageAt = receivedAt;
   thread.fromEmail = thread.fromEmail || fromEmail;
   thread.toEmail = thread.toEmail || toEmail;
+  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(subject);
+  thread.replyToEmail = thread.replyToEmail || normalizeEmail(process.env.IMAP_USER || process.env.FROM_EMAIL);
   await thread.save();
 
   if (lead) {
@@ -967,7 +1071,7 @@ export const sendThreadReply = asyncHandler(async (req, res) => {
     toName: leadName(thread.leadId || {}),
     subject: replySubject,
     body,
-    replyTo: thread.leadId && thread.campaignId ? replyToFor({ leadId: thread.leadId._id || thread.leadId, campaignId: thread.campaignId }) : undefined
+    replyTo: thread.replyToEmail || replyToFor({ leadId: thread.leadId?._id || thread.leadId, campaignId: thread.campaignId })
   });
 
   const message = await EmailMessage.create({
@@ -991,6 +1095,8 @@ export const sendThreadReply = asyncHandler(async (req, res) => {
 
   thread.status = "replied";
   thread.lastMessageAt = sentAt;
+  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(replySubject);
+  thread.replyToEmail = thread.replyToEmail || normalizeEmail(process.env.IMAP_USER || process.env.FROM_EMAIL);
   await thread.save();
 
   res.status(201).json({ success: true, thread, message });

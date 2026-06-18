@@ -19,13 +19,15 @@ const emailMessageSchema = new mongoose.Schema(
     providerThreadId: { type: String, default: "" },
     receivedAt: Date,
     sentAt: Date,
-    status: { type: String, enum: ["sent", "delivered", "failed", "received", ""], default: "" },
+    readAt: Date,
+    status: { type: String, enum: ["sent", "delivered", "failed", "received", "read", ""], default: "" },
     rawPayload: mongoose.Schema.Types.Mixed
   },
   { timestamps: true }
 );
 
 emailMessageSchema.index({ userId: 1, threadId: 1, createdAt: 1 });
+emailMessageSchema.index({ userId: 1, direction: 1, status: 1, readAt: 1 });
 emailMessageSchema.index({ provider: 1, providerMessageId: 1 });
 
 export default mongoose.model("EmailMessage", emailMessageSchema);
