@@ -5,7 +5,7 @@ import { connectDB } from "./config/db.js";
 import { startFollowUpWorker } from "./services/followUpWorker.js";
 import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
-import { startImapInboundPoller } from "./services/email/imapInboundPoller.js";
+import { startEmailSyncWorker } from "./workers/emailSyncWorker.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
 
 const PORT = process.env.PORT || 5000;
@@ -30,7 +30,7 @@ connectDB()
     startScheduledCallWorker();
     startCampaignWorker();
     startFollowUpWorker();
-    startImapInboundPoller();
+    startEmailSyncWorker();
     startTelegramBot();
   })
   .catch((error) => {

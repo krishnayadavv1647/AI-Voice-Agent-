@@ -33,6 +33,7 @@ import LLMProviders from "./pages/LLMProviders.jsx";
 import DograhSettings from "./pages/DograhSettings.jsx";
 import EmailOutreach from "./pages/EmailOutreach.jsx";
 import EmailInbox from "./pages/EmailInbox.jsx";
+import EmailIntegrationSettings from "./pages/EmailIntegrationSettings.jsx";
 import FollowUps from "./pages/FollowUps.jsx";
 import ImportCalls from "./pages/ImportCalls.jsx";
 import TelephonyConfiguration from "./pages/TelephonyConfiguration.jsx";
@@ -89,6 +90,7 @@ function Router() {
         <Route path="knowledge" element={<KnowledgeBase />} />
         <Route path="billing" element={<Billing />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/email" element={<EmailIntegrationSettings />} />
         <Route
           path="admin"
           element={

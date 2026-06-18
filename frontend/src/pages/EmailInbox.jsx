@@ -92,7 +92,7 @@ export default function EmailInbox() {
   }
 
   async function pollReplies({ showNotice = false, silent = false, nextSelectedId = selectedId } = {}) {
-    const result = await api("/email/inbound/poll-now", { method: "POST" });
+    const result = await api("/email-integrations/sync-now", { method: "POST" });
     setReplyCheck({
       lastCheckedAt: new Date().toISOString(),
       importedCount: result.importedCount || 0
@@ -106,7 +106,7 @@ export default function EmailInbox() {
   }
 
   useEffect(() => {
-    pollReplies({ silent: false, nextSelectedId: threadParam }).catch((err) => {
+    loadThreads(threadParam, { silent: false }).catch((err) => {
       setLoading(false);
       setError(errorText(err));
     });
@@ -114,7 +114,7 @@ export default function EmailInbox() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      pollReplies({ silent: true }).catch((err) => setError(errorText(err)));
+      loadThreads(selectedId, { silent: true }).catch((err) => setError(errorText(err)));
     }, 30000);
 
     return () => clearInterval(interval);
@@ -244,7 +244,7 @@ export default function EmailInbox() {
         action={(
           <div className="action-row">
             <button className="btn-secondary" disabled={backfilling} onClick={backfillThreads}><History size={16} />{backfilling ? "Backfilling..." : "Backfill Sent Emails"}</button>
-            <button className="btn-secondary" disabled={checkingReplies} onClick={checkReplies}><MailOpen size={16} />{checkingReplies ? "Checking..." : "Check Replies"}</button>
+            <button className="btn-secondary" disabled={checkingReplies} onClick={checkReplies}><MailOpen size={16} />{checkingReplies ? "Syncing..." : "Sync Now"}</button>
             <button className="btn-secondary" onClick={() => loadThreads(selectedId).catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>
           </div>
         )}

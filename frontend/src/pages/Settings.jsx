@@ -1,4 +1,4 @@
-import { Bell, CreditCard, KeyRound, Lock, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
+import { Bell, CreditCard, KeyRound, Lock, Mail, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -124,6 +124,7 @@ export default function Settings() {
           ))}
           <div className="my-2 border-t border-slate-100" />
           <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/dograh-settings">Dograh</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/settings/email">Email</Link>
           <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/llm-providers">LLM Providers</Link>
           <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/voice-providers">Voice Providers</Link>
         </aside>
@@ -145,6 +146,7 @@ export default function Settings() {
 
               <Panel icon={KeyRound} title="API Keys" description="Credentials are managed in dedicated integration pages. Full keys are never exposed in the browser.">
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Link className="btn-secondary" to="/settings/email"><Mail size={16} />Manage Email</Link>
                   <Link className="btn-secondary" to="/dograh-settings">Manage Dograh</Link>
                   <Link className="btn-secondary" to="/integrations/llm-providers">Manage LLM Providers</Link>
                 </div>
