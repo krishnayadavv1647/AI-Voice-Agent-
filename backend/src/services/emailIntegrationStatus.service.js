@@ -34,6 +34,7 @@ export function toSafeIntegrationStatus(integration) {
   return {
     brevo: {
       connected: Boolean(integration?.brevo?.connected),
+      hasApiKey: Boolean(integration?.brevo?.apiKeyEncrypted),
       accountEmail: integration?.brevo?.accountEmail || "",
       senderName: integration?.brevo?.senderName || "",
       senderEmail: integration?.brevo?.senderEmail || "",

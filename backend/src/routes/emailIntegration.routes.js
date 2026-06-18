@@ -11,7 +11,7 @@ import {
   gmailCallback,
   listBrevoSenders,
   syncNow,
-  testBrevo,
+  validateBrevo,
   testImap,
   updateBrevoSender
 } from "../controllers/emailIntegrationController.js";
@@ -27,7 +27,8 @@ router.get("/gmail/callback", gmailCallback);
 router.use(protect);
 router.get("/status", getEmailIntegrationStatus);
 router.post("/brevo/connect", connectionLimiter, connectBrevo);
-router.post("/brevo/test", connectionLimiter, testBrevo);
+router.post("/brevo/validate", connectionLimiter, validateBrevo);
+router.post("/brevo/test", connectionLimiter, validateBrevo);
 router.get("/brevo/senders", listBrevoSenders);
 router.patch("/brevo/sender", updateBrevoSender);
 router.delete("/brevo", disconnectBrevo);

@@ -1,9 +1,9 @@
-import { CheckCircle2, KeyRound, Mail, RefreshCw, Send, ShieldCheck, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, KeyRound, Mail, RefreshCw, Save, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
 
-const defaultBrevo = { apiKey: "", senderName: "", senderEmail: "", replyToName: "", replyToEmail: "" };
+const defaultBrevo = { apiKey: "", senderId: "", senderName: "", senderEmail: "", replyToName: "", replyToEmail: "" };
 const defaultImap = { email: "", host: "imap.gmail.com", port: 993, secure: true, username: "", password: "" };
 
 function messageFrom(error) {
@@ -21,9 +21,11 @@ export default function EmailIntegrationSettings() {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [verifiedSenders, setVerifiedSenders] = useState([]);
+  const [sendersLoading, setSendersLoading] = useState(false);
+  const [sendersError, setSendersError] = useState("");
 
   const integration = status?.integration;
-  const senders = integration?.brevo?.verifiedSenders || [];
   const replyMismatch = useMemo(() => {
     const replyTo = integration?.brevo?.replyToEmail?.toLowerCase();
     const mailbox = integration?.inbound?.email?.toLowerCase();
@@ -37,6 +39,7 @@ export default function EmailIntegrationSettings() {
       ...current,
       senderName: result.integration?.brevo?.senderName || current.senderName,
       senderEmail: result.integration?.brevo?.senderEmail || current.senderEmail,
+      senderId: result.integration?.brevo?.senderId || current.senderId,
       replyToName: result.integration?.brevo?.replyToName || current.replyToName,
       replyToEmail: result.integration?.brevo?.replyToEmail || current.replyToEmail
     }));
@@ -53,6 +56,12 @@ export default function EmailIntegrationSettings() {
   useEffect(() => {
     loadStatus().catch((err) => setError(messageFrom(err)));
   }, []);
+
+  useEffect(() => {
+    if (integration?.brevo?.hasApiKey || integration?.brevo?.connected) {
+      loadVerifiedSenders().catch(() => {});
+    }
+  }, [integration?.brevo?.hasApiKey, integration?.brevo?.connected]);
 
   async function run(label, action, success) {
     setBusy(label);
@@ -74,17 +83,69 @@ export default function EmailIntegrationSettings() {
     setBrevoForm((current) => ({ ...current, apiKey: "" }));
   }
 
-  async function testBrevo() {
-    await run("brevo-test", async () => {
-      const result = await api("/email-integrations/brevo/test", { method: "POST", body: { apiKey: brevoForm.apiKey } });
+  async function validateBrevo() {
+    if (!brevoForm.apiKey.trim()) {
+      setError("Enter your Brevo API key.");
+      return;
+    }
+    setBusy("brevo-validate");
+    setSendersLoading(true);
+    setSendersError("");
+    setNotice("");
+    setError("");
+    try {
+      const result = await api("/email-integrations/brevo/validate", { method: "POST", body: { apiKey: brevoForm.apiKey.trim() } });
+      const senders = Array.isArray(result.senders) ? result.senders : [];
+      setVerifiedSenders(senders);
       setStatus((current) => ({
         ...(current || {}),
         integration: {
           ...(current?.integration || {}),
-          brevo: { ...(current?.integration?.brevo || {}), verifiedSenders: result.verifiedSenders || [] }
+          brevo: { ...(current?.integration?.brevo || {}), hasApiKey: true, accountEmail: result.account?.email || "", verifiedSenders: senders }
         }
       }));
-    }, "Brevo key is valid. Choose a verified sender.");
+      setNotice(senders.length ? `${senders.length} Brevo sender${senders.length === 1 ? "" : "s"} loaded.` : "No Brevo sender found. Add and verify a sender in your Brevo account, then reload senders.");
+    } catch (err) {
+      setVerifiedSenders([]);
+      setSendersError(messageFrom(err) || "Unable to validate the Brevo API key.");
+      setError(messageFrom(err) || "Unable to validate the Brevo API key.");
+    } finally {
+      setSendersLoading(false);
+      setBusy("");
+    }
+  }
+
+  async function loadVerifiedSenders() {
+    setSendersLoading(true);
+    setSendersError("");
+    try {
+      const result = await api("/email-integrations/brevo/senders");
+      const senders = Array.isArray(result.senders) ? result.senders : [];
+      setVerifiedSenders(senders);
+      setStatus((current) => ({
+        ...(current || {}),
+        integration: {
+          ...(current?.integration || {}),
+          brevo: { ...(current?.integration?.brevo || {}), verifiedSenders: senders }
+        }
+      }));
+      if (!senders.length) setSendersError("No Brevo sender found. Add and verify a sender in your Brevo account, then reload senders.");
+    } catch (err) {
+      setVerifiedSenders([]);
+      setSendersError(messageFrom(err) || "Unable to load verified Brevo senders.");
+    } finally {
+      setSendersLoading(false);
+    }
+  }
+
+  function selectSender(email) {
+    const selectedSender = verifiedSenders.find((sender) => sender.email === email);
+    setBrevoForm((current) => ({
+      ...current,
+      senderEmail: email,
+      senderId: selectedSender?.id || "",
+      senderName: selectedSender?.name || current.senderName
+    }));
   }
 
   async function saveBrevoSender() {
@@ -162,17 +223,21 @@ export default function EmailIntegrationSettings() {
           <label className="field-label">Brevo API Key<input type="password" value={brevoForm.apiKey} onChange={(event) => setBrevoForm({ ...brevoForm, apiKey: event.target.value })} placeholder={integration?.brevo?.maskedApiKey || "xkeysib-..."} /></label>
           <label className="field-label">Sender Name<input value={brevoForm.senderName} onChange={(event) => setBrevoForm({ ...brevoForm, senderName: event.target.value })} /></label>
           <label className="field-label">Verified Sender Email
-            <select value={brevoForm.senderEmail} onChange={(event) => setBrevoForm({ ...brevoForm, senderEmail: event.target.value })}>
-              <option value="">Select verified sender</option>
-              {senders.map((sender) => <option key={sender.email} value={sender.email}>{sender.name ? `${sender.name} - ${sender.email}` : sender.email}</option>)}
+            <select value={brevoForm.senderEmail || ""} disabled={sendersLoading || verifiedSenders.length === 0} onChange={(event) => selectSender(event.target.value)}>
+              <option value="">
+                {sendersLoading ? "Loading verified senders..." : verifiedSenders.length === 0 ? "No verified sender found" : "Select verified sender"}
+              </option>
+              {verifiedSenders.map((sender) => <option key={sender.id || sender.email} value={sender.email}>{sender.name} - {sender.email}</option>)}
             </select>
+            {sendersError && <p className="mt-1 text-sm text-rose-600">{sendersError}</p>}
           </label>
           <label className="field-label">Reply-To Name<input value={brevoForm.replyToName} onChange={(event) => setBrevoForm({ ...brevoForm, replyToName: event.target.value })} /></label>
           <label className="field-label">Reply-To Email<input value={brevoForm.replyToEmail} onChange={(event) => setBrevoForm({ ...brevoForm, replyToEmail: event.target.value })} /></label>
 
           <div className="action-row">
-            <button className="btn-primary" disabled={busy === "brevo"} onClick={connectBrevo}><Send size={16} />{busy === "brevo" ? "Connecting..." : "Connect Brevo"}</button>
-            <button className="btn-secondary" disabled={!brevoForm.apiKey || busy === "brevo-test"} onClick={testBrevo}><RefreshCw size={16} />Test Connection</button>
+            <button className="btn-secondary" disabled={!brevoForm.apiKey || busy === "brevo-validate"} onClick={validateBrevo}><RefreshCw size={16} />{busy === "brevo-validate" ? "Loading..." : "Verify API Key & Load Senders"}</button>
+            <button className="btn-secondary" disabled={sendersLoading || !(integration?.brevo?.hasApiKey || integration?.brevo?.connected)} onClick={() => loadVerifiedSenders().catch((err) => setError(messageFrom(err)))}><RefreshCw size={16} />Reload Senders</button>
+            <button className="btn-primary" disabled={busy === "brevo" || !brevoForm.senderEmail || !brevoForm.replyToEmail} onClick={connectBrevo}><Save size={16} />{busy === "brevo" ? "Saving..." : "Save Brevo Configuration"}</button>
             <button className="btn-secondary" disabled={!integration?.brevo?.connected || busy === "brevo-save"} onClick={saveBrevoSender}>Save Changes</button>
             <button className="btn-danger" disabled={!integration?.brevo?.connected} onClick={() => run("brevo-disconnect", () => api("/email-integrations/brevo", { method: "DELETE" }), "Brevo disconnected.")}><Trash2 size={16} />Disconnect</button>
           </div>

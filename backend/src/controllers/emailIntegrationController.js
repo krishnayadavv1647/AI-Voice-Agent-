@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { fetchBrevoSenders, validateBrevoAccount } from "../services/brevoService.js";
-import { encryptCredential } from "../services/credentialEncryptionService.js";
+import { decryptCredential, encryptCredential } from "../services/credentialEncryptionService.js";
 import { getOrCreateEmailIntegration, toSafeIntegrationStatus } from "../services/emailIntegrationStatus.service.js";
 import { syncEmailIntegration, testImapConnection } from "../services/emailInboundSyncService.js";
 import { ApiError } from "../utils/apiError.js";
@@ -57,9 +57,10 @@ export const getEmailIntegrationStatus = asyncHandler(async (req, res) => {
 });
 
 export const connectBrevo = asyncHandler(async (req, res) => {
-  const apiKey = clean(req.body.apiKey);
-  if (!apiKey) throw new ApiError(400, "Brevo API key is required.");
-  const senderName = assertText(req.body.senderName, "Sender name");
+  const integration = await getOrCreateEmailIntegration(req.user._id);
+  const providedApiKey = clean(req.body.apiKey);
+  const apiKey = providedApiKey || (integration.brevo?.apiKeyEncrypted ? decryptCredential(integration.brevo.apiKeyEncrypted) : "");
+  if (!apiKey) throw new ApiError(400, "Enter and verify your Brevo API key first.");
   const senderEmail = assertEmail(req.body.senderEmail, "Sender email");
   const replyToName = clean(req.body.replyToName).slice(0, 100);
   const replyToEmail = assertEmail(req.body.replyToEmail, "Reply-to email");
@@ -73,13 +74,12 @@ export const connectBrevo = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Selected sender email is not verified in this Brevo account.");
   }
 
-  const integration = await getOrCreateEmailIntegration(req.user._id);
   integration.outboundProvider = "brevo";
   integration.brevo = {
     ...integration.brevo,
     apiKeyEncrypted: encryptCredential(apiKey),
     accountEmail: accountEmail(account),
-    senderName,
+    senderName: assertText(req.body.senderName || selected.name, "Sender name"),
     senderEmail,
     senderId: selected.id,
     replyToName,
@@ -95,17 +95,37 @@ export const connectBrevo = asyncHandler(async (req, res) => {
   res.json({ success: true, brevo: toSafeIntegrationStatus(integration).brevo, integration: toSafeIntegrationStatus(integration) });
 });
 
-export const testBrevo = asyncHandler(async (req, res) => {
+export const validateBrevo = asyncHandler(async (req, res) => {
   const apiKey = clean(req.body.apiKey);
   if (!apiKey) throw new ApiError(400, "Brevo API key is required.");
   const [account, senders] = await Promise.all([validateBrevoAccount(apiKey), fetchBrevoSenders(apiKey)]);
-  res.json({ success: true, accountEmail: accountEmail(account), verifiedSenders: senders });
+  const integration = await getOrCreateEmailIntegration(req.user._id);
+  integration.outboundProvider = "brevo";
+  integration.brevo = {
+    ...integration.brevo,
+    apiKeyEncrypted: encryptCredential(apiKey),
+    accountEmail: accountEmail(account),
+    verifiedSenders: senders,
+    connected: Boolean(integration.brevo?.connected && integration.brevo?.senderEmail),
+    lastValidatedAt: new Date(),
+    lastError: ""
+  };
+  await integration.save();
+  console.info("[email-integration] Brevo senders fetched", { userId: String(req.user._id), senderCount: senders.length });
+  res.json({ success: true, account: { email: accountEmail(account) }, senders });
 });
 
 export const listBrevoSenders = asyncHandler(async (req, res) => {
   const integration = await getOrCreateEmailIntegration(req.user._id);
-  if (!integration.brevo?.connected) throw new ApiError(400, "Connect your Brevo account before loading senders.");
-  res.json({ success: true, senders: toSafeIntegrationStatus(integration).brevo.verifiedSenders });
+  if (!integration.brevo?.apiKeyEncrypted) throw new ApiError(400, "Enter and verify your Brevo API key first.");
+  const apiKey = decryptCredential(integration.brevo.apiKeyEncrypted);
+  const senders = await fetchBrevoSenders(apiKey);
+  integration.brevo.verifiedSenders = senders;
+  integration.brevo.lastValidatedAt = new Date();
+  integration.brevo.lastError = "";
+  await integration.save();
+  console.info("[email-integration] Brevo senders fetched", { userId: String(req.user._id), senderCount: senders.length });
+  res.json({ success: true, senders });
 });
 
 export const updateBrevoSender = asyncHandler(async (req, res) => {
