@@ -25,15 +25,17 @@ export async function validateBrevoAccount(apiKey) {
 }
 
 export async function fetchBrevoSenders(apiKey) {
+  const key = String(apiKey || "").trim();
+  if (!key) throw new ApiError(400, "Brevo API key is missing.");
   try {
-    const response = await axios.get(`${BREVO_BASE_URL}/senders`, { headers: headers(apiKey), timeout: 20000 });
-    const senders = Array.isArray(response.data?.senders) ? response.data.senders : Array.isArray(response.data) ? response.data : [];
-    return senders.map((sender) => ({
-      id: String(sender.id || sender.senderId || ""),
-      name: String(sender.name || sender.fromName || ""),
-      email: String(sender.email || sender.fromEmail || "").trim().toLowerCase(),
+    const response = await axios.get(`${BREVO_BASE_URL}/senders`, { headers: headers(key), timeout: 15000 });
+    const senders = Array.isArray(response.data?.senders) ? response.data.senders : [];
+    return senders.filter((sender) => sender?.email).map((sender) => ({
+      id: sender.id != null ? String(sender.id) : String(sender.email),
+      name: String(sender.name || sender.email),
+      email: String(sender.email).trim().toLowerCase(),
       active: sender.active !== false && sender.status !== "inactive"
-    })).filter((sender) => sender.email);
+    }));
   } catch (error) {
     throw safeBrevoError(error);
   }
