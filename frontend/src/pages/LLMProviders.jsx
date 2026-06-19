@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, PlugZap, RefreshCw, Settings2, ShieldCheck, Trash2, XCircle } from "lucide-react";
+﻿import { CheckCircle2, Eye, EyeOff, KeyRound, Loader2, PlugZap, RefreshCw, Settings2, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import DropdownMenu, { DropdownItem } from "../components/ui/DropdownMenu.jsx";
@@ -15,7 +15,7 @@ const PROVIDERS = [
 function statusClass(status) {
   if (status === "connected" || status === "supported") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "invalid" || status === "expired" || status === "unsupported" || status === "sync_failed") return "border-rose-200 bg-rose-50 text-rose-700";
-  return "border-slate-200 bg-slate-50 text-slate-600";
+  return "border-hairline bg-neutral-50 text-neutral-600";
 }
 
 function dateTime(value) {
@@ -153,7 +153,7 @@ export default function LLMProviders() {
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="LLM Providers" description="Connect user-owned OpenAI, Gemini, Groq, OpenRouter, and Sarvam AI credentials for Dograh runtime synchronization." />
 
       {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
@@ -178,22 +178,22 @@ export default function LLMProviders() {
                 </span>
               </div>
 
-              <h2 className="text-lg font-bold text-slate-950">{provider.name}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{provider.description}</p>
+              <h2 className="text-lg font-semibold text-ink">{provider.name}</h2>
+              <p className="mt-2 text-sm leading-6 text-neutral-500">{provider.description}</p>
 
               <div className="mt-5 flex-1 space-y-3">
                 {providerIntegrations.map((integration) => {
                   const busy = working.startsWith(`${provider.id}:${integration.id}`);
                   return (
-                    <div key={integration.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div key={integration.id} className="rounded-xl border border-hairline bg-neutral-50 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate font-bold text-slate-900">{integration.connectionName}</p>
-                          <p className="break-all text-xs text-slate-500">{integration.maskedApiKey || "Masked key unavailable"}</p>
+                          <p className="truncate font-semibold text-ink">{integration.connectionName}</p>
+                          <p className="break-all text-xs text-neutral-500">{integration.maskedApiKey || "Masked key unavailable"}</p>
                         </div>
                         <CheckCircle2 className="shrink-0 text-emerald-600" size={18} />
                       </div>
-                      <div className="mt-3 grid gap-1 text-xs text-slate-600">
+                      <div className="mt-3 grid gap-1 text-xs text-neutral-600">
                         <div className="flex justify-between gap-3"><span>Credentials</span><strong className="capitalize">{String(integration.credentialStatus).replaceAll("_", " ")}</strong></div>
                         <div className="flex justify-between gap-3"><span>Dograh Runtime</span><strong className="capitalize">{String(integration.runtimeStatus).replaceAll("_", " ")}</strong></div>
                         <div className="flex justify-between gap-3"><span>Last validated</span><strong className="text-right">{dateTime(integration.lastValidatedAt)}</strong></div>
@@ -212,7 +212,7 @@ export default function LLMProviders() {
                     </div>
                   );
                 })}
-                {!providerIntegrations.length && <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">No connected accounts.</div>}
+                {!providerIntegrations.length && <div className="rounded-xl border border-dashed border-hairline p-4 text-center text-sm text-neutral-500">No connected accounts.</div>}
               </div>
 
               <button className="btn-primary mt-5" onClick={() => openConnect(provider)}><PlugZap size={16} />Connect Account</button>
@@ -224,35 +224,35 @@ export default function LLMProviders() {
       {loading && <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">{[1, 2, 3].map((item) => <div key={item} className="skeleton h-72" />)}</div>}
 
       {modal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4 backdrop-blur-sm" onMouseDown={() => setModal(null)}>
-          <div className="w-full max-w-lg rounded-[14px] bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/55 p-4 backdrop-blur-sm" onMouseDown={() => setModal(null)}>
+          <div className="w-full max-w-lg rounded-[14px] bg-white p-5 shadow-pop sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-slate-950">{modal.integration ? "Manage" : "Connect"} {modal.provider.name}</h2>
-                <p className="mt-1 text-sm text-slate-500">Stored keys are never shown again. Enter a new key only when replacing credentials.</p>
+                <h2 className="text-xl font-semibold text-ink">{modal.integration ? "Manage" : "Connect"} {modal.provider.name}</h2>
+                <p className="mt-1 text-sm text-neutral-500">Stored keys are never shown again. Enter a new key only when replacing credentials.</p>
               </div>
-              <button className="rounded-xl border border-slate-200 p-2 text-slate-500" onClick={() => setModal(null)}><XCircle size={18} /></button>
+              <button className="rounded-xl border border-hairline p-2 text-neutral-500" onClick={() => setModal(null)}><XCircle size={18} /></button>
             </div>
 
             <div className="space-y-4">
-              <label className="block text-sm font-semibold text-slate-700">Connection Name<input className="mt-1" value={form.connectionName} onChange={(event) => setField("connectionName", event.target.value)} placeholder="Production OpenAI" /></label>
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-neutral-700">Connection Name<input className="mt-1" value={form.connectionName} onChange={(event) => setField("connectionName", event.target.value)} placeholder="Production OpenAI" /></label>
+              <label className="block text-sm font-semibold text-neutral-700">
                 {modal.provider.id === "sarvam" ? "API Subscription Key" : "API Key"}
                 <div className="relative mt-1">
                   <input className="pr-12" autoComplete="off" type={showKey ? "text" : "password"} value={form.apiKey} onChange={(event) => setField("apiKey", event.target.value)} placeholder={modal.integration ? "Leave blank to keep existing key" : "Enter API key"} />
-                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500" onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff size={17} /> : <Eye size={17} />}</button>
+                  <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-neutral-500" onClick={() => setShowKey((current) => !current)}>{showKey ? <EyeOff size={17} /> : <Eye size={17} />}</button>
                 </div>
               </label>
-              {modal.provider.id === "openai" && <label className="block text-sm font-semibold text-slate-700">Optional Project ID<input className="mt-1" value={form.projectId} onChange={(event) => setField("projectId", event.target.value)} /></label>}
+              {modal.provider.id === "openai" && <label className="block text-sm font-semibold text-neutral-700">Optional Project ID<input className="mt-1" value={form.projectId} onChange={(event) => setField("projectId", event.target.value)} /></label>}
               {modal.provider.id === "openrouter" && (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block text-sm font-semibold text-slate-700">Application Name<input className="mt-1" value={form.applicationName} onChange={(event) => setField("applicationName", event.target.value)} /></label>
-                  <label className="block text-sm font-semibold text-slate-700">Application URL<input className="mt-1" value={form.applicationUrl} onChange={(event) => setField("applicationUrl", event.target.value)} /></label>
+                  <label className="block text-sm font-semibold text-neutral-700">Application Name<input className="mt-1" value={form.applicationName} onChange={(event) => setField("applicationName", event.target.value)} /></label>
+                  <label className="block text-sm font-semibold text-neutral-700">Application URL<input className="mt-1" value={form.applicationUrl} onChange={(event) => setField("applicationUrl", event.target.value)} /></label>
                 </div>
               )}
             </div>
 
-            <div className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+            <div className="mt-4 flex items-start gap-3 rounded-xl border border-hairline bg-neutral-50 p-3 text-xs leading-5 text-neutral-600">
               <KeyRound className="mt-0.5 shrink-0" size={17} />
               <p>The key is sent only to your authenticated backend, validated, encrypted with AES-256-GCM, and never returned to the browser.</p>
             </div>
@@ -269,6 +269,6 @@ export default function LLMProviders() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

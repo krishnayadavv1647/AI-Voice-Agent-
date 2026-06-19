@@ -1,4 +1,4 @@
-import { CheckCircle2, PhoneCall, ShieldCheck, Sparkles } from "lucide-react";
+﻿import { CheckCircle2, PhoneCall, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
@@ -31,7 +31,7 @@ export default function PublicCallback() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-slate-950 px-4 py-8 text-white">
+    <main className="min-h-screen overflow-x-hidden bg-ink px-4 py-8 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.35),transparent_32rem),radial-gradient(circle_at_bottom_right,rgba(124,58,237,0.25),transparent_28rem)]" />
       <section className="relative mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-5xl place-items-center">
         <div className="grid w-full gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1fr)] lg:items-center">
@@ -41,10 +41,10 @@ export default function PublicCallback() {
               Secure AI callback
             </div>
             <h1 className="break-anywhere text-4xl font-bold tracking-tight md:text-5xl">Talk to AI Assistant</h1>
-            <p className="mt-4 max-w-xl text-lg leading-8 text-slate-300">Enter your phone number and our AI assistant will call you.</p>
+            <p className="mt-4 max-w-xl text-lg leading-8 text-neutral-300">Enter your phone number and our AI assistant will call you.</p>
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
               {["Secure call", "No spam", "Business callback"].map((item) => (
-                <div key={item} className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-slate-200">
+                <div key={item} className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm text-neutral-200">
                   <ShieldCheck className="mb-2 text-emerald-300" size={20} />
                   {item}
                 </div>
@@ -52,14 +52,14 @@ export default function PublicCallback() {
             </div>
           </div>
 
-          <form className="w-full rounded-3xl border border-white/10 bg-white p-6 text-slate-950 shadow-2xl" onSubmit={requestCall}>
+          <form className="w-full rounded-2xl border border-white/10 bg-white p-6 text-ink shadow-pop" onSubmit={requestCall}>
             <div className="mb-6 flex items-center gap-3">
               <div className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-50 text-brand-700">
                 <PhoneCall size={22} />
               </div>
               <div>
                 <h2 className="text-2xl font-bold">Call Me Now</h2>
-                <p className="text-sm text-slate-500">The AI assistant will call your number.</p>
+                <p className="text-sm text-neutral-500">The AI assistant will call your number.</p>
               </div>
             </div>
 
@@ -85,7 +85,7 @@ export default function PublicCallback() {
 
 function Label({ text, children }) {
   return (
-    <label className="block text-sm font-semibold text-slate-700">
+    <label className="block text-sm font-semibold text-neutral-700">
       {text}
       <div className="mt-1">{children}</div>
     </label>

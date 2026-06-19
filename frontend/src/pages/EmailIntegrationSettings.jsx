@@ -1,4 +1,4 @@
-import { CheckCircle2, KeyRound, Mail, RefreshCw, Save, ShieldCheck, Trash2, XCircle } from "lucide-react";
+﻿import { CheckCircle2, KeyRound, Mail, RefreshCw, Save, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -182,7 +182,7 @@ export default function EmailIntegrationSettings() {
           <div className="icon-tile"><ShieldCheck size={18} /></div>
           <div>
             <h2 className="panel-title">Email Setup Status</h2>
-            <p className="text-sm text-slate-500">Sending and receiving stay isolated to your account.</p>
+            <p className="text-sm text-neutral-500">Sending and receiving stay isolated to your account.</p>
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -206,12 +206,12 @@ export default function EmailIntegrationSettings() {
             <div className="icon-tile"><KeyRound size={18} /></div>
             <div>
               <h2 className="panel-title">Brevo Email Sending</h2>
-              <p className="text-sm text-slate-500">Send email through your own Brevo account.</p>
+              <p className="text-sm text-neutral-500">Send email through your own Brevo account.</p>
             </div>
           </div>
 
           {integration?.brevo?.connected && (
-            <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+            <div className="grid gap-3 rounded-xl bg-neutral-50 p-3 sm:grid-cols-2">
               <Info label="Status" value="Connected" />
               <Info label="Account" value={integration.brevo.accountEmail || "Connected"} />
               <Info label="Sender" value={integration.brevo.senderEmail} />
@@ -248,12 +248,12 @@ export default function EmailIntegrationSettings() {
             <div className="icon-tile"><Mail size={18} /></div>
             <div>
               <h2 className="panel-title">Receiving Mailbox</h2>
-              <p className="text-sm text-slate-500">Connect the inbox where customer replies should arrive.</p>
+              <p className="text-sm text-neutral-500">Connect the inbox where customer replies should arrive.</p>
             </div>
           </div>
 
           {integration?.inbound?.connected && (
-            <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2">
+            <div className="grid gap-3 rounded-xl bg-neutral-50 p-3 sm:grid-cols-2">
               <Info label="Status" value="Connected" />
               <Info label="Mailbox" value={integration.inbound.email} />
               <Info label="Provider" value={integration.inbound.provider === "gmail_oauth" ? "Gmail OAuth" : "Gmail IMAP"} />
@@ -267,17 +267,17 @@ export default function EmailIntegrationSettings() {
             window.location.href = result.authUrl;
           })}>Connect Gmail</button>
 
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="mb-3 text-sm font-bold text-slate-950">Connect with IMAP</p>
+          <div className="rounded-xl border border-hairline p-4">
+            <p className="mb-3 text-sm font-semibold text-ink">Connect with IMAP</p>
             <div className="field-grid">
               <input placeholder="Email Address" value={imapForm.email} onChange={(event) => setImapForm({ ...imapForm, email: event.target.value, username: imapForm.username || event.target.value })} />
               <input placeholder="IMAP Host" value={imapForm.host} onChange={(event) => setImapForm({ ...imapForm, host: event.target.value })} />
               <input placeholder="IMAP Port" type="number" value={imapForm.port} onChange={(event) => setImapForm({ ...imapForm, port: event.target.value })} />
               <input placeholder="Username" value={imapForm.username} onChange={(event) => setImapForm({ ...imapForm, username: event.target.value })} />
               <input placeholder="App Password" type="password" value={imapForm.password} onChange={(event) => setImapForm({ ...imapForm, password: event.target.value })} />
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input className="h-4 w-4" type="checkbox" checked={imapForm.secure} onChange={(event) => setImapForm({ ...imapForm, secure: event.target.checked })} />Use Secure Connection</label>
+              <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={imapForm.secure} onChange={(event) => setImapForm({ ...imapForm, secure: event.target.checked })} />Use Secure Connection</label>
             </div>
-            <p className="mt-3 text-sm text-slate-500">For Gmail IMAP, use a Google App Password instead of your normal Gmail password.</p>
+            <p className="mt-3 text-sm text-neutral-500">For Gmail IMAP, use a Google App Password instead of your normal Gmail password.</p>
           </div>
 
           <div className="action-row">
@@ -294,9 +294,9 @@ export default function EmailIntegrationSettings() {
 
 function Status({ label, ok }) {
   const Icon = ok ? CheckCircle2 : XCircle;
-  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className={`mt-1 flex items-center gap-2 text-sm font-bold ${ok ? "text-emerald-700" : "text-rose-700"}`}><Icon size={16} />{ok ? "Connected" : "Not ready"}</p></div>;
+  return <div className="rounded-xl bg-neutral-50 p-3"><p className="text-xs font-medium uppercase text-neutral-500">{label}</p><p className={`mt-1 flex items-center gap-2 text-sm font-bold ${ok ? "text-emerald-700" : "text-rose-700"}`}><Icon size={16} />{ok ? "Connected" : "Not ready"}</p></div>;
 }
 
 function Info({ label, value }) {
-  return <div><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="break-anywhere text-sm font-semibold text-slate-950">{value || "Not configured"}</p></div>;
+  return <div><p className="text-xs font-medium uppercase text-neutral-500">{label}</p><p className="break-anywhere text-sm font-semibold text-ink">{value || "Not configured"}</p></div>;
 }

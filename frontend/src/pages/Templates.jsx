@@ -1,4 +1,4 @@
-import { Bot, Building2, Bus, HeartPulse, Hotel, Landmark, Scissors, Utensils } from "lucide-react";
+﻿import { Bot, Building2, Bus, HeartPulse, Hotel, Landmark, Scissors, Utensils } from "lucide-react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 
@@ -15,14 +15,14 @@ const templates = [
 
 export default function Templates() {
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="Templates" description="Start faster with prebuilt outbound AI agent templates for common business workflows." />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {templates.map(([title, description, Icon]) => (
           <article key={title} className="card flex min-w-0 flex-col">
             <div className="icon-tile mb-4"><Icon size={20} /></div>
-            <h2 className="break-anywhere text-lg font-bold text-slate-950">{title}</h2>
-            <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{description}</p>
+            <h2 className="break-anywhere text-lg font-semibold text-ink">{title}</h2>
+            <p className="mt-2 flex-1 text-sm leading-6 text-neutral-500">{description}</p>
             <div className="mt-5 flex flex-wrap gap-2">
               <Link className="btn-primary" to="/create-agent">Use Template</Link>
               <Link className="btn-secondary" to="/create-agent">Preview</Link>
@@ -30,6 +30,6 @@ export default function Templates() {
           </article>
         ))}
       </div>
-    </>
+    </div>
   );
 }

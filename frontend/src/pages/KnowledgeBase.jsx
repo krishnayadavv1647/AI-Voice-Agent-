@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+﻿import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -32,11 +32,11 @@ export default function KnowledgeBase() {
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="Knowledge Base" description="Create simple text knowledge entries and attach them to agents." />
       <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
         <form onSubmit={submit} className="card space-y-4">
-          <h2 className="font-bold text-ink">New knowledge entry</h2>
+          <h2 className="font-semibold text-ink">New knowledge entry</h2>
           <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
           <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} required />
           <select value={form.agentId} onChange={(event) => setForm({ ...form, agentId: event.target.value })}>
@@ -50,16 +50,16 @@ export default function KnowledgeBase() {
             <div key={entry._id} className="card">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="font-bold text-ink">{entry.title}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{entry.agentId?.agentName || "No agent attached"} · {new Date(entry.createdAt).toLocaleDateString()}</p>
+                  <h2 className="font-semibold text-ink">{entry.title}</h2>
+                  <p className="mt-1 text-sm text-neutral-500">{entry.agentId?.agentName || "No agent attached"} · {new Date(entry.createdAt).toLocaleDateString()}</p>
                 </div>
-                <button title="Delete" className="rounded-lg border border-slate-200 p-2 text-rose-600" onClick={() => remove(entry._id)}><Trash2 size={16} /></button>
+                <button title="Delete" className="rounded-lg border border-hairline p-2 text-rose-600" onClick={() => remove(entry._id)}><Trash2 size={16} /></button>
               </div>
-              <p className="mt-4 whitespace-pre-wrap text-sm text-slate-700">{entry.content}</p>
+              <p className="mt-4 whitespace-pre-wrap text-sm text-neutral-700">{entry.content}</p>
             </div>
           ))}
         </div>
       </div>
-    </>
+    </div>
   );
 }

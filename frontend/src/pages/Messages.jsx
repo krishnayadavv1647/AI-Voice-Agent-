@@ -1,4 +1,4 @@
-import { MessageSquare, RefreshCw, Send } from "lucide-react";
+﻿import { MessageSquare, RefreshCw, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -84,7 +84,7 @@ export default function Messages() {
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Messages"
         description="Review and test AI message conversations using your custom agent runtime."
@@ -98,18 +98,18 @@ export default function Messages() {
           <h2 className="panel-title">Conversations</h2>
           <div className="mt-4 space-y-3">
             {!agents.length ? (
-              <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No agents available.</p>
+              <p className="rounded-2xl border border-dashed border-hairline p-4 text-sm text-neutral-500">No agents available.</p>
             ) : (
               agents.map((agent) => (
                 <button
                   key={agent._id}
-                  className={`w-full rounded-2xl border p-3 text-left transition hover:bg-slate-50 ${
-                    selectedAgentId === agent._id ? "border-brand-300 bg-brand-50" : "border-slate-200"
+                  className={`w-full rounded-2xl border p-3 text-left transition hover:bg-neutral-50 ${
+                    selectedAgentId === agent._id ? "border-brand-300 bg-brand-50" : "border-hairline"
                   }`}
                   onClick={() => setSelectedAgentId(agent._id)}
                 >
-                  <p className="break-anywhere font-semibold text-slate-950">{agent.agentName || agent.name || "Untitled Agent"}</p>
-                  <p className="line-clamp-1 text-sm text-slate-500">{lastMessage(agent._id)}</p>
+                  <p className="break-anywhere font-semibold text-ink">{agent.agentName || agent.name || "Untitled Agent"}</p>
+                  <p className="line-clamp-1 text-sm text-neutral-500">{lastMessage(agent._id)}</p>
                 </button>
               ))
             )}
@@ -125,7 +125,7 @@ export default function Messages() {
             </div>
           </div>
 
-          <div className="min-h-[260px] rounded-3xl border border-dashed border-slate-200 p-4">
+          <div className="min-h-[260px] rounded-2xl border border-dashed border-hairline p-4">
             {!selectedAgent ? (
               <EmptyState title="Select an agent" description="Choose an agent conversation from the left to start messaging." />
             ) : !activeMessages.length ? (
@@ -139,18 +139,18 @@ export default function Messages() {
                         ? "bg-brand-600 text-white"
                         : item.error
                           ? "bg-rose-50 text-rose-700"
-                          : "bg-slate-100 text-slate-800"
+                          : "bg-neutral-100 text-neutral-800"
                     }`}>
                       {item.text}
                     </div>
                   </div>
                 ))}
-                {loading && <p className="text-sm text-slate-500">Agent is typing...</p>}
+                {loading && <p className="text-sm text-neutral-500">Agent is typing...</p>}
               </div>
             )}
           </div>
 
-          <form className="mt-6 flex gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2" onSubmit={sendMessage}>
+          <form className="mt-6 flex gap-2 rounded-2xl border border-hairline bg-neutral-50 p-2" onSubmit={sendMessage}>
             <input
               className="border-0 bg-transparent focus:ring-0"
               placeholder={selectedAgent ? "Type a message..." : "Select an agent conversation first..."}
@@ -164,6 +164,6 @@ export default function Messages() {
           </form>
         </section>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Headphones } from "lucide-react";
+﻿import { Headphones } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { API_URL } from "../lib/api.js";
@@ -44,27 +44,25 @@ export default function AuthPage({ mode }) {
   }
 
   return (
-    <main className="grid min-h-screen overflow-x-hidden bg-slate-50 px-4 py-8 text-slate-950 sm:px-6">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.14),transparent_28rem),radial-gradient(circle_at_bottom_right,rgba(124,58,237,0.12),transparent_24rem)]" />
-
+    <main className="grid min-h-screen overflow-x-hidden bg-canvas px-4 py-8 text-ink sm:px-6">
       <section className="mx-auto grid w-full max-w-md place-items-center">
         <div className="w-full">
           <Link to="/" className="mb-8 flex items-center justify-center gap-3">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-600 to-violet-600 text-white shadow-sm">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-ink text-white shadow-soft">
               <Headphones size={23} />
             </span>
             <span className="text-left">
               <span className="block text-lg font-bold">AI Voice Agent Platform</span>
-              <span className="block text-xs text-slate-500">Calls, leads, and automation</span>
+              <span className="block text-xs text-neutral-500">Calls, leads, and automation</span>
             </span>
           </Link>
 
-          <form onSubmit={submit} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-soft sm:p-8">
+          <form onSubmit={submit} className="rounded-2xl border border-hairline bg-white p-6 shadow-soft sm:p-8">
             <div className="mb-6 text-center">
-              <h1 className="text-2xl font-black tracking-tight text-slate-950">
+              <h1 className="text-2xl font-black tracking-tight text-ink">
                 {isSignup ? "Create your account" : "Welcome back"}
               </h1>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              <p className="mt-2 text-sm leading-6 text-neutral-500">
                 {isSignup
                   ? "Start building AI voice agents in minutes."
                   : "Login to continue to your AI voice agent dashboard."}
@@ -96,11 +94,11 @@ export default function AuthPage({ mode }) {
               </button>
 
               <button className="btn-secondary w-full justify-center py-3" type="button" disabled={loading} onClick={continueWithGoogle}>
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 text-sm font-black text-brand-700">G</span>
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-neutral-100 text-sm font-black text-brand-700">G</span>
                 Continue with Google
               </button>
 
-              <p className="text-center text-sm text-slate-500">
+              <p className="text-center text-sm text-neutral-500">
                 {isSignup ? "Already have an account?" : "New here?"}{" "}
                 <Link className="font-semibold text-brand-700 hover:text-brand-800" to={isSignup ? "/login" : "/signup"}>
                   {isSignup ? "Login" : "Sign up"}
@@ -116,7 +114,7 @@ export default function AuthPage({ mode }) {
 
 function Label({ text, children }) {
   return (
-    <label className="block text-sm font-semibold text-slate-700">
+    <label className="block text-sm font-semibold text-neutral-700">
       {text}
       <div className="mt-1.5">{children}</div>
     </label>

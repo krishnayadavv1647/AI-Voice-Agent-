@@ -1,4 +1,4 @@
-import { Loader2, Play, RefreshCw, Search, ShieldCheck } from "lucide-react";
+﻿import { Loader2, Play, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 
@@ -40,7 +40,7 @@ function statusClass(status) {
   if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "pending" || status === "syncing") return "border-sky-200 bg-sky-50 text-sky-800";
   if (status === "failed" || status === "configuration_required") return "border-amber-200 bg-amber-50 text-amber-800";
-  return "border-slate-200 bg-white text-slate-700";
+  return "border-hairline bg-white text-neutral-700";
 }
 
 function modelOptionLabel(model) {
@@ -66,7 +66,7 @@ function chatCompatibleModels(items = []) {
 
 function NumberField({ label, value, min, max, step, onChange }) {
   return (
-    <label className="block text-sm font-semibold text-slate-700">
+    <label className="block text-sm font-semibold text-neutral-700">
       {label}
       <input className="mt-1" type="number" min={min} max={max} step={step} value={value ?? ""} onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))} />
     </label>
@@ -75,7 +75,7 @@ function NumberField({ label, value, min, max, step, onChange }) {
 
 function Toggle({ label, checked, onChange, disabled }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700">
+    <label className="flex items-center gap-2 rounded-xl border border-hairline bg-white px-3 py-2.5 text-sm font-medium text-neutral-700">
       <input className="h-4 w-4" type="checkbox" checked={Boolean(checked)} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
       {label}
     </label>
@@ -186,17 +186,17 @@ export default function LLMConfigurationPanel({ value, onChange }) {
   return (
     <section className="space-y-4 md:col-span-2">
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+      <div className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
         <div className="mb-4 flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 text-slate-500" size={19} />
+          <ShieldCheck className="mt-0.5 text-neutral-500" size={19} />
           <div>
-            <h3 className="font-bold text-slate-950">LLM Configuration</h3>
-            <p className="mt-1 text-sm text-slate-500">Dograh remains the runtime. This only manages provider credentials, model selection, and Dograh overrides.</p>
+            <h3 className="font-bold text-ink">LLM Configuration</h3>
+            <p className="mt-1 text-sm text-neutral-500">Dograh remains the runtime. This only manages provider credentials, model selection, and Dograh overrides.</p>
           </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-neutral-700">
             LLM Provider
             <select className="mt-1" value={config.provider} onChange={(event) => changeProvider(event.target.value)}>
               {PROVIDERS.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
@@ -204,7 +204,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           </label>
 
           {config.provider !== "dograh_default" && (
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-neutral-700">
               Connected Account
               <select className="mt-1" value={config.integrationId || ""} onChange={(event) => patch({ integrationId: event.target.value, model: "" })}>
                 <option value="">Select account</option>
@@ -214,9 +214,9 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           )}
 
           {config.provider === "dograh_default" ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600 xl:col-span-2">Managed by Dograh. No external API key or model override is used.</div>
+            <div className="rounded-xl border border-hairline bg-white p-3 text-sm text-neutral-600 xl:col-span-2">Managed by Dograh. No external API key or model override is used.</div>
           ) : (
-            <label className="block text-sm font-semibold text-slate-700 xl:col-span-1">
+            <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
               Manual Model ID
               <input className="mt-1" value={config.model || ""} onChange={(event) => patch({ model: event.target.value })} placeholder="Paste model ID" />
             </label>
@@ -224,10 +224,10 @@ export default function LLMConfigurationPanel({ value, onChange }) {
         </div>
 
         {config.provider !== "dograh_default" && (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
             <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]">
               <label className="relative block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
                 <input className="pl-9" value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder="Search models" />
               </label>
               <select value={category} onChange={(event) => setCategory(event.target.value)}>
@@ -237,7 +237,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
                 {loadingModels ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}Refresh
               </button>
             </div>
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block text-sm font-semibold text-neutral-700">
               Model
               <select className="mt-1" disabled={!config.integrationId || loadingModels} value={config.model || ""} onChange={(event) => patch({ model: event.target.value })}>
                 <option value="">{loadingModels ? "Loading models..." : "Select model"}</option>
@@ -267,7 +267,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
         </div>
 
         {config.provider !== "dograh_default" && (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
             <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
               <input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
               <button type="button" className="btn-secondary" disabled={testing || !config.integrationId || !config.model} onClick={testModel}>

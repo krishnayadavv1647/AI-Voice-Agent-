@@ -3,22 +3,6 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: "App Heading Roboto";
-  src: url("./assets/fonts/Roboto-Variable.ttf") format("truetype");
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "App Body Stack Sans";
-  src: url("./assets/fonts/StackSansText-Variable.ttf") format("truetype");
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
   font-family: "App Body Inter";
   src: url("./assets/fonts/Inter-Variable.ttf") format("truetype");
   font-weight: 100 900;
@@ -26,21 +10,6 @@
   font-display: swap;
 }
 
-@font-face {
-  font-family: "App Body Manrope";
-  src: url("./assets/fonts/Manrope-Variable.ttf") format("truetype");
-  font-weight: 200 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "App Body Rethink Sans";
-  src: url("./assets/fonts/RethinkSans-Variable.ttf") format("truetype");
-  font-weight: 400 800;
-  font-style: normal;
-  font-display: swap;
-}
 * {
   box-sizing: border-box;
 }
@@ -53,9 +22,10 @@ html {
 body {
   margin: 0;
   overflow-x: hidden;
-  background: #f7f9fc;
-  color: #0f172a;
-  font-family: "App Body Stack Sans", "App Body Inter", "App Body Manrope", "App Body Rethink Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #fafafa;
+  color: #0a0a0a;
+  font-family: "App Body Inter", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 h1,
 h2,
@@ -64,7 +34,8 @@ h4,
 h5,
 h6,
 .panel-title {
-  font-family: "App Heading Roboto", "App Body Stack Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: "App Body Inter", Inter, ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 
 #root {
@@ -78,8 +49,8 @@ input,
 select,
 textarea {
   max-width: 100%;
-  min-height: 42px;
-  @apply w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100;
+  min-height: 40px;
+  @apply w-full rounded-xl border border-hairline bg-white px-3 text-sm text-ink outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-50 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400;
 }
 
 textarea {
@@ -91,61 +62,66 @@ button {
 }
 
 .btn-primary {
-  min-height: 42px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
+  min-height: 40px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-ink px-3.5 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:translate-y-px active:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 motion-reduce:transform-none;
+}
+
+.btn-accent {
+  min-height: 40px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 active:translate-y-px active:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 motion-reduce:transform-none;
 }
 
 .btn-secondary {
-  min-height: 42px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:border-brand-200 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60;
+  min-height: 40px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-hairline bg-white px-3.5 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .btn-danger {
-  min-height: 42px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100;
+  min-height: 40px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 active:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .btn-success {
-  min-height: 42px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100;
+  min-height: 40px;
+  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .card {
   max-width: 100%;
-  @apply rounded-xl border border-slate-200 bg-white p-6 shadow-sm;
+  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft;
 }
 
 .glass-card {
   max-width: 100%;
-  @apply rounded-2xl border border-white/70 bg-white/80 p-5 shadow-soft backdrop-blur-xl;
+  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft;
 }
 
 .panel-title {
-  @apply text-base font-semibold leading-6 text-slate-950;
+  @apply text-base font-semibold leading-6 text-ink;
 }
 
 .muted {
-  @apply text-sm leading-[22px] text-slate-500;
+  @apply text-sm leading-[22px] text-neutral-500;
 }
 
 .page-stack {
-  @apply space-y-8;
+  @apply space-y-10;
 }
 
 .page-header {
-  @apply flex min-w-0 max-w-full flex-col gap-4 sm:flex-row sm:items-start sm:justify-between;
+  @apply flex min-w-0 max-w-full flex-col gap-4 border-b border-hairline pb-6 sm:flex-row sm:items-start sm:justify-between;
 }
 
 .page-breadcrumb {
-  @apply mb-2 text-xs font-medium uppercase tracking-wide text-slate-500;
+  @apply mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500;
 }
 
 .page-title {
-  @apply break-anywhere text-2xl font-semibold leading-8 text-slate-950;
+  @apply break-anywhere text-2xl font-semibold leading-8 text-ink;
 }
 
 .page-description {
-  @apply mt-1.5 max-w-3xl text-sm font-normal leading-[22px] text-slate-500;
+  @apply mt-1.5 max-w-3xl text-sm font-normal leading-[22px] text-neutral-500;
 }
 
 .page-actions {
@@ -161,11 +137,11 @@ button {
 }
 
 .section-title {
-  @apply text-base font-semibold leading-6 text-slate-950;
+  @apply text-base font-semibold leading-6 text-ink;
 }
 
 .section-description {
-  @apply mt-1 text-[13px] font-normal leading-5 text-slate-500;
+  @apply mt-1 text-[13px] font-normal leading-5 text-neutral-500;
 }
 
 .section-actions {
@@ -185,7 +161,7 @@ button {
 }
 
 .field-label {
-  @apply block min-w-0 text-[13px] font-medium leading-5 text-slate-700;
+  @apply block min-w-0 text-[13px] font-medium leading-5 text-neutral-700;
 }
 
 .field-label input,
@@ -195,15 +171,19 @@ button {
 }
 
 .badge {
-  @apply inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+  @apply inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium;
 }
 
 .table th {
-  @apply bg-slate-50 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500;
+  @apply bg-neutral-50/60 px-4 py-2.5 text-left text-xs font-medium uppercase tracking-[0.06em] text-neutral-400;
 }
 
 .table td {
-  @apply h-12 border-t border-slate-100 px-4 py-3 text-sm text-slate-700;
+  @apply h-12 border-t border-hairline px-4 py-3 text-sm text-neutral-700;
+}
+
+.table tbody tr {
+  @apply transition hover:bg-neutral-50/60;
 }
 
 .table-wrap {
@@ -223,7 +203,8 @@ button {
 }
 
 .modal-panel {
-  width: min(100%, 56rem);
+  @apply rounded-2xl border border-hairline bg-white shadow-pop;
+  width: min(100%, 32rem);
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
 }
@@ -234,11 +215,16 @@ button {
 }
 
 .metric-card {
-  @apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft;
+  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft transition hover:border-neutral-300 hover:-translate-y-px motion-reduce:transform-none;
+}
+
+.metric-value {
+  @apply text-3xl font-semibold tracking-tight text-ink;
+  font-variant-numeric: tabular-nums;
 }
 
 .icon-tile {
-  @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700;
+  @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-hairline bg-neutral-50 text-neutral-700;
 }
 
 .agent-card-grid {
@@ -254,11 +240,11 @@ button {
   height: 100%;
   overflow: hidden;
   flex-direction: column;
-  border: 1px solid rgba(37, 99, 235, 0.18);
-  border-radius: 20px;
+  border: 1px solid #ececec;
+  border-radius: 0.875rem;
   background: #ffffff;
-  box-shadow: 0 12px 30px rgba(37, 99, 235, 0.08);
-  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
+  color: #0a0a0a;
   font-family: "App Body Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
 }
@@ -274,14 +260,13 @@ button {
 }
 
 .agent-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(37, 99, 235, 0.34);
-  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.12);
+  border-color: #c7d2fe;
+  box-shadow: 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
 }
 
 .agent-card:focus-within {
-  border-color: rgba(37, 99, 235, 0.42);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12), 0 16px 36px rgba(37, 99, 235, 0.1);
+  border-color: #6366f1;
+  box-shadow: 0 0 0 4px #eef2ff, 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
 }
 
 .agent-card-body {
@@ -308,7 +293,7 @@ button {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  color: #0f172a;
+  color: #0a0a0a;
   font-size: 20px;
   font-weight: 650;
   line-height: 1.25;
@@ -375,7 +360,7 @@ button {
 .agent-card-divider {
   height: 1px;
   margin: 18px 0 12px;
-  background: #dbeafe;
+  background: #ececec;
 }
 
 .agent-info-list {
@@ -410,7 +395,7 @@ button {
 
 .agent-info-row dd {
   margin: 0;
-  color: #0f172a;
+  color: #0a0a0a;
   font-size: 15px;
   font-weight: 600;
   text-align: right;
@@ -435,9 +420,9 @@ button {
   height: 44px;
   flex: 0 0 44px;
   place-items: center;
-  border: 1px solid #dbeafe;
-  border-radius: 12px;
-  background: #f8fbff;
+  border: 1px solid #ececec;
+  border-radius: 0.625rem;
+  background: #fafafa;
 }
 
 .dograh-integration-mark {
@@ -446,7 +431,7 @@ button {
   height: 28px;
   place-items: center;
   border-radius: 999px;
-  background: #2563eb;
+  background: #4f46e5;
   color: #ffffff;
   font-size: 15px;
   font-weight: 700;
@@ -487,9 +472,9 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid #dbeafe;
-  border-radius: 0 0 20px 20px;
-  background: #f8fbff;
+  border-top: 1px solid #ececec;
+  border-radius: 0 0 0.875rem 0.875rem;
+  background: #fafafa;
   padding: 12px 24px;
 }
 
@@ -543,7 +528,7 @@ button {
 }
 
 .agent-status-toggle-on {
-  background: #2563eb;
+  background: #4f46e5;
 }
 
 .agent-status-toggle-on span {
@@ -553,7 +538,7 @@ button {
 .agent-status-toggle:focus-visible,
 .agent-card a:focus-visible,
 .agent-card button:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #4f46e5;
   outline-offset: 3px;
 }
 
@@ -570,11 +555,11 @@ button {
 }
 
 .tab-button {
-  @apply inline-flex items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950;
+  @apply inline-flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1;
 }
 
 .tab-button-active {
-  @apply bg-slate-950 text-white hover:bg-slate-950 hover:text-white;
+  @apply bg-neutral-100 text-ink;
 }
 
 .mobile-card-list {
@@ -586,7 +571,7 @@ button {
 }
 
 .skeleton {
-  @apply animate-pulse rounded-xl bg-slate-100;
+  @apply animate-pulse rounded-xl bg-neutral-100;
 }
 
 audio {
@@ -627,5 +612,26 @@ pre {
   }
 }
 ::-webkit-scrollbar {
-  display: none;
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #e5e5e5;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

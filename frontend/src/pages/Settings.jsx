@@ -1,4 +1,4 @@
-import { Bell, CreditCard, KeyRound, Lock, Mail, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
+﻿import { Bell, CreditCard, KeyRound, Lock, Mail, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -118,15 +118,15 @@ export default function Settings() {
       <PageHeader title="Settings" description="Manage account preferences, notifications, team controls, and supporting integrations." />
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="self-start rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+        <aside className="self-start rounded-xl border border-hairline bg-white p-3 lg:sticky lg:top-24">
           {["General", "Notifications", "Messaging", "Telephony", "Team"].map((item) => (
-            <a key={item} className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" href={`#${item.toLowerCase()}`}>{item}</a>
+            <a key={item} className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" href={`#${item.toLowerCase()}`}>{item}</a>
           ))}
-          <div className="my-2 border-t border-slate-100" />
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/dograh-settings">Dograh</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/settings/email">Email</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/llm-providers">LLM Providers</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-950" to="/integrations/voice-providers">Voice Providers</Link>
+          <div className="my-2 border-t border-hairline" />
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/dograh-settings">Dograh</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/settings/email">Email</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/integrations/llm-providers">LLM Providers</Link>
+          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/integrations/voice-providers">Voice Providers</Link>
         </aside>
 
         <div className="min-w-0 space-y-8">
@@ -165,7 +165,7 @@ export default function Settings() {
             <Panel icon={Bell} title="Notification Preferences">
               <div id="notifications" className="grid gap-3 sm:grid-cols-2">
                 {Object.entries(notifications).map(([key, value]) => (
-                  <label key={key} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-medium capitalize">
+                  <label key={key} className="flex items-center justify-between rounded-xl border border-hairline p-3 text-sm font-medium capitalize">
                     {key}
                     <input className="h-5 w-5" type="checkbox" checked={value} onChange={(event) => setNotifications({ ...notifications, [key]: event.target.checked })} />
                   </label>
@@ -189,7 +189,7 @@ export default function Settings() {
                 <div className="rounded-xl bg-brand-50 p-4">
                   <p className="text-xs font-semibold uppercase text-brand-700">Connect Code</p>
                   <p className="mt-1 text-2xl font-semibold tracking-wide text-brand-700">{telegramCode}</p>
-                  <p className="mt-1 break-anywhere text-sm text-slate-600">Send: /connect {telegramCode}</p>
+                  <p className="mt-1 break-anywhere text-sm text-neutral-600">Send: /connect {telegramCode}</p>
                 </div>
               )}
 
@@ -206,13 +206,13 @@ export default function Settings() {
                   ["hotLeadEnabled", "Hot leads"],
                   ["callFailedEnabled", "Failed calls"]
                 ].map(([field, label]) => (
-                  <label key={field} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm font-medium">
+                  <label key={field} className="flex items-center justify-between rounded-xl border border-hairline p-3 text-sm font-medium">
                     {label}
                     <input className="h-5 w-5" type="checkbox" disabled={telegram?.status !== "connected"} checked={Boolean(telegram?.[field])} onChange={(event) => updateTelegramSetting(field, event.target.checked)} />
                   </label>
                 ))}
               </div>
-              {telegramMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telegramMessage}</p>}
+              {telegramMessage && <p className="rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600">{telegramMessage}</p>}
             </Panel>
           </Section>
 
@@ -232,18 +232,18 @@ export default function Settings() {
                   <option value="">Select linked agent</option>
                   {agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName || agent.name}</option>)}
                 </select>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.inboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, inboundEnabled: event.target.checked })} />Inbound enabled</label>
-                <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.outboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, outboundEnabled: event.target.checked })} />Outbound enabled</label>
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.inboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, inboundEnabled: event.target.checked })} />Inbound enabled</label>
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.outboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, outboundEnabled: event.target.checked })} />Outbound enabled</label>
               </div>
               <button className="btn-primary" onClick={saveTelephonyConfig}>Add Configuration</button>
-              {telephonyMessage && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{telephonyMessage}</p>}
+              {telephonyMessage && <p className="rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600">{telephonyMessage}</p>}
               <div className="space-y-3">
                 {telephonyConfigs.map((config) => (
-                  <div key={config._id} className="rounded-xl border border-slate-200 p-4">
+                  <div key={config._id} className="rounded-xl border border-hairline p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <p className="font-semibold text-slate-950">{config.name}</p>
-                        <p className="break-anywhere text-sm text-slate-500">{config.provider} - {config.phoneNumber}</p>
+                        <p className="font-semibold text-ink">{config.name}</p>
+                        <p className="break-anywhere text-sm text-neutral-500">{config.provider} - {config.phoneNumber}</p>
                       </div>
                       <button className="btn-secondary" onClick={() => testTelephonyConfig(config._id)}>Test Connection</button>
                     </div>
@@ -256,7 +256,7 @@ export default function Settings() {
           <Section className="scroll-mt-24" title="Team" description="Role and member controls for future collaboration workflows.">
             <Panel icon={ShieldCheck} title="Team">
               <div id="team">
-                <p className="text-sm leading-6 text-slate-500">Team access and role controls are reserved for the next plan level.</p>
+                <p className="text-sm leading-6 text-neutral-500">Team access and role controls are reserved for the next plan level.</p>
                 <button className="btn-secondary mt-4" disabled>Invite Member</button>
               </div>
             </Panel>
@@ -274,7 +274,7 @@ function Panel({ icon: Icon, title, description, children }) {
         <div className="icon-tile"><Icon size={18} /></div>
         <div className="min-w-0">
           <h2 className="panel-title min-w-0 break-anywhere">{title}</h2>
-          {description && <p className="mt-1 text-[13px] leading-5 text-slate-500">{description}</p>}
+          {description && <p className="mt-1 text-[13px] leading-5 text-neutral-500">{description}</p>}
         </div>
       </div>
       {children}
@@ -283,7 +283,7 @@ function Panel({ icon: Icon, title, description, children }) {
 }
 
 function Info({ label, value }) {
-  return <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-medium uppercase text-slate-500">{label}</p><p className="break-anywhere text-sm font-semibold text-slate-950">{value}</p></div>;
+  return <div className="rounded-xl bg-neutral-50 p-3"><p className="text-xs font-medium uppercase text-neutral-500">{label}</p><p className="break-anywhere text-sm font-semibold text-ink">{value}</p></div>;
 }
 
 function RefreshIcon() {

@@ -1,4 +1,4 @@
-import { Languages, Mic2, SlidersHorizontal, Volume2 } from "lucide-react";
+﻿import { Languages, Mic2, SlidersHorizontal, Volume2 } from "lucide-react";
 import PageHeader from "../components/PageHeader.jsx";
 
 const defaultPronunciationRules = [
@@ -11,7 +11,7 @@ const defaultPronunciationRules = [
 
 export default function VoiceLanguage() {
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="Voice & Language" description="Configure default voice behavior, English pronunciation, and provider preferences." />
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-6">
         <section className="card space-y-5">
@@ -34,11 +34,11 @@ export default function VoiceLanguage() {
           <Setting icon={SlidersHorizontal} title="Voice Speed">
             <input type="range" min="0.7" max="1.3" step="0.1" defaultValue="1" />
           </Setting>
-          <label className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 p-4 text-sm font-semibold text-slate-700">
+          <label className="flex items-center justify-between gap-4 rounded-2xl border border-hairline p-4 text-sm font-semibold text-neutral-700">
             English-only voice text
             <input className="h-5 w-5" type="checkbox" defaultChecked />
           </label>
-          <label className="block text-sm font-semibold text-slate-700">
+          <label className="block text-sm font-semibold text-neutral-700">
             Pronunciation rules
             <textarea className="mt-2 min-h-40" defaultValue={defaultPronunciationRules} />
           </label>
@@ -48,21 +48,21 @@ export default function VoiceLanguage() {
         <aside className="card">
           <h2 className="panel-title">Voice Preview</h2>
           <p className="muted mt-2">Use this area to preview default language and TTS choices before applying them to agents.</p>
-          <div className="mt-6 break-anywhere rounded-2xl bg-slate-950 p-5 text-sm leading-6 text-white">
+          <div className="mt-6 break-anywhere rounded-2xl bg-ink p-5 text-sm leading-6 text-white">
             Hello, welcome. I can help you with your booking request.
           </div>
         </aside>
       </div>
-    </>
+    </div>
   );
 }
 
 function Setting({ icon: Icon, title, children }) {
   return (
-    <div className="grid gap-3 rounded-2xl border border-slate-200 p-4 md:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid gap-3 rounded-2xl border border-hairline p-4 md:grid-cols-[220px_minmax(0,1fr)]">
       <div className="flex min-w-0 items-center gap-3">
         <div className="icon-tile"><Icon size={18} /></div>
-        <p className="min-w-0 break-anywhere font-semibold text-slate-950">{title}</p>
+        <p className="min-w-0 break-anywhere font-semibold text-ink">{title}</p>
       </div>
       <div className="min-w-0">{children}</div>
     </div>
