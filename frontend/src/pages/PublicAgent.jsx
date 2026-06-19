@@ -538,7 +538,7 @@ function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBo
               )}
 
               <button
-                className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_12px_26px_rgba(220,38,38,.32)]"
+                className="grid h-16 w-16 place-items-center rounded-full bg-rose-600 text-white shadow-pop"
                 onClick={isLive ? onEnd : onBack}
                 aria-label="End call"
               >

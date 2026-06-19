@@ -361,15 +361,15 @@ export default function BioPageBuilder() {
 
   if (!form) {
     return (
-      <>
+      <div className="page-stack">
         <PageHeader title="Agent Bio Page Builder" description="Loading builder..." />
         {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Agent Bio Page Builder"
         description={`Customize the public bio page for ${agent?.agentName || "this agent"}.`}
@@ -384,11 +384,11 @@ export default function BioPageBuilder() {
           <Panel title="Choose Template" icon={Sparkles}>
             <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
               {templates.map((template) => (
-                <article key={template.templateId} className={`rounded-2xl border p-4 transition ${form.template === template.templateId ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
-                  <div className="mb-3 aspect-video rounded-xl border border-slate-200" style={{ background: `linear-gradient(135deg, ${template.colors?.backgroundColor || "#fff"}, ${template.colors?.primaryColor || "#2563EB"}55)` }} />
-                  <h3 className="font-bold text-slate-950">{template.name}</h3>
-                  <p className="mt-1 min-h-10 text-sm text-slate-500">{template.description}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase text-slate-500">{template.recommendedUseCase}</p>
+                <article key={template.templateId} className={`rounded-2xl border p-4 transition ${form.template === template.templateId ? "border-amber-300 bg-amber-50" : "border-hairline bg-white"}`}>
+                  <div className="mb-3 aspect-video rounded-xl border border-hairline" style={{ background: `linear-gradient(135deg, ${template.colors?.backgroundColor || "#fff"}, ${template.colors?.primaryColor || "#2563EB"}55)` }} />
+                  <h3 className="font-semibold text-ink">{template.name}</h3>
+                  <p className="mt-1 min-h-10 text-sm text-neutral-500">{template.description}</p>
+                  <p className="mt-2 text-xs font-semibold uppercase text-neutral-500">{template.recommendedUseCase}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button className="btn-secondary" onClick={() => previewTemplate(template)}>Preview</button>
                     <button className="btn-primary" onClick={() => useTemplate(template)}>Use Template</button>
@@ -473,7 +473,7 @@ export default function BioPageBuilder() {
               <button className="btn-secondary" type="button" disabled={(form.quickTopics || []).length >= 8} onClick={addTopic}>
                 <MessageCircle size={16} /> Add Topic
               </button>
-              {(form.quickTopics || []).length >= 8 && <p className="text-sm text-slate-500">Maximum 8 quick topics allowed.</p>}
+              {(form.quickTopics || []).length >= 8 && <p className="text-sm text-neutral-500">Maximum 8 quick topics allowed.</p>}
             </div>
           </Panel>
 
@@ -503,7 +503,7 @@ export default function BioPageBuilder() {
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/90 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,.08)] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-white/90 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,.08)] backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
           <button className="btn-primary" disabled={saving} onClick={() => save()}><Save size={16} />{saving ? "Saving..." : "Save Changes"}</button>
           <a className="btn-secondary" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Preview Public Page</a>
@@ -514,7 +514,7 @@ export default function BioPageBuilder() {
           <div className="ml-auto"><StatusBadge status={form.isPublished ? "Published" : "Draft"} /></div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -523,7 +523,7 @@ function Panel({ title, icon: Icon, children }) {
     <section className="card min-w-0">
       <div className="mb-4 flex items-center gap-3">
         {Icon && <div className="icon-tile"><Icon size={18} /></div>}
-        <h2 className="font-bold text-slate-950">{title}</h2>
+        <h2 className="font-semibold text-ink">{title}</h2>
       </div>
       {children}
     </section>
@@ -535,7 +535,7 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
   const color = topic.color || "#2563EB";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4">
+    <article className="rounded-2xl border border-hairline bg-white p-4">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl text-white" style={{ background: color }}>
           {topic.iconType === "image" && topic.iconImageUrl ? (
@@ -547,8 +547,8 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
           )}
         </span>
         <div className="min-w-0">
-          <h3 className="font-bold text-slate-950">Topic {index + 1}</h3>
-          <p className="text-sm text-slate-500">Customize the card shown on the public page.</p>
+          <h3 className="font-semibold text-ink">Topic {index + 1}</h3>
+          <p className="text-sm text-neutral-500">Customize the card shown on the public page.</p>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           <button className="btn-secondary" type="button" disabled={index === 0} onClick={() => onMove(index, -1)}>Up</button>
@@ -578,7 +578,7 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
             </select>
           </Field>
         )}
-        <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-sm font-semibold text-slate-600">
+        <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center text-sm font-semibold text-neutral-600">
           <Upload size={18} className="mb-2 text-brand-700" />
           Upload custom icon
           <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => onUpload(index, event.target.files?.[0])} />
@@ -590,13 +590,13 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
 }
 
 function Field({ label, children }) {
-  return <label className="block min-w-0 text-sm font-semibold text-slate-700">{label}<div className="mt-1">{children}</div></label>;
+  return <label className="block min-w-0 text-sm font-semibold text-neutral-700">{label}<div className="mt-1">{children}</div></label>;
 }
 
 function ColorField({ label, value, onChange }) {
   return (
     <Field label={label}>
-      <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex overflow-hidden rounded-xl border border-hairline bg-white">
         <input className="h-11 w-14 cursor-pointer border-0 p-1" type="color" value={value || "#2563EB"} onChange={(event) => onChange(event.target.value)} />
         <input className="min-w-0 flex-1 border-0 px-3 text-sm font-semibold uppercase outline-none" value={value || ""} onChange={(event) => onChange(event.target.value)} />
       </div>
@@ -606,7 +606,7 @@ function ColorField({ label, value, onChange }) {
 
 function Toggle({ label, checked, onChange }) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-semibold">
+    <label className="flex items-center justify-between gap-3 rounded-2xl border border-hairline bg-white p-3 text-sm font-semibold">
       <span className="min-w-0 break-words">{label}</span>
       <input className="h-5 w-5 flex-none" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
@@ -616,7 +616,7 @@ function Toggle({ label, checked, onChange }) {
 function UploadField({ label, value, onChange }) {
   const src = assetUrl(value);
   return (
-    <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-center text-sm font-semibold text-slate-600">
+    <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center text-sm font-semibold text-neutral-600">
       {src ? <img className="mb-2 h-20 w-full max-w-full rounded-xl object-cover" src={src} alt="" /> : <Upload size={18} className="mb-2 text-brand-700" />}
       {label}
       <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => onChange(event.target.files?.[0])} />

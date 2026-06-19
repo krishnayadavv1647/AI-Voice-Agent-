@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, KeyRound, RefreshCw, Server, ShieldCheck, Trash2, Workflow } from "lucide-react";
+﻿import { AlertTriangle, CheckCircle2, KeyRound, RefreshCw, Server, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -106,7 +106,7 @@ export default function DograhSettings() {
   const userDograh = data?.userDograh || {};
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="Dograh" description="Manage the Dograh runtime account used for workflows, calling, web calling, and provider synchronization." />
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {message && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
@@ -141,10 +141,10 @@ export default function DograhSettings() {
             />
           </div>
 
-          <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+          <label className="mt-4 flex items-start gap-3 rounded-xl border border-hairline p-3 text-sm text-neutral-700">
             <input className="mt-1 h-4 w-4" type="checkbox" checked={form.allowPlatformFallback} onChange={(event) => updateFallback(event.target.checked)} />
             <span>
-              <span className="block font-semibold text-slate-950">Allow Platform Dograh Fallback</span>
+              <span className="block font-semibold text-ink">Allow Platform Dograh Fallback</span>
               Platform Dograh may be used only while creating a new agent if My Dograh is unavailable. Existing agents never switch automatically.
             </span>
           </label>
@@ -167,7 +167,7 @@ export default function DograhSettings() {
             <Info icon={Server} label="Base URL" value={platform.baseUrl || "Not configured"} />
             <Info icon={ShieldCheck} label="API Key" value={platform.maskedApiKey || "Not configured"} />
           </div>
-          <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Platform managed. No user API key is required.</p>
+          <p className="mt-4 rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600">Platform managed. No user API key is required.</p>
         </aside>
 
         <section className="card xl:col-span-3">
@@ -181,22 +181,22 @@ export default function DograhSettings() {
           </div>
         </section>
       </div>
-    </>
+    </div>
   );
 }
 
 function AgentList({ title, agents }) {
   return (
-    <div className="rounded-xl border border-slate-200 p-4">
-      <h3 className="font-bold text-slate-950">{title}</h3>
+    <div className="rounded-xl border border-hairline p-4">
+      <h3 className="font-semibold text-ink">{title}</h3>
       <div className="mt-3 space-y-2">
         {agents.map((agent) => (
-          <div key={agent.id} className="rounded-lg bg-slate-50 p-3 text-sm">
-            <p className="font-semibold text-slate-950">{agent.name}</p>
-            <p className="break-anywhere text-slate-500">{agent.workflowId || "No workflow"} · {agent.syncStatus || "not synced"}</p>
+          <div key={agent.id} className="rounded-lg bg-neutral-50 p-3 text-sm">
+            <p className="font-semibold text-ink">{agent.name}</p>
+            <p className="break-anywhere text-neutral-500">{agent.workflowId || "No workflow"} · {agent.syncStatus || "not synced"}</p>
           </div>
         ))}
-        {!agents.length && <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">No agents use this connection.</p>}
+        {!agents.length && <p className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-500">No agents use this connection.</p>}
       </div>
     </div>
   );
@@ -204,9 +204,9 @@ function AgentList({ title, agents }) {
 
 function Info({ icon: Icon = AlertTriangle, label, value }) {
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
-      <div className="mb-2 flex items-center gap-2 text-slate-500"><Icon size={16} /><span className="text-xs font-semibold uppercase">{label}</span></div>
-      <p className="break-anywhere text-sm font-semibold text-slate-950">{value || "-"}</p>
+    <div className="rounded-xl border border-hairline p-3">
+      <div className="mb-2 flex items-center gap-2 text-neutral-500"><Icon size={16} /><span className="text-xs font-semibold uppercase">{label}</span></div>
+      <p className="break-anywhere text-sm font-semibold text-ink">{value || "-"}</p>
     </div>
   );
 }

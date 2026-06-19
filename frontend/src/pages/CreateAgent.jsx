@@ -1,4 +1,4 @@
-import { Bot, Building2, Check, ChevronLeft, ChevronRight, ClipboardList, Headphones, MessageSquareText, Plus, Sparkles, X } from "lucide-react";
+﻿import { Bot, Building2, Check, ChevronLeft, ChevronRight, ClipboardList, Headphones, MessageSquareText, Plus, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -57,7 +57,7 @@ const initialForm = {
 
 function Field({ label, name, value, onChange, type = "text", textarea = false, options }) {
   return (
-    <label className="block min-w-0 text-sm font-semibold text-slate-700">
+    <label className="block min-w-0 text-sm font-semibold text-neutral-700">
       {label}
       {options ? (
         <select className="mt-1" value={value || ""} onChange={(event) => onChange(name, event.target.value)}>
@@ -167,19 +167,19 @@ export default function CreateAgent() {
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader title="Create Agent" description="Build an outbound-first AI calling agent with templates, business knowledge, voice settings, and automatic Dograh workflow creation." />
 
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm sm:p-4">
+      <div className="rounded-2xl border border-hairline bg-white p-3 shadow-soft sm:p-4">
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
           {steps.map((label, index) => (
-            <button key={label} onClick={() => setStep(index)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${index === step ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            <button key={label} onClick={() => setStep(index)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${index === step ? "bg-ink text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}>
               {index + 1}. {label}
             </button>
           ))}
         </div>
-        <div className="h-2 rounded-full bg-slate-100">
-          <div className="h-2 rounded-full bg-gradient-to-r from-brand-600 to-violet-600" style={{ width: `${progress}%` }} />
+        <div className="h-2 rounded-full bg-neutral-100">
+          <div className="h-2 rounded-full bg-brand-600" style={{ width: `${progress}%` }} />
         </div>
       </div>
 
@@ -187,8 +187,8 @@ export default function CreateAgent() {
         <div className="mb-6 flex min-w-0 items-center gap-3">
           <div className="icon-tile"><StepIcon size={20} /></div>
           <div className="min-w-0">
-            <h2 className="break-anywhere text-xl font-bold text-slate-950">{steps[step]}</h2>
-            <p className="text-sm text-slate-500">Step {step + 1} of {steps.length}</p>
+            <h2 className="break-anywhere text-xl font-semibold text-ink">{steps[step]}</h2>
+            <p className="text-sm text-neutral-500">Step {step + 1} of {steps.length}</p>
           </div>
         </div>
 
@@ -199,11 +199,11 @@ export default function CreateAgent() {
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[...new Set([...templateOptions, ...agentTypes])].map((type) => (
-                <button key={type} onClick={() => chooseType(type)} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${form.agentType === type ? "border-brand-500 bg-brand-50 shadow-sm" : "border-slate-200 bg-white hover:border-brand-200 hover:shadow-sm"}`}>
-                  <div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-slate-950 text-white"><Bot size={18} /></div>
-                  <span className="break-anywhere font-semibold text-slate-950">{type}</span>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">Ready-made behavior for a business calling workflow.</p>
-                  <span className="mt-4 inline-flex rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Select</span>
+                <button key={type} onClick={() => chooseType(type)} className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${form.agentType === type ? "border-brand-500 bg-brand-50 shadow-sm" : "border-hairline bg-white hover:border-brand-200 hover:shadow-sm"}`}>
+                  <div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-ink text-white"><Bot size={18} /></div>
+                  <span className="break-anywhere font-semibold text-ink">{type}</span>
+                  <p className="mt-1 text-sm leading-6 text-neutral-500">Ready-made behavior for a business calling workflow.</p>
+                  <span className="mt-4 inline-flex rounded-xl bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-600">Select</span>
                 </button>
               ))}
             </div>
@@ -268,19 +268,19 @@ export default function CreateAgent() {
               <Field label="Call Summary Format" name="summaryFormat" value={form.summaryFormat} onChange={setField} textarea />
             </div>
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h3 className="font-bold text-slate-950">Lead Capture Questions</h3>
+              <h3 className="font-semibold text-ink">Lead Capture Questions</h3>
               <button className="btn-secondary" onClick={addQuestion}><Plus size={16} />Add Question</button>
             </div>
             <div className="space-y-3">
               {form.leadQuestions.map((question, index) => (
-                <div key={`${question.fieldName}-${index}`} className="grid min-w-0 gap-3 rounded-2xl border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+                <div key={`${question.fieldName}-${index}`} className="grid min-w-0 gap-3 rounded-2xl border border-hairline p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
                   <input value={question.label} onChange={(event) => updateQuestion(index, "label", event.target.value)} />
                   <input value={question.fieldName} onChange={(event) => updateQuestion(index, "fieldName", event.target.value)} />
-                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <label className="flex items-center gap-2 text-sm text-neutral-700">
                     <input className="h-4 w-4" type="checkbox" checked={question.required} onChange={(event) => updateQuestion(index, "required", event.target.checked)} />
                     Required
                   </label>
-                  <button title="Remove" className="rounded-xl border border-slate-200 p-2 text-rose-600" onClick={() => removeQuestion(index)}><X size={18} /></button>
+                  <button title="Remove" className="rounded-xl border border-hairline p-2 text-rose-600" onClick={() => removeQuestion(index)}><X size={18} /></button>
                 </div>
               ))}
             </div>
@@ -310,9 +310,9 @@ export default function CreateAgent() {
                 ["Voice", `${form.language}, ${(form.voiceConfiguration?.ttsProvider || "dograh_default").replaceAll("_", " ")}, ${form.voiceConfiguration?.ttsVoiceId || "Dograh default voice"}, ${form.tone}`],
                 ["Rules", form.fallbackMessage]
               ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl border border-slate-200 p-4">
-                  <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-                  <p className="break-anywhere mt-2 text-sm text-slate-700">{value}</p>
+                <div key={label} className="rounded-2xl border border-hairline p-4">
+                  <p className="text-xs font-semibold uppercase text-neutral-500">{label}</p>
+                  <p className="break-anywhere mt-2 text-sm text-neutral-700">{value}</p>
                 </div>
               ))}
             </div>
@@ -334,6 +334,6 @@ export default function CreateAgent() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }

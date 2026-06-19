@@ -1,4 +1,4 @@
-import { Download, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
+﻿import { Download, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -166,7 +166,7 @@ export default function ImportCalls() {
   }
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Import Calls"
         description="Upload call schedules from CSV or Excel, validate rows, and schedule AI calls safely."
@@ -176,19 +176,28 @@ export default function ImportCalls() {
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
-      <section className="card mb-4">
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-          <label className="text-sm font-semibold text-slate-700">
+      <section className="card mb-4 p-5">
+        <div className="mb-4">
+          <h2 className="font-semibold text-ink">Upload Call Schedule</h2>
+          <p className="mt-1 text-sm text-neutral-500">Choose an agent, attach a CSV or XLSX file, then upload it for validation.</p>
+        </div>
+        <div className="grid items-end gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_auto]">
+          <label className="min-w-0 text-sm font-semibold text-neutral-700">
             Select Agent
-            <select className="mt-1" value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
+            <select className="mt-1.5 h-10 rounded-lg border-neutral-200 focus:border-blue-500 focus:ring-blue-100" value={selectedAgentId} onChange={(event) => setSelectedAgentId(event.target.value)}>
               {agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName}</option>)}
             </select>
           </label>
-          <label className="text-sm font-semibold text-slate-700">
+          <label className="min-w-0 text-sm font-semibold text-neutral-700">
             Upload CSV / XLSX
-            <input className="mt-1" type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+            <span className="mt-1.5 flex h-10 min-w-0 items-center rounded-lg border border-hairline bg-white px-3 text-sm font-medium text-neutral-700 transition hover:border-neutral-300">
+              <FileSpreadsheet size={16} className="mr-2 shrink-0 text-neutral-500" />
+              <span className="min-w-0 flex-1 truncate">{file?.name || "Choose CSV or XLSX file"}</span>
+              <span className="ml-3 shrink-0 rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">Browse</span>
+            </span>
+            <input className="sr-only" type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
           </label>
-          <button className="btn-primary self-end" disabled={loading === "upload"} onClick={uploadFile}>
+          <button className="btn-primary h-10 px-5" disabled={loading === "upload"} onClick={uploadFile}>
             <Upload size={16} />{loading === "upload" ? "Uploading..." : "Upload"}
           </button>
         </div>
@@ -199,8 +208,8 @@ export default function ImportCalls() {
           <section className="card mb-4">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="font-bold text-slate-950">{activeRun.fileName}</h2>
-                <p className="text-sm text-slate-500">Total {activeRun.totalRows || rows.length} rows · {validCount} valid · {invalidCount} invalid</p>
+                <h2 className="font-semibold text-ink">{activeRun.fileName}</h2>
+                <p className="text-sm text-neutral-500">Total {activeRun.totalRows || rows.length} rows · {validCount} valid · {invalidCount} invalid</p>
               </div>
               <div className="action-row">
                 <button className="btn-secondary" disabled={loading === "validate"} onClick={validateFile}><FileSpreadsheet size={16} />{loading === "validate" ? "Validating..." : "Validate File"}</button>
@@ -212,7 +221,7 @@ export default function ImportCalls() {
             {!!headers.length && (
               <div className="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
                 {fields.map((field) => (
-                  <label key={field} className="text-sm font-semibold text-slate-700">
+                  <label key={field} className="text-sm font-semibold text-neutral-700">
                     {field}
                     <select className="mt-1" value={mapping[field] || ""} onChange={(event) => setMapping((current) => ({ ...current, [field]: event.target.value }))}>
                       <option value="">Not mapped</option>
@@ -242,7 +251,7 @@ export default function ImportCalls() {
                       <td className="text-rose-700">{row.error || "-"}</td>
                     </tr>
                   ))}
-                  {!rows.length && <tr><td colSpan="9" className="text-center text-slate-500">No rows to preview.</td></tr>}
+                  {!rows.length && <tr><td colSpan="9" className="text-center text-neutral-500">No rows to preview.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -260,10 +269,10 @@ export default function ImportCalls() {
       )}
 
       {showScheduleConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-bold text-slate-950">Confirm Schedule</h2>
-            <p className="mt-2 text-sm text-slate-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-hairline bg-white p-6 shadow-pop">
+            <h2 className="text-lg font-semibold text-ink">Confirm Schedule</h2>
+            <p className="mt-2 text-sm text-neutral-600">
               This will create scheduled AI calls for all {validCount} valid row{validCount === 1 ? "" : "s"} in this import.
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
@@ -277,8 +286,8 @@ export default function ImportCalls() {
       )}
 
       <section className="card overflow-hidden p-0">
-        <div className="border-b border-slate-200 p-4">
-          <h2 className="font-bold text-slate-950">Import History</h2>
+        <div className="border-b border-hairline p-4">
+          <h2 className="font-semibold text-ink">Import History</h2>
         </div>
         {!runs.length ? (
           <div className="p-6"><EmptyState title="No imports yet" description="Uploaded call schedules will appear here." /></div>
@@ -303,10 +312,10 @@ export default function ImportCalls() {
           </div>
         )}
       </section>
-    </>
+    </div>
   );
 }
 
 function SummaryCard({ label, value }) {
-  return <article className="card"><p className="text-sm font-semibold text-slate-500">{label}</p><p className="mt-2 text-3xl font-bold text-slate-950">{value || 0}</p></article>;
+  return <article className="card"><p className="text-sm font-semibold text-neutral-500">{label}</p><p className="mt-2 text-3xl font-semibold text-ink">{value || 0}</p></article>;
 }

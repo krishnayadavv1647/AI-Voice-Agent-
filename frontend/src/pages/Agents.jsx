@@ -1,4 +1,4 @@
-import { Edit, Eye, MessageSquare, PhoneCall, Plus, Trash2 } from "lucide-react";
+﻿import { Edit, Eye, MessageSquare, PhoneCall, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -131,9 +131,9 @@ export default function Agents() {
 
 function MiniStat({ label, value }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-100 bg-white p-4">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="break-anywhere text-sm font-semibold text-slate-950">{value}</p>
+    <div className="min-w-0 rounded-xl border border-hairline bg-white p-4">
+      <p className="text-xs font-medium text-neutral-500">{label}</p>
+      <p className="break-anywhere text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }

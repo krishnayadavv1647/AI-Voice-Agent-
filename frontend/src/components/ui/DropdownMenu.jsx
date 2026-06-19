@@ -1,4 +1,4 @@
-import { MoreHorizontal } from "lucide-react";
+﻿import { MoreHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export default function DropdownMenu({ label = "More actions", align = "right", children, triggerClassName = "" }) {
@@ -39,7 +39,7 @@ export default function DropdownMenu({ label = "More actions", align = "right", 
       </button>
       {open && (
         <div
-          className={`absolute top-full z-30 mt-2 min-w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-[var(--shadow-floating)] ${
+          className={`absolute top-full z-30 mt-2 min-w-48 rounded-xl border border-hairline bg-white p-1 shadow-[var(--shadow-floating)] ${
             align === "left" ? "left-0" : "right-0"
           }`}
           role="menu"
@@ -53,7 +53,7 @@ export default function DropdownMenu({ label = "More actions", align = "right", 
 
 export function DropdownItem({ children, icon: Icon, danger = false, disabled = false, onClick, as: Component = "button", ...props }) {
   const className = `flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium ${
-    danger ? "text-rose-700 hover:bg-rose-50" : "text-slate-700 hover:bg-slate-50 hover:text-slate-950"
+    danger ? "text-rose-700 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-50 hover:text-ink"
   } disabled:cursor-not-allowed disabled:opacity-50`;
 
   return (

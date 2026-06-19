@@ -1,4 +1,4 @@
-import {
+﻿import {
   Activity,
   Bot,
   CalendarClock,
@@ -162,7 +162,7 @@ export default function Admin() {
   ];
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Admin Control"
         description="Manage users, agents, calls, leads, appointments, email usage, credits, settings, and audit logs."
@@ -182,15 +182,15 @@ export default function Admin() {
         </aside>
 
         <main className="min-w-0">
-          {loading ? <div className="card text-sm text-slate-500">Loading admin data...</div> : null}
+          {loading ? <div className="card text-sm text-neutral-500">Loading admin data...</div> : null}
           {active === "dashboard" && (
             <>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {cards.map(([label, value, Icon]) => (
                   <div key={label} className="card">
                     <Icon className="mb-4 text-brand-700" size={18} />
-                    <p className="text-sm text-slate-500">{label}</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
+                    <p className="text-sm text-neutral-500">{label}</p>
+                    <p className="mt-1 text-2xl font-semibold text-ink">{value}</p>
                   </div>
                 ))}
               </div>
@@ -203,9 +203,9 @@ export default function Admin() {
 
           {active === "users" && (
             <section className="card p-0">
-              <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-4">
-                <div className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
-                  <Search size={16} className="text-slate-400" />
+              <div className="flex flex-wrap items-center gap-3 border-b border-hairline p-4">
+                <div className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-xl border border-hairline bg-white px-3">
+                  <Search size={16} className="text-neutral-400" />
                   <input className="border-0 shadow-none focus:ring-0" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users" />
                 </div>
               </div>
@@ -254,12 +254,12 @@ export default function Admin() {
       </div>
 
       {selectedUser && <UserDetailModal detail={selectedUser} onClose={() => setSelectedUser(null)} mutate={mutate} />}
-    </>
+    </div>
   );
 }
 
 function MiniList({ title, rows }) {
-  return <section className="card"><h2 className="font-bold text-slate-950">{title}</h2><div className="mt-3 space-y-2">{rows.length ? rows.map((row, index) => <p key={index} className="rounded-xl border border-slate-100 p-3 text-sm text-slate-700">{row}</p>) : <p className="text-sm text-slate-500">No records yet.</p>}</div></section>;
+  return <section className="card"><h2 className="font-semibold text-ink">{title}</h2><div className="mt-3 space-y-2">{rows.length ? rows.map((row, index) => <p key={index} className="rounded-xl border border-hairline p-3 text-sm text-neutral-700">{row}</p>) : <p className="text-sm text-neutral-500">No records yet.</p>}</div></section>;
 }
 
 function AdminTable({ columns, rows }) {
@@ -287,7 +287,7 @@ function AdminTable({ columns, rows }) {
           </tr>
         ))}</tbody>
       </table>
-      {!rows.length && <div className="p-6 text-sm text-slate-500">No records found.</div>}
+      {!rows.length && <div className="p-6 text-sm text-neutral-500">No records found.</div>}
     </div>
   );
 }
@@ -303,7 +303,7 @@ function ResourceTable({ keyName, rows, mutate }) {
     email: ["Email Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Sent", "Failed", "Created", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.totalRecipients || 0, row.sentCount || 0, row.failedCount || 0, fmt(row.createdAt), "-"]]
   };
   const [title, columns, mapper] = configs[keyName];
-  return <section className="card p-0"><div className="border-b border-slate-200 p-4"><h2 className="font-bold text-slate-950">{title}</h2></div><AdminTable columns={columns} rows={rows.map(mapper)} /></section>;
+  return <section className="card p-0"><div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">{title}</h2></div><AdminTable columns={columns} rows={rows.map(mapper)} /></section>;
 }
 
 function RowActions({ row, base, mutate, pause, activate }) {
@@ -313,7 +313,7 @@ function RowActions({ row, base, mutate, pause, activate }) {
 function UsageTable({ rows, mutate }) {
   return (
     <section className="card p-0">
-      <div className="border-b border-slate-200 p-4"><h2 className="font-bold text-slate-950">Usage & Credits</h2></div>
+      <div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Usage & Credits</h2></div>
       <AdminTable columns={["User", "Plan", "Call Credits", "Email Credits", "Lead Credits", "Minutes", "Calls", "Emails", "Leads", "Actions"]} rows={rows.map(({ user, usage }) => [
         user.email,
         user.plan,
@@ -337,27 +337,27 @@ function UsageTable({ rows, mutate }) {
 }
 
 function Integrations({ data }) {
-  return <section className="card"><h2 className="font-bold text-slate-950">Integration Settings</h2><p className="mt-1 text-sm text-slate-500">Secrets are masked. Only super admins can access this section.</p><div className="mt-4 grid gap-3 md:grid-cols-2">{Object.entries(data || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{key}</p><p className="break-anywhere text-sm font-semibold text-slate-950">{value || "Not configured"}</p></div>)}</div></section>;
+  return <section className="card"><h2 className="font-semibold text-ink">Integration Settings</h2><p className="mt-1 text-sm text-neutral-500">Secrets are masked. Only super admins can access this section.</p><div className="mt-4 grid gap-3 md:grid-cols-2">{Object.entries(data || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">{key}</p><p className="break-anywhere text-sm font-semibold text-ink">{value || "Not configured"}</p></div>)}</div></section>;
 }
 
 function AuditTable({ rows }) {
-  return <section className="card p-0"><div className="border-b border-slate-200 p-4"><h2 className="font-bold text-slate-950">Audit Logs</h2></div><AdminTable columns={["Action", "Actor", "Target", "Resource", "Date", "Details"]} rows={rows.map((row) => [row.action, row.actorUserId?.email || "-", row.targetUserId?.email || "-", row.resourceType || "-", fmt(row.createdAt), row.description || JSON.stringify(row.metadata || {})])} /></section>;
+  return <section className="card p-0"><div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Audit Logs</h2></div><AdminTable columns={["Action", "Actor", "Target", "Resource", "Date", "Details"]} rows={rows.map((row) => [row.action, row.actorUserId?.email || "-", row.targetUserId?.email || "-", row.resourceType || "-", fmt(row.createdAt), row.description || JSON.stringify(row.metadata || {})])} /></section>;
 }
 
 function UserDetailModal({ detail, onClose, mutate }) {
   const { user, usage, dograhIntegration, tabs: userTabs } = detail;
   return (
-    <div className="fixed inset-0 z-40 grid place-items-center bg-slate-950/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="modal-panel rounded-3xl bg-white p-5 shadow-2xl sm:max-w-5xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="modal-panel rounded-2xl bg-white p-5 shadow-pop sm:max-w-5xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
-          <div><h2 className="text-xl font-bold text-slate-950">{user.name}</h2><p className="text-sm text-slate-500">{user.email}</p></div>
+          <div><h2 className="text-xl font-semibold text-ink">{user.name}</h2><p className="text-sm text-neutral-500">{user.email}</p></div>
           <button className="btn-secondary" onClick={onClose}>Close</button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {["status", "role", "plan", "planStatus"].map((key) => <div key={key} className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{key}</p><p className="font-bold text-slate-950">{user[key] || "-"}</p></div>)}
-          <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">Dograh Integration</p><p className="font-bold text-slate-950">{dograhIntegration?.status || "not_connected"}</p></div>
-          <div className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">Dograh Last Error</p><p className="break-anywhere font-bold text-slate-950">{dograhIntegration?.lastError || "-"}</p></div>
-          {Object.entries(usage || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-500">{key}</p><p className="font-bold text-slate-950">{value}</p></div>)}
+          {["status", "role", "plan", "planStatus"].map((key) => <div key={key} className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">{key}</p><p className="font-semibold text-ink">{user[key] || "-"}</p></div>)}
+          <div className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">Dograh Integration</p><p className="font-semibold text-ink">{dograhIntegration?.status || "not_connected"}</p></div>
+          <div className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">Dograh Last Error</p><p className="break-anywhere font-semibold text-ink">{dograhIntegration?.lastError || "-"}</p></div>
+          {Object.entries(usage || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">{key}</p><p className="font-semibold text-ink">{value}</p></div>)}
         </div>
         <div className="mt-5 grid gap-4 xl:grid-cols-2">
           {Object.entries(userTabs || {}).filter(([key]) => key !== "usage").map(([key, rows]) => <MiniList key={key} title={key} rows={(rows || []).slice(0, 8).map((row) => `${nameOf(row)} - ${row.status || row.normalizedStatus || row.createdAt || ""}`)} />)}

@@ -1,4 +1,4 @@
-import { ArrowLeft, RefreshCw, Save } from "lucide-react";
+﻿import { ArrowLeft, RefreshCw, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -325,10 +325,10 @@ export default function EditAgent() {
     navigate(`/agents/${id}`);
   }
 
-  if (!form) return <div className="p-6 text-slate-500">Loading...</div>;
+  if (!form) return <div className="p-6 text-neutral-500">Loading...</div>;
 
   return (
-    <>
+    <div className="page-stack">
       <PageHeader
         title="Edit Agent"
         description="Update agent details. Dograh workflow sync starts automatically after saving."
@@ -345,11 +345,11 @@ export default function EditAgent() {
       {form.workflowSyncStatus === "syncing" && <div className="mb-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">Dograh workflow sync is running in the background.</div>}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,900px)]">
-        <aside className="self-start rounded-xl border border-slate-200 bg-white p-3 lg:sticky lg:top-24">
+        <aside className="self-start rounded-xl border border-hairline bg-white p-3 lg:sticky lg:top-24">
           {tabs.map((item) => (
             <button
               key={item}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${item === tab ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${item === tab ? "bg-ink text-white" : "text-neutral-600 hover:bg-neutral-50 hover:text-ink"}`}
               onClick={() => setTab(item)}
             >
               <span>{item}</span>
@@ -458,16 +458,16 @@ export default function EditAgent() {
         )}
 
         {dirty && (
-          <div className="sticky bottom-0 -mx-6 mt-6 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
+          <div className="sticky bottom-0 -mx-6 mt-6 border-t border-hairline bg-white/95 px-6 py-4 backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-slate-500">You have unsaved changes in this agent.</p>
+              <p className="text-sm text-neutral-500">You have unsaved changes in this agent.</p>
               <button className="btn-primary" disabled={saving} onClick={saveAgent}><Save size={16} />{saving ? "Saving..." : "Save Agent"}</button>
             </div>
           </div>
         )}
       </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -493,7 +493,7 @@ function Field({ label, name, value, setField, textarea = false, tall = false, o
 
 function Toggle({ label, name, value, setField }) {
   return (
-    <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+    <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
       <input className="h-4 w-4" type="checkbox" checked={Boolean(value)} onChange={(event) => setField(name, event.target.checked)} />
       {label}
     </label>
@@ -503,8 +503,8 @@ function Toggle({ label, name, value, setField }) {
 function Info({ label, value }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <p className="break-words text-sm text-slate-700">{value || "Not provided"}</p>
+      <p className="text-xs font-semibold uppercase text-neutral-500">{label}</p>
+      <p className="break-words text-sm text-neutral-700">{value || "Not provided"}</p>
     </div>
   );
 }
