@@ -200,6 +200,7 @@ function cleanInboundMode(value, inboundEnabled = true) {
 
 function sanitizeConfig(config) {
   const item = config.toObject ? config.toObject() : { ...config };
+  if (item.accountSid) item.accountSid = mask(item.accountSid);
   for (const field of SECRET_FIELDS) {
     if (item[field]) item[field] = mask(item[field]);
   }

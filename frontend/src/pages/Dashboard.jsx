@@ -1,10 +1,15 @@
-﻿import { Activity, Bot, Clock, PhoneCall, Plus, Target, TrendingDown, TrendingUp, Users, WalletCards } from "lucide-react";
+import { Clock, Plus, TrendingDown, TrendingUp, Users, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
-import PageHeader from "../components/PageHeader.jsx";
 import Section from "../components/Section.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import dashboardBannerBackground from "../assets/dashboard-waveform-banner.png";
+import dashboardCallingAgent from "../assets/dashboard-calling-agent-2-cutout.png";
+import dashboardIconPhone from "../assets/dashboard-icon-phone-cutout.png";
+import dashboardIconPulse from "../assets/dashboard-icon-pulse-cutout.png";
+import dashboardIconRobot from "../assets/dashboard-icon-robot-cutout.png";
+import dashboardIconTarget from "../assets/dashboard-icon-target-cutout.png";
 import { api } from "../lib/api.js";
 
 const chartBars = [28, 44, 36, 62, 48, 74, 69, 86, 58, 92, 78, 96];
@@ -12,6 +17,25 @@ const chartBars = [28, 44, 36, 62, 48, 74, 69, 86, 58, 92, 78, 96];
 function durationLabel(call) {
   if (typeof call?.durationSeconds === "number") return `${call.durationSeconds}s`;
   return call?.duration || "Pending";
+}
+
+function DashboardBanner() {
+  return (
+    <section className="dashboard-banner" aria-label="Dashboard visual summary">
+      <div className="dashboard-banner-card">
+        <img src={dashboardBannerBackground} alt="" aria-hidden="true" className="dashboard-banner-image" />
+        <div className="dashboard-banner-content">
+          <h1 className="page-title title1">Turn Leads Into Calls, Campaigns & Sales</h1>
+          <p className="page-description paragraph1">Find leads, send campaigns, schedule calls, and convert faster.</p>
+          <div className="dashboard-header-actions">
+            <button className="btn-secondary" type="button">Last 30 days</button>
+            <Link to="/create-agent" className="btn-primary"><Plus size={18} />Create Agent</Link>
+          </div>
+        </div>
+      </div>
+      <img src={dashboardCallingAgent} alt="" aria-hidden="true" className="dashboard-calling-agent-image" />
+    </section>
+  );
 }
 
 export default function Dashboard() {
@@ -34,24 +58,15 @@ export default function Dashboard() {
   }, [totalCalls, stats.failedCalls]);
 
   const cards = [
-    { label: "Total Agents", value: totalAgents, icon: Bot, trend: "+12%", tone: "blue" },
-    { label: "Active Agents", value: activeAgents, icon: Activity, trend: "+8%", tone: "green" },
-    { label: "Total Calls", value: totalCalls, icon: PhoneCall, trend: "+23%", tone: "purple" },
-    { label: "Success Rate", value: `${successRate}%`, icon: Target, trend: "+4%", tone: "green" }
+    { label: "Total Agents", value: totalAgents, icon: dashboardIconRobot, trend: "+12%" },
+    { label: "Active Agents", value: activeAgents, icon: dashboardIconPulse, trend: "+8%" },
+    { label: "Total Calls", value: totalCalls, icon: dashboardIconPhone, trend: "+23%" },
+    { label: "Success Rate", value: `${successRate}%`, icon: dashboardIconTarget, trend: "+4%" }
   ];
 
   return (
     <div className="page-stack">
-      <PageHeader
-        title="Dashboard"
-        description="Monitor outbound AI calls, lead capture, Dograh workflow health, and agent performance from one control room."
-        action={
-          <>
-            <button className="btn-secondary" type="button">Last 30 days</button>
-            <Link to="/create-agent" className="btn-primary"><Plus size={18} />Create Agent</Link>
-          </>
-        }
-      />
+      <DashboardBanner />
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
@@ -63,23 +78,19 @@ export default function Dashboard() {
         <>
           <Section title="Overview" description="The four numbers that best describe current account activity.">
             <div className="summary-grid">
-              {cards.map(({ label, value, icon: Icon, trend, tone }) => (
-                <div className="metric-card" key={label}>
+              {cards.map(({ label, value, icon, trend }) => (
+                <div className="dashboard-stat-card" key={label}>
                   <div className="mb-4 flex items-start justify-between gap-3">
-                    <div className={`grid h-11 w-11 place-items-center rounded-xl ${
-                      tone === "green" ? "bg-emerald-50 text-emerald-700" :
-                      tone === "purple" ? "bg-violet-50 text-violet-700" :
-                      tone === "red" ? "bg-rose-50 text-rose-700" : "bg-brand-50 text-brand-700"
-                    }`}>
-                      <Icon size={18} />
+                    <div className="dashboard-stat-icon">
+                      <img src={icon} alt="" aria-hidden="true" className="dashboard-stat-icon-image" />
                     </div>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-1 text-xs font-semibold text-neutral-600">
+                    <span className="dashboard-stat-trend">
                       <TrendingUp size={12} />
                       {trend}
                     </span>
                   </div>
-                  <p className="text-sm font-medium text-neutral-500">{label}</p>
-                  <p className="mt-2 break-anywhere text-2xl font-semibold leading-8 text-ink">{value}</p>
+                  <p className="dashboard-stat-label">{label}</p>
+                  <p className="dashboard-stat-value">{value}</p>
                 </div>
               ))}
             </div>
@@ -112,7 +123,7 @@ export default function Dashboard() {
               <h2 className="panel-title">Lead Status</h2>
               <p className="muted">CRM snapshot from captured conversations</p>
               <div className="my-6 grid place-items-center">
-                <div className="grid h-44 w-44 place-items-center rounded-full bg-[conic-gradient(#2563eb_0_38%,#7c3aed_38%_62%,#10b981_62%_82%,#f59e0b_82%_100%)]">
+                <div className="grid h-44 w-44 place-items-center rounded-full bg-[conic-gradient(#13706d_0_38%,#45b95a_38%_62%,#63d865_62%_82%,#85ec75_82%_100%)]">
                   <div className="grid h-28 w-28 place-items-center rounded-full bg-white text-center">
                     <div>
                       <p className="text-3xl font-semibold text-ink">{totalLeads}</p>

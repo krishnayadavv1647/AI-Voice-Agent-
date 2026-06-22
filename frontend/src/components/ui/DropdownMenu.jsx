@@ -33,7 +33,12 @@ export default function DropdownMenu({ label = "More actions", align = "right", 
         aria-expanded={open}
         aria-label={label}
         title={label}
-        onClick={() => setOpen((current) => !current)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
       >
         <MoreHorizontal size={18} />
       </button>

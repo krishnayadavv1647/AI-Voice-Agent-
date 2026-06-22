@@ -10,6 +10,59 @@
   font-display: swap;
 }
 
+:root {
+  /* Dark app canvas base + olive/teal glows (reference: supplied banner) */
+  --app-bg-base: #010403;
+  --gradient-primary:
+    radial-gradient(42% 54% at 100% 0%, rgba(102, 147, 50, 0.42), rgba(102, 147, 50, 0) 70%),
+    radial-gradient(46% 62% at 92% 42%, rgba(79, 96, 3, 0.38), rgba(79, 96, 3, 0) 74%),
+    radial-gradient(36% 50% at 0% 30%, rgba(0, 112, 91, 0.28), rgba(0, 112, 91, 0) 70%),
+    linear-gradient(180deg, #020504 0%, #000101 74%, #000000 100%);
+
+  /* On-canvas text (page/section headers sit directly on the dark background) */
+  --text-on-canvas: #EEF6E8;
+  --text-on-canvas-muted: #9BA993;
+
+  /* Dark surfaces (cards, sidebar, header, modals) */
+  --surface-dark: rgba(6, 12, 8, 0.72);
+  --surface-dark-solid: #071008;
+  --surface-elev: rgba(184, 213, 119, 0.07);
+  --border-dark: rgba(193, 224, 134, 0.10);
+  --border-dark-strong: rgba(193, 224, 134, 0.22);
+  --text-hi: #F3FAEC;
+  --text-mid: #C9D5BE;
+  --text-lo: #8D9A85;
+
+  /* Green accent stops (kept under the old names for existing selectors) */
+  --purple-300: #D9FF5A;
+  --purple-400: #C8FF2E;
+  --purple-500: #9BFF68;
+  --purple-600: #7DFF4A;
+
+  /* Gradient fill reused by buttons, sidebar hover/active */
+  --gradient-button: linear-gradient(135deg, #C8FF2E 0%, #7DFF4A 100%);
+  --gradient-button-hover: linear-gradient(135deg, #D9FF5A 0%, #9BFF68 100%);
+  --glow-purple: 0 0 18px rgba(200, 255, 46, 0.22);
+  --glow-purple-strong: 0 0 24px rgba(200, 255, 46, 0.35);
+  --button-disabled-bg: rgba(255, 255, 255, 0.08);
+  --button-disabled-text: rgba(255, 255, 255, 0.35);
+  --button-disabled-border: rgba(255, 255, 255, 0.08);
+
+  /* Neutrals */
+  --card-bg: #FFFFFF;
+  --card-border: rgb(217, 217, 217);
+  --input-bg: #F2F2F2;
+  --input-border: #000000;
+
+  /* Shared elevation */
+  --shadow-soft: 0px 11px 70px 0px rgba(0, 0, 0, 0.08);
+
+  /* Radii */
+  --radius-card: 25px;
+  --radius-input: 12px;
+  --radius-button: 12px;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -19,13 +72,65 @@ html {
   overflow-x: hidden;
 }
 
-body {
+body,
+.app-shell {
   margin: 0;
   overflow-x: hidden;
-  background: #fafafa;
+  background-color: var(--app-bg-base);
+  background-image: var(--gradient-primary);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: #0a0a0a;
   font-family: "App Body Inter", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+.app-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.app-shell::after {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+}
+
+.app-shell::after {
+  opacity: 0.18;
+  background-image:
+    radial-gradient(circle at 16% 30%, rgba(0, 103, 83, 0.35), transparent 18%),
+    radial-gradient(circle at 78% 46%, rgba(103, 120, 11, 0.34), transparent 26%),
+    radial-gradient(circle at 52% 10%, rgba(0, 0, 0, 0.92), transparent 38%);
+  filter: blur(18px);
+}
+
+ .title1{
+    font-size: 35px !important;
+    line-height: 115% !important;
+  }
+  
+  .paragraph1{
+        font-size: 16px !important;
+    line-height: 150% !important;
+  }
+
+/* Page-level text sits on the dark canvas → light colors */
+.app-shell main {
+  color: var(--text-on-canvas);
+}
+
+.page-title,
+.section-title {
+  color: var(--text-on-canvas) !important;
+}
+
+.page-breadcrumb,
+.page-description,
+.section-description {
+  color: var(--text-on-canvas-muted) !important;
 }
 h1,
 h2,
@@ -48,13 +153,44 @@ h6,
 input,
 select,
 textarea {
+  width: 100%;
   max-width: 100%;
-  min-height: 40px;
-  @apply w-full rounded-xl border border-hairline bg-white px-3 text-sm text-ink outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-brand-500 focus:ring-4 focus:ring-brand-50 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-neutral-400;
+  height: 48px;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 15px;
+  color: #0a0a0a;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-input);
+  box-shadow: var(--shadow-soft);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #737373;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--purple-500);
+  box-shadow: 0 0 0 3px rgba(99, 216, 101, 0.22);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 textarea {
-  @apply min-h-28;
+  height: auto;
+  min-height: 7rem;
+  padding: 12px 16px;
 }
 
 button {
@@ -62,38 +198,213 @@ button {
 }
 
 .btn-primary {
-  min-height: 40px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-ink px-3.5 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 active:translate-y-px active:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 motion-reduce:transform-none;
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gradient-button);
+  color: #050505;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--glow-purple);
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.25s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  background: var(--gradient-button-hover);
+  box-shadow: var(--glow-purple-strong);
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
+  border: 1px solid var(--button-disabled-border);
+  background: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+}
+
+.btn-primary:disabled:hover {
+  background: var(--button-disabled-bg);
+  box-shadow: none;
+  transform: none;
 }
 
 .btn-accent {
-  min-height: 40px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 active:translate-y-px active:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 motion-reduce:transform-none;
+  min-height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gradient-button);
+  color: #050505;
+  box-shadow: var(--glow-purple);
+  font-weight: 600;
+  @apply inline-flex max-w-full items-center justify-center gap-2 px-[18px] py-3 text-sm transition focus-visible:ring-2 focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:active:translate-y-0 motion-reduce:transform-none;
+}
+
+.btn-accent:hover {
+  background: var(--gradient-button-hover);
+  box-shadow: var(--glow-purple-strong);
+  transform: translateY(-1px);
+}
+
+.btn-accent:disabled,
+.btn-accent:disabled:hover {
+  border: 1px solid var(--button-disabled-border);
+  background: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
 }
 
 .btn-secondary {
-  min-height: 40px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-hairline bg-white px-3.5 py-2 text-sm font-medium text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50;
+  display: inline-flex;
+  min-height: 48px;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid rgba(200, 255, 46, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #C8FF2E;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.btn-secondary:hover {
+  border-color: rgba(200, 255, 46, 0.6);
+  background: rgba(200, 255, 46, 0.08);
+}
+
+.btn-secondary:disabled,
+.btn-secondary:disabled:hover {
+  cursor: not-allowed;
+  border: 1px solid var(--button-disabled-border);
+  background: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  opacity: 1;
+  transform: none;
 }
 
 .btn-danger {
-  min-height: 40px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-3.5 py-2 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 active:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50;
+  display: inline-flex;
+  min-height: 48px;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid rgba(200, 255, 46, 0.35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #C8FF2E;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.btn-danger:hover {
+  border-color: rgba(200, 255, 46, 0.6);
+  background: rgba(200, 255, 46, 0.08);
+}
+
+.btn-danger:disabled,
+.btn-danger:disabled:hover {
+  cursor: not-allowed;
+  border: 1px solid var(--button-disabled-border);
+  background: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  opacity: 1;
+  transform: none;
 }
 
 .btn-success {
-  min-height: 40px;
-  @apply inline-flex max-w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-3.5 py-2 text-sm font-medium text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50;
-}
-
-.card {
+  display: inline-flex;
+  min-height: 48px;
   max-width: 100%;
-  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 12px;
+  background: var(--gradient-button);
+  color: #050505;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--glow-purple);
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.25s ease;
 }
 
+.btn-success:hover {
+  background: var(--gradient-button-hover);
+  box-shadow: var(--glow-purple-strong);
+  transform: translateY(-1px);
+}
+
+.btn-success:disabled,
+.btn-success:disabled:hover {
+  cursor: not-allowed;
+  border: 1px solid var(--button-disabled-border);
+  background: var(--button-disabled-bg);
+  color: var(--button-disabled-text);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+}
+
+.card,
 .glass-card {
   max-width: 100%;
-  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft;
+  padding: 24px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-dark);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.38);
+  color: var(--text-mid);
+}
+
+.sidebar-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-radius: var(--radius-button);
+  color: #4A4458;
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease,
+              box-shadow 0.25s ease, transform 0.15s ease;
+}
+
+/* Hover + Active = the gradient pill button look */
+.sidebar-item:hover,
+.sidebar-item.active {
+  background: var(--gradient-button);
+  color: #050505;
+  box-shadow: var(--glow-purple);
+  transform: translateY(-1px);
+}
+
+.sidebar-item:hover .icon,
+.sidebar-item.active .icon,
+.sidebar-item:hover svg,
+.sidebar-item.active svg {
+  color: #050505;
 }
 
 .panel-title {
@@ -215,7 +526,193 @@ button {
 }
 
 .metric-card {
-  @apply rounded-2xl border border-hairline bg-white p-5 shadow-soft transition hover:border-neutral-300 hover:-translate-y-px motion-reduce:transform-none;
+  padding: 24px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-dark);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.38);
+  color: var(--text-mid);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-card:hover {
+  border-color: var(--border-dark-strong);
+  transform: translateY(-1px);
+}
+
+.dashboard-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.dashboard-banner {
+  position: relative;
+  min-height: 270px;
+  overflow: visible;
+  margin-top: 30px;
+}
+
+.dashboard-banner-card {
+  position: relative;
+  min-height: 270px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: #050903;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  padding: 35px;
+}
+
+.dashboard-banner-card::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(90deg, rgba(0, 2, 1, 0.80) 0%, rgba(0, 2, 1, 0.48) 36%, rgba(0, 2, 1, 0.08) 76%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.24));
+  pointer-events: none;
+}
+
+.dashboard-banner-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+.dashboard-calling-agent-image {
+  position: absolute;
+  right: -6%;
+  bottom: 0px;
+  z-index: 3;
+  width: min(52vw, 680px);
+  max-width: 62%;
+  height: 124%;
+  object-fit: contain;
+  object-position: right bottom;
+  pointer-events: none;
+}
+
+.dashboard-banner-content {
+  position: relative;
+  z-index: 2;
+  max-width: 760px;
+  padding: 20px 12px 12px 12px;
+}
+
+.dashboard-stat-card {
+  min-width: 0;
+  min-height: 170px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 84% 12%, rgba(99, 216, 101, 0.22), transparent 34%),
+    linear-gradient(180deg, #0d1809 0%, #050903 100%);
+  color: #f3faec;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+  transition: border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.dashboard-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  transform: translateY(-1px);
+}
+
+.dashboard-stat-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(200, 255, 46, 0.20), transparent 62%),
+    rgba(255, 255, 255, 0.04);
+  color: #C8FF2E;
+  overflow: hidden;
+}
+
+.dashboard-stat-icon-image {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.28));
+}
+
+.dashboard-stat-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 4px 8px;
+  color: rgba(243, 250, 236, 0.76);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-stat-label {
+  color: rgba(243, 250, 236, 0.64);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.dashboard-stat-value {
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 35px;
+  font-weight: 800;
+  line-height: 36px;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-banner {
+    min-height: 188px;
+  }
+
+  .dashboard-banner-card {
+    min-height: 160px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-banner {
+    min-height: 154px;
+  }
+
+  .dashboard-banner-card {
+    min-height: 130px;
+    border-radius: 18px;
+  }
+
+  .dashboard-banner-content {
+    padding: 20px;
+  }
+
+  .dashboard-calling-agent-image {
+    right: -46px;
+    bottom: -10px;
+    width: min(72vw, 360px);
+    max-width: 72%;
+    height: 112%;
+    opacity: 0.7;
+  }
+
+ 
+
+  .dashboard-stat-card {
+    min-height: 150px;
+    padding: 20px;
+    border-radius: 18px;
+  }
 }
 
 .metric-value {
@@ -265,8 +762,8 @@ button {
 }
 
 .agent-card:focus-within {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 4px #eef2ff, 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
+  border-color: #63d865;
+  box-shadow: 0 0 0 4px rgba(99, 216, 101, 0.16), 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
 }
 
 .agent-card-body {
@@ -343,8 +840,8 @@ button {
 }
 
 .agent-status-badge-active {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: rgba(99, 216, 101, 0.16);
+  color: #85ec75;
 }
 
 .agent-status-badge-draft {
@@ -431,8 +928,8 @@ button {
   height: 28px;
   place-items: center;
   border-radius: 999px;
-  background: #4f46e5;
-  color: #ffffff;
+  background: var(--gradient-button);
+  color: #050505;
   font-size: 15px;
   font-weight: 700;
   line-height: 1;
@@ -528,7 +1025,7 @@ button {
 }
 
 .agent-status-toggle-on {
-  background: #4f46e5;
+  background: linear-gradient(135deg, #13706d 0%, #63d865 100%);
 }
 
 .agent-status-toggle-on span {
@@ -538,7 +1035,7 @@ button {
 .agent-status-toggle:focus-visible,
 .agent-card a:focus-visible,
 .agent-card button:focus-visible {
-  outline: 2px solid #4f46e5;
+  outline: 2px solid #63d865;
   outline-offset: 3px;
 }
 
@@ -574,6 +1071,36 @@ button {
   @apply animate-pulse rounded-xl bg-neutral-100;
 }
 
+@keyframes settings-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes settings-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.settings-panel-right {
+  animation: settings-slide-in-right 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-panel-left {
+  animation: settings-slide-in-left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 audio {
   max-width: 100%;
 }
@@ -589,9 +1116,12 @@ pre {
   }
 
   .card,
-  .glass-card,
+  .glass-card {
+    padding: 16px;
+  }
+
   .metric-card {
-    @apply rounded-2xl p-4;
+    @apply p-4;
   }
 
   .agent-card-body {
@@ -634,4 +1164,795 @@ pre {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+.telephony-page {
+  min-width: 0;
+  color: #0a0a0a;
+}
+
+.telephony-page *,
+.telephony-page h1,
+.telephony-page h2,
+.telephony-page h3,
+.telephony-page p {
+  letter-spacing: 0;
+}
+
+.telephony-page a {
+  color: #0a0a0a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.telephony-page a:hover {
+  color: #404040;
+}
+
+.telephony-page .btn-primary,
+.telephony-page .btn-secondary,
+.telephony-page .btn-danger {
+  white-space: nowrap;
+}
+
+.telephony-page .btn-primary svg,
+.telephony-page .btn-secondary svg,
+.telephony-page .btn-danger svg {
+  flex: 0 0 auto;
+}
+
+.telephony-detail-top h1 {
+  margin: 0;
+  color: #0a0a0a;
+  font-size: 30px;
+  font-weight: 720;
+  line-height: 1.2;
+}
+
+.telephony-section-header p,
+.telephony-modal-header p,
+.telephony-muted {
+  margin: 8px 0 0;
+  color: #737373;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.telephony-section-header p a,
+.telephony-doc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.telephony-list {
+  display: grid;
+  gap: 14px;
+}
+
+.telephony-config-row,
+.telephony-detail-card,
+.telephony-state-card {
+  position: relative;
+  border: 1px solid #ececec;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(10,10,10,.04), 0 1px 3px rgba(10,10,10,.06);
+}
+
+.telephony-config-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 102px;
+  padding: 22px 24px;
+}
+
+.telephony-row-main {
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.telephony-row-main:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+.telephony-row-title {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.telephony-row-title strong,
+.telephony-row-title h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.telephony-row-meta {
+  margin-top: 8px;
+  color: #525252;
+  font-size: 14px;
+}
+
+.telephony-row-id,
+.telephony-value-button {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: #737373;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+}
+
+.telephony-row-id code,
+.telephony-value-button code,
+.telephony-webhook code,
+.telephony-secret code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #0a0a0a;
+  font: inherit;
+}
+
+.telephony-row-actions,
+.telephony-table-actions,
+.telephony-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.telephony-icon-button,
+.telephony-copy-inline {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #525252;
+  text-decoration: none;
+}
+
+.telephony-icon-button:hover,
+.telephony-copy-inline:hover {
+  border-color: #ececec;
+  background: #fafafa;
+  color: #0a0a0a;
+  text-decoration: none;
+}
+
+.telephony-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.telephony-icon-danger {
+  color: #dc2626;
+}
+
+.telephony-pill {
+  display: inline-flex;
+  min-height: 21px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.telephony-pill-dark {
+  border: 1px solid #ececec;
+  background: #fafafa;
+  color: #0a0a0a;
+}
+
+.telephony-pill-light {
+  border: 1px solid #0a0a0a;
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+.telephony-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #525252;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.telephony-back-link:hover {
+  color: #0a0a0a;
+}
+
+.telephony-detail-card {
+  margin-top: 24px;
+  padding: 28px 24px;
+}
+
+.telephony-detail-top,
+.telephony-section-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.telephony-value-button,
+.telephony-webhook button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.telephony-secret-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.telephony-secret {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.telephony-secret span,
+.telephony-webhook span {
+  color: #525252;
+  font-size: 13px;
+}
+
+.telephony-secret code {
+  text-align: right;
+}
+
+.telephony-webhook {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.telephony-webhook button {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: #0a0a0a;
+}
+
+.telephony-section-header h2,
+.telephony-state-card h2,
+.telephony-modal-header h2 {
+  margin: 0;
+  color: #0a0a0a;
+  font-size: 20px;
+  font-weight: 720;
+  line-height: 1.25;
+}
+
+.telephony-table-wrap {
+  margin-top: 28px;
+  overflow-x: auto;
+}
+
+.telephony-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.telephony-table th {
+  border-bottom: 1px solid #ececec;
+  padding: 16px;
+  color: #737373;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.telephony-table td {
+  border-bottom: 1px solid #f5f5f5;
+  padding: 20px 16px;
+  color: #404040;
+  font-size: 14px;
+}
+
+.telephony-strong {
+  color: #0a0a0a !important;
+  font-weight: 750;
+}
+
+.telephony-empty-inline {
+  margin-top: 24px;
+  border: 1px dashed #d4d4d4;
+  border-radius: 0.875rem;
+  padding: 28px;
+  color: #737373;
+  text-align: center;
+}
+
+.telephony-danger-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.telephony-state-card {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 28px;
+}
+
+.telephony-state-card p {
+  margin: 0;
+  color: #737373;
+}
+
+.telephony-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(10, 10, 10, 0.42);
+  backdrop-filter: blur(5px);
+}
+
+.telephony-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 24px 24px 12px;
+}
+
+.telephony-modal-header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #525252;
+}
+
+.telephony-modal-header button:hover {
+  border-color: #ececec;
+  background: #fafafa;
+  color: #0a0a0a;
+}
+
+.telephony-modal-body {
+  display: grid;
+  gap: 14px;
+  padding: 4px 24px 18px;
+}
+
+.telephony-phone-note p {
+  color: #737373;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.telephony-doc-link {
+  justify-self: start;
+  color: #0a0a0a !important;
+  font-size: 13px;
+}
+
+.telephony-toggle-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #ececec;
+  border-radius: 0.625rem;
+  padding: 14px 12px;
+  background: #fafafa;
+}
+
+.telephony-toggle-card span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.telephony-toggle-card strong {
+  color: #0a0a0a;
+  font-size: 14px;
+}
+
+.telephony-toggle-card small {
+  color: #737373;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.telephony-toggle-card input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  accent-color: #0a0a0a;
+}
+
+.telephony-divider {
+  height: 1px;
+  margin: 2px 0 0;
+  background: #ececec;
+}
+
+.telephony-phone-note {
+  display: grid;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.telephony-phone-note strong {
+  color: #0a0a0a;
+  font-size: 14px;
+}
+
+.telephony-phone-note p {
+  margin: 0;
+}
+
+.telephony-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 24px 24px;
+}
+
+.telephony-toast {
+  position: fixed;
+  top: 82px;
+  right: 22px;
+  z-index: 80;
+  max-width: min(420px, calc(100vw - 44px));
+  border: 1px solid;
+  border-radius: 0.625rem;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 650;
+  box-shadow: 0 8px 24px rgba(10,10,10,.08);
+}
+
+.telephony-skeleton {
+  border-radius: 0.625rem;
+  background: linear-gradient(90deg, #f5f5f5, #ececec, #f5f5f5);
+  background-size: 200% 100%;
+  animation: telephony-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes telephony-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (max-width: 780px) {
+  .telephony-detail-top,
+  .telephony-section-header {
+    flex-direction: column;
+  }
+
+  .telephony-config-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .telephony-row-actions {
+    justify-content: flex-start;
+  }
+
+  .telephony-secret-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .telephony-secret {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .telephony-secret code {
+    text-align: left;
+  }
+
+  .telephony-page .btn-primary,
+  .telephony-page .btn-secondary,
+  .telephony-page .btn-danger {
+    width: 100%;
+  }
+
+  .telephony-modal-footer {
+    flex-direction: column-reverse;
+  }
+}
+
+/* ====================================================================
+   DARK THEME — all surfaces dark, light text, subtle borders.
+   Scoped to .app-shell so auth/public pages are unaffected.
+   ==================================================================== */
+
+/* Tailwind utility remaps (text) */
+.app-shell .text-ink,
+.app-shell .text-neutral-900,
+.app-shell .text-neutral-800 { color: var(--text-hi) !important; }
+.app-shell .text-neutral-700,
+.app-shell .text-neutral-600 { color: var(--text-mid) !important; }
+.app-shell .text-neutral-500,
+.app-shell .text-neutral-400 { color: var(--text-lo) !important; }
+
+/* Tailwind utility remaps (borders + light fills) */
+.app-shell .border-hairline { border-color: var(--border-dark) !important; }
+.app-shell .bg-white { background-color: var(--surface-dark-solid) !important; }
+.app-shell .bg-neutral-50,
+.app-shell .bg-neutral-100 { background-color: var(--surface-elev) !important; }
+.app-shell .hover\:bg-neutral-50:hover,
+.app-shell .hover\:bg-neutral-100:hover,
+.app-shell .hover\:bg-white:hover { background-color: var(--surface-elev) !important; }
+
+/* App shell: sidebar + header surfaces and the header bottom border */
+.app-shell aside { background-color: var(--surface-dark-solid) !important; }
+.app-shell header:not(.page-header) {
+  background-color: rgba(3, 8, 4, 0.86) !important;
+  border-bottom-color: var(--border-dark) !important;
+}
+
+/* Sidebar nav (inactive items) */
+.sidebar-item { color: var(--text-mid); }
+
+/* Composed helper classes (colors are baked via @apply → remap explicitly) */
+.panel-title { color: var(--text-hi) !important; }
+.muted { color: var(--text-lo) !important; }
+.field-label { color: var(--text-mid) !important; }
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(200, 255, 46, 0.35) !important;
+  color: #C8FF2E !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+}
+.btn-secondary:hover {
+  background: rgba(200, 255, 46, 0.08) !important;
+  border-color: rgba(200, 255, 46, 0.6) !important;
+  transform: none;
+}
+.btn-secondary:disabled,
+.btn-secondary:disabled:hover {
+  background: var(--button-disabled-bg) !important;
+  border-color: var(--button-disabled-border) !important;
+  color: var(--button-disabled-text) !important;
+  transform: none !important;
+}
+.btn-danger {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(200, 255, 46, 0.35) !important;
+  color: #C8FF2E !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+}
+.btn-danger:hover {
+  background: rgba(200, 255, 46, 0.08) !important;
+  border-color: rgba(200, 255, 46, 0.6) !important;
+  transform: none;
+}
+.btn-success {
+  background: var(--gradient-button) !important;
+  border-color: transparent !important;
+  color: #050505 !important;
+}
+.btn-success:hover {
+  background: var(--gradient-button-hover) !important;
+}
+.btn-danger:disabled,
+.btn-danger:disabled:hover,
+.btn-success:disabled,
+.btn-success:disabled:hover {
+  background: var(--button-disabled-bg) !important;
+  border-color: var(--button-disabled-border) !important;
+  color: var(--button-disabled-text) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Form controls on dark surfaces */
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  background: var(--surface-elev) !important;
+  border-color: var(--border-dark) !important;
+  color: var(--text-hi) !important;
+  box-shadow: none !important;
+}
+.app-shell input::placeholder,
+.app-shell textarea::placeholder { color: var(--text-lo) !important; }
+.app-shell input:focus,
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: var(--purple-500) !important;
+  box-shadow: 0 0 0 3px rgba(99, 216, 101, 0.20) !important;
+}
+
+.app-shell .bg-brand-600,
+.app-shell .hover\:bg-brand-700:hover,
+.app-shell .active\:bg-brand-800:active {
+  background: var(--gradient-button) !important;
+  color: #050505 !important;
+  box-shadow: var(--glow-purple);
+  font-weight: 600;
+}
+
+.app-shell .hover\:bg-brand-700:hover {
+  background: var(--gradient-button-hover) !important;
+  box-shadow: var(--glow-purple-strong);
+}
+
+.app-shell .text-brand-600,
+.app-shell .text-brand-700,
+.app-shell .hover\:text-brand-800:hover {
+  color: #050505 !important;
+}
+
+.app-shell .border-brand-200,
+.app-shell .border-brand-300,
+.app-shell .border-brand-500,
+.app-shell .hover\:border-brand-200:hover {
+  border-color: rgba(200, 255, 46, 0.42) !important;
+}
+
+.app-shell button.text-rose-600,
+.app-shell button.text-rose-700,
+.app-shell button.text-red-600,
+.app-shell button.text-red-700,
+.app-shell button.text-amber-600,
+.app-shell button.text-amber-700 {
+  color: #050505 !important;
+}
+
+.app-shell .badge.text-brand-700,
+.app-shell .badge.text-brand-600,
+.app-shell .bg-brand-50.text-brand-700,
+.app-shell .bg-brand-50.text-brand-600,
+.app-shell .bg-brand-100.text-brand-700,
+.app-shell .bg-brand-100.text-brand-600 {
+  color: #050505 !important;
+}
+
+.app-shell button.border-rose-200,
+.app-shell button.border-red-200,
+.app-shell button.border-amber-200 {
+  border-color: rgba(200, 255, 46, 0.35) !important;
+}
+
+.app-shell button.bg-rose-50,
+.app-shell button.bg-red-50,
+.app-shell button.bg-amber-50,
+.app-shell button.hover\:bg-rose-50:hover,
+.app-shell button.hover\:bg-red-50:hover,
+.app-shell button.hover\:bg-amber-50:hover {
+  background: rgba(200, 255, 46, 0.08) !important;
+}
+
+/* Modals */
+.modal-panel {
+  background-color: var(--surface-dark-solid) !important;
+  border-color: var(--border-dark) !important;
+  color: var(--text-mid);
+}
+
+/* Tables */
+.table th { background-color: var(--surface-elev) !important; color: var(--text-lo) !important; }
+.table td { border-color: var(--border-dark) !important; color: var(--text-mid) !important; }
+.table tbody tr:hover { background-color: var(--surface-elev) !important; }
+
+/* Icon tile / tabs / skeleton */
+.icon-tile {
+  border-color: var(--border-dark) !important;
+  background-color: var(--surface-elev) !important;
+  color: var(--text-mid) !important;
+}
+.tab-button { color: var(--text-lo) !important; }
+.tab-button:hover,
+.tab-button-active {
+  background-color: var(--surface-elev) !important;
+  color: var(--text-hi) !important;
+}
+.skeleton { background-color: var(--surface-elev) !important; }
+
+/* Specialized cards that use raw hex (agent cards, telephony) */
+.agent-card,
+.telephony-config-row,
+.telephony-detail-card,
+.telephony-state-card {
+  background: var(--surface-dark) !important;
+  border-color: var(--border-dark) !important;
+  color: var(--text-mid) !important;
+}
+.agent-card:hover { border-color: var(--border-dark-strong) !important; }
+.agent-card-footer,
+.dograh-integration-badge,
+.telephony-toggle-card {
+  background: var(--surface-elev) !important;
+  border-color: var(--border-dark) !important;
+}
+.agent-card-divider,
+.telephony-divider { background: var(--border-dark) !important; }
+.agent-card-title,
+.agent-info-row dd,
+.telephony-detail-top h1,
+.telephony-section-header h2,
+.telephony-state-card h2,
+.telephony-modal-header h2,
+.telephony-row-title strong,
+.telephony-strong,
+.telephony-toggle-card strong,
+.telephony-phone-note strong { color: var(--text-hi) !important; }
+.agent-card-business,
+.agent-card-category,
+.agent-info-row dt,
+.connected-app-row,
+.telephony-muted,
+.telephony-row-meta,
+.telephony-section-header p,
+.telephony-modal-header p,
+.telephony-state-card p,
+.telephony-secret span,
+.telephony-webhook span,
+.telephony-toggle-card small { color: var(--text-lo) !important; }
+.telephony-row-id code,
+.telephony-value-button code,
+.telephony-webhook code,
+.telephony-secret code,
+.telephony-page a,
+.telephony-back-link,
+.telephony-doc-link { color: var(--text-mid) !important; }
+.telephony-table th { color: var(--text-lo) !important; border-bottom-color: var(--border-dark) !important; }
+.telephony-table td { color: var(--text-mid) !important; border-bottom-color: var(--border-dark) !important; }
+.telephony-icon-button,
+.telephony-copy-inline { color: var(--text-lo) !important; }
+.telephony-icon-button:hover,
+.telephony-copy-inline:hover {
+  background: var(--surface-elev) !important;
+  border-color: var(--border-dark) !important;
+  color: var(--text-hi) !important;
+}
+.telephony-pill-dark { background: var(--surface-elev) !important; border-color: var(--border-dark) !important; color: var(--text-hi) !important; }
+.telephony-empty-inline { border-color: var(--border-dark-strong) !important; color: var(--text-lo) !important; }
+
+
+
+::-webkit-scrollbar{
+  display: none;
 }
