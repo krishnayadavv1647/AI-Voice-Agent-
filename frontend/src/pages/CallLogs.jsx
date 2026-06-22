@@ -222,7 +222,13 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
         aria-expanded={isOpen}
         aria-label="Open call options"
         title="Open call options"
-        onClick={() => setOpen(!isOpen)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!isOpen) updatePosition();
+          setOpen(!isOpen);
+        }}
       >
         <MoreVertical size={18} />
       </button>
@@ -230,7 +236,7 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
       {isOpen && (
         <div
           ref={menuRef}
-          className="fixed z-50 w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
+          className="fixed z-[9999] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
           style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
           role="menu"
         >

@@ -346,7 +346,13 @@ function AppointmentActionsMenu({ appointment, isOpen, setOpen, actingId, action
         aria-expanded={isOpen}
         aria-label="Open appointment options"
         title="Open appointment options"
-        onClick={() => setOpen(!isOpen)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!isOpen) updatePosition();
+          setOpen(!isOpen);
+        }}
       >
         <MoreVertical size={18} />
       </button>
@@ -354,7 +360,7 @@ function AppointmentActionsMenu({ appointment, isOpen, setOpen, actingId, action
       {isOpen && (
         <div
           ref={menuRef}
-          className="fixed z-50 w-[min(16.25rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
+          className="fixed z-[9999] w-[min(16.25rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
           style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
           role="menu"
         >

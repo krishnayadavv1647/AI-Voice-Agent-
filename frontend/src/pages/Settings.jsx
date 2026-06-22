@@ -1,37 +1,51 @@
-﻿import { Bell, CreditCard, KeyRound, Lock, Mail, MessageCircle, PhoneCall, Save, Send, ShieldCheck, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Bell, CreditCard, KeyRound, Lock, Mail, MessageCircle, Save, Send, ShieldCheck, User } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
-import Section from "../components/Section.jsx";
 import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
+
+const tabs = [
+  { key: "general", label: "General" },
+  { key: "notifications", label: "Notifications" },
+  { key: "messaging", label: "Messaging" },
+  { key: "team", label: "Team" },
+  { key: "email", label: "Email" }
+];
 
 export default function Settings() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState({ leads: true, calls: true, weekly: false, failures: true });
-  const [telephonyConfigs, setTelephonyConfigs] = useState([]);
   const [telegram, setTelegram] = useState(null);
   const [telegramCode, setTelegramCode] = useState("");
   const [telegramMessage, setTelegramMessage] = useState("");
-  const [agents, setAgents] = useState([]);
-  const [telephonyForm, setTelephonyForm] = useState({
-    name: "",
-    provider: "twilio",
-    phoneNumber: "",
-    accountSid: "",
-    authToken: "",
-    apiKey: "",
-    apiSecret: "",
-    appId: "",
-    linkedAgentId: "",
-    inboundEnabled: true,
-    outboundEnabled: true,
-    webhookUrl: ""
-  });
-  const [telephonyMessage, setTelephonyMessage] = useState("");
+
+  const [active, setActive] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const tabRefs = useRef([]);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+
+  useLayoutEffect(() => {
+    const el = tabRefs.current[active];
+    if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [active]);
 
   useEffect(() => {
-    loadTelephonyConfigs();
+    function onResize() {
+      const el = tabRefs.current[active];
+      if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [active]);
+
+  function goToTab(index) {
+    if (index === active) return;
+    setDirection(index >= active ? 1 : -1);
+    setActive(index);
+  }
+
+  useEffect(() => {
     loadTelegramStatus();
   }, []);
 
@@ -77,78 +91,55 @@ export default function Settings() {
     }
   }
 
-  async function loadTelephonyConfigs() {
-    try {
-      const [configs, agentList] = await Promise.all([api("/telephony-configs"), api("/agents")]);
-      setTelephonyConfigs(configs);
-      setAgents(agentList);
-    } catch (error) {
-      setTelephonyMessage(error.message);
-    }
-  }
-
-  async function saveTelephonyConfig() {
-    setTelephonyMessage("");
-    if (!telephonyForm.linkedAgentId) {
-      setTelephonyMessage("Select a linked agent before adding a Dograh telephony configuration.");
-      return;
-    }
-    try {
-      await api("/telephony-configs", { method: "POST", body: telephonyForm });
-      setTelephonyForm({ ...telephonyForm, name: "", phoneNumber: "", accountSid: "", authToken: "", apiKey: "", apiSecret: "", appId: "", linkedAgentId: "", webhookUrl: "" });
-      setTelephonyMessage("Telephony config saved.");
-      await loadTelephonyConfigs();
-    } catch (error) {
-      setTelephonyMessage(error.response?.userMessage || error.response?.message || error.message);
-    }
-  }
-
-  async function testTelephonyConfig(id) {
-    setTelephonyMessage("");
-    try {
-      const result = await api(`/telephony-configs/${id}/test`, { method: "POST", body: {} });
-      setTelephonyMessage(result.result?.message || "Telephony config test completed.");
-    } catch (error) {
-      setTelephonyMessage(error.message);
-    }
-  }
+  const activeKey = tabs[active].key;
 
   return (
-    <div className="page-stack">
+    <div className="space-y-8">
       <PageHeader title="Settings" description="Manage account preferences, notifications, team controls, and supporting integrations." />
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className="self-start rounded-xl border border-hairline bg-white p-3 lg:sticky lg:top-24">
-          {["General", "Notifications", "Messaging", "Telephony", "Team"].map((item) => (
-            <a key={item} className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" href={`#${item.toLowerCase()}`}>{item}</a>
-          ))}
-          <div className="my-2 border-t border-hairline" />
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/dograh-settings">Dograh</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/settings/email">Email</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/integrations/llm-providers">LLM Providers</Link>
-          <Link className="block rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-50 hover:text-ink" to="/integrations/voice-providers">Voice Providers</Link>
-        </aside>
+      <div className="sticky top-0 z-10 -mt-2 bg-canvas/95 backdrop-blur supports-[backdrop-filter]:bg-canvas/80">
+        <div className="relative overflow-x-auto border-b border-hairline">
+          <div className="flex min-w-max gap-1">
+            {tabs.map((tab, index) => (
+              <button
+                key={tab.key}
+                ref={(el) => (tabRefs.current[index] = el)}
+                onClick={() => goToTab(index)}
+                className={`whitespace-nowrap rounded-t-lg px-5 py-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 ${
+                  active === index ? "font-semibold text-ink" : "font-medium text-neutral-500 hover:bg-neutral-100 hover:text-ink"
+                }`}
+                aria-current={active === index ? "page" : undefined}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <span
+            className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-brand-600 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none"
+            style={{ left: indicator.left, width: indicator.width }}
+          />
+        </div>
+      </div>
 
-        <div className="min-w-0 space-y-8">
-          <Section className="scroll-mt-24" title="General" description="Profile, access, billing, and API visibility.">
-            <div id="general" className="grid min-w-0 gap-6 xl:grid-cols-2">
-              <Panel icon={Users} title="Profile" description="Read-only account identity for this workspace.">
+      <div key={active} className={direction >= 0 ? "settings-panel-right" : "settings-panel-left"}>
+        {activeKey === "general" && (
+          <TabView title="General" description="Profile, access, billing, and API visibility.">
+            <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+              <Panel icon={User} title="Profile" description="Read-only account identity for this workspace.">
                 <label className="field-label">Profile name<input value={user?.name || ""} readOnly /></label>
                 <label className="field-label">Email<input value={user?.email || ""} readOnly /></label>
-                <button className="btn-secondary" onClick={() => alert("Profile editing can be connected next.")}><Save size={16} />Save Changes</button>
+                <button className="btn-secondary w-fit" onClick={() => alert("Profile editing can be connected next.")}><Save size={16} />Save Changes</button>
               </Panel>
 
               <Panel icon={Lock} title="Security" description="Password settings for the current account.">
                 <input type="password" aria-label="Current password" placeholder="Current password" />
                 <input type="password" aria-label="New password" placeholder="New password" />
-                <button className="btn-secondary" onClick={() => alert("Password change endpoint can be connected next.")}>Update Password</button>
+                <button className="btn-secondary w-fit" onClick={() => alert("Password change endpoint can be connected next.")}>Update Password</button>
               </Panel>
 
               <Panel icon={KeyRound} title="API Keys" description="Credentials are managed in dedicated integration pages. Full keys are never exposed in the browser.">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Link className="btn-secondary" to="/settings/email"><Mail size={16} />Manage Email</Link>
-                  <Link className="btn-secondary" to="/dograh-settings">Manage Dograh</Link>
-                  <Link className="btn-secondary" to="/integrations/llm-providers">Manage LLM Providers</Link>
                 </div>
               </Panel>
 
@@ -159,11 +150,13 @@ export default function Settings() {
                 </div>
               </Panel>
             </div>
-          </Section>
+          </TabView>
+        )}
 
-          <Section className="scroll-mt-24" title="Notifications" description="Choose which operational events should notify your team.">
+        {activeKey === "notifications" && (
+          <TabView title="Notifications" description="Choose which operational events should notify your team.">
             <Panel icon={Bell} title="Notification Preferences">
-              <div id="notifications" className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {Object.entries(notifications).map(([key, value]) => (
                   <label key={key} className="flex items-center justify-between rounded-xl border border-hairline p-3 text-sm font-medium capitalize">
                     {key}
@@ -172,18 +165,20 @@ export default function Settings() {
                 ))}
               </div>
             </Panel>
-          </Section>
+          </TabView>
+        )}
 
-          <Section className="scroll-mt-24" title="Messaging" description="Connect Telegram for operational alerts and summaries.">
+        {activeKey === "messaging" && (
+          <TabView title="Messaging" description="Connect Telegram for operational alerts and summaries.">
             <Panel icon={MessageCircle} title="Telegram Integration" description="Generate a code, connect the bot, and control alert types.">
-              <div id="messaging" className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Info label="Status" value={telegram?.status || "Not connected"} />
                 <Info label="Bot" value={telegram?.botUsername || "Configure TELEGRAM_BOT_USERNAME"} />
                 <Info label="Telegram User" value={telegram?.telegramUsername || "Not connected"} />
                 <Info label="Connected At" value={telegram?.connectedAt ? new Date(telegram.connectedAt).toLocaleString() : "Not connected"} />
               </div>
 
-              {telegram?.botLink && <a className="btn-secondary" href={telegram.botLink} target="_blank" rel="noreferrer"><Send size={16} />Open Telegram Bot</a>}
+              {telegram?.botLink && <a className="btn-secondary w-fit" href={telegram.botLink} target="_blank" rel="noreferrer"><Send size={16} />Open Telegram Bot</a>}
 
               {telegramCode && (
                 <div className="rounded-xl bg-brand-50 p-4">
@@ -214,56 +209,38 @@ export default function Settings() {
               </div>
               {telegramMessage && <p className="rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600">{telegramMessage}</p>}
             </Panel>
-          </Section>
+          </TabView>
+        )}
 
-          <Section className="scroll-mt-24" title="Telephony" description="Add calling providers and link numbers to agents.">
-            <Panel icon={PhoneCall} title="Telephony Settings" description="Add Twilio, Exotel, or Vonage numbers. Secret values are masked after saving.">
-              <div id="telephony" className="field-grid">
-                <input placeholder="Config name" value={telephonyForm.name} onChange={(event) => setTelephonyForm({ ...telephonyForm, name: event.target.value })} />
-                <select value={telephonyForm.provider} onChange={(event) => setTelephonyForm({ ...telephonyForm, provider: event.target.value })}>
-                  <option value="twilio">Twilio</option>
-                  <option value="exotel">Exotel</option>
-                  <option value="vonage">Vonage</option>
-                </select>
-                <input placeholder="Phone number" value={telephonyForm.phoneNumber} onChange={(event) => setTelephonyForm({ ...telephonyForm, phoneNumber: event.target.value })} />
-                <input placeholder="Account SID / API key" value={telephonyForm.accountSid} onChange={(event) => setTelephonyForm({ ...telephonyForm, accountSid: event.target.value, apiKey: event.target.value })} />
-                <input placeholder="Auth token / API secret" type="password" value={telephonyForm.authToken} onChange={(event) => setTelephonyForm({ ...telephonyForm, authToken: event.target.value, apiSecret: event.target.value })} />
-                <select value={telephonyForm.linkedAgentId} onChange={(event) => setTelephonyForm({ ...telephonyForm, linkedAgentId: event.target.value })}>
-                  <option value="">Select linked agent</option>
-                  {agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName || agent.name}</option>)}
-                </select>
-                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.inboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, inboundEnabled: event.target.checked })} />Inbound enabled</label>
-                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={telephonyForm.outboundEnabled} onChange={(event) => setTelephonyForm({ ...telephonyForm, outboundEnabled: event.target.checked })} />Outbound enabled</label>
-              </div>
-              <button className="btn-primary" onClick={saveTelephonyConfig}>Add Configuration</button>
-              {telephonyMessage && <p className="rounded-xl bg-neutral-50 p-3 text-sm text-neutral-600">{telephonyMessage}</p>}
-              <div className="space-y-3">
-                {telephonyConfigs.map((config) => (
-                  <div key={config._id} className="rounded-xl border border-hairline p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-ink">{config.name}</p>
-                        <p className="break-anywhere text-sm text-neutral-500">{config.provider} - {config.phoneNumber}</p>
-                      </div>
-                      <button className="btn-secondary" onClick={() => testTelephonyConfig(config._id)}>Test Connection</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          </Section>
-
-          <Section className="scroll-mt-24" title="Team" description="Role and member controls for future collaboration workflows.">
+        {activeKey === "team" && (
+          <TabView title="Team" description="Role and member controls for future collaboration workflows.">
             <Panel icon={ShieldCheck} title="Team">
-              <div id="team">
-                <p className="text-sm leading-6 text-neutral-500">Team access and role controls are reserved for the next plan level.</p>
-                <button className="btn-secondary mt-4" disabled>Invite Member</button>
-              </div>
+              <p className="text-sm leading-6 text-neutral-500">Team access and role controls are reserved for the next plan level.</p>
+              <button className="btn-secondary mt-4 w-fit" disabled>Invite Member</button>
             </Panel>
-          </Section>
-        </div>
+          </TabView>
+        )}
+
+        {activeKey === "email" && (
+          <TabView title="Email" description="Configure email providers, sender identities, and inbox sync.">
+            <LinkCard icon={Mail} title="Email Integration" description="Connect Brevo or IMAP, validate API keys, and manage sender addresses." to="/settings/email" cta="Open Email Settings" />
+          </TabView>
+        )}
+
       </div>
     </div>
+  );
+}
+
+function TabView({ title, description, children }) {
+  return (
+    <section className="space-y-4">
+      <div className="min-w-0">
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        {description && <p className="mt-1 text-[13px] leading-5 text-neutral-500">{description}</p>}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -273,12 +250,20 @@ function Panel({ icon: Icon, title, description, children }) {
       <div className="flex min-w-0 items-start gap-3">
         <div className="icon-tile"><Icon size={18} /></div>
         <div className="min-w-0">
-          <h2 className="panel-title min-w-0 break-anywhere">{title}</h2>
+          <h3 className="panel-title min-w-0 break-anywhere">{title}</h3>
           {description && <p className="mt-1 text-[13px] leading-5 text-neutral-500">{description}</p>}
         </div>
       </div>
       {children}
     </section>
+  );
+}
+
+function LinkCard({ icon, title, description, to, cta }) {
+  return (
+    <Panel icon={icon} title={title} description={description}>
+      <Link className="btn-secondary w-fit" to={to}>{cta}</Link>
+    </Panel>
   );
 }
 

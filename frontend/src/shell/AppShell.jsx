@@ -1,11 +1,8 @@
 ﻿import {
   Bell,
   Bot,
-  BookOpen,
-  CreditCard,
   CalendarClock,
   Gauge,
-  Globe2,
   Headphones,
   Mail,
   MailOpen,
@@ -14,7 +11,7 @@
   LayoutTemplate,
   LogOut,
   Menu,
-  MessageSquare,
+  PanelLeft,
   PhoneCall,
   Plug,
   Search,
@@ -26,7 +23,7 @@
   X
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
 
@@ -44,44 +41,129 @@ const links = [
   { to: "/import-calls", label: "Import Calls", icon: Upload },
   { to: "/templates", label: "Templates", icon: LayoutTemplate },
   { to: "/voice-language", label: "Voice & Language", icon: Languages },
-  { to: "/integrations/voice-providers", label: "Voice Providers", icon: Plug },
-  { to: "/integrations/llm-providers", label: "LLM Providers", icon: MessageSquare },
+  { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/telephony-configuration", label: "Telephony Configuration", icon: PhoneCall },
   { to: "/dograh-settings", label: "Dograh Settings", icon: Workflow },
   { to: "/settings", label: "Settings", icon: Settings }
 ];
 
-function NavItems({ onClick, unreadEmailCount = 0 }) {
-  const { user } = useAuth();
-  const items = ["admin", "super_admin"].includes(user?.role) ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
+const navSections = [
+  {
+    label: "WORKSPACE",
+    items: ["/dashboard"]
+  },
+  {
+    label: "BUILD",
+    items: ["/agents", "/campaigns", "/leads", "/lead-finder", "/templates", "/voice-language"]
+  },
+  {
+    label: "TEST",
+    items: ["/calls"]
+  },
+  {
+    label: "OBSERVE",
+    items: ["/messages", "/email-inbox", "/followups", "/appointments", "/import-calls"]
+  },
+  {
+    label: "MANAGE",
+    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/dograh-settings", "/settings"]
+  }
+];
 
-  return items.map(({ to, label, icon: Icon }) => (
+function NavItem({ item, onClick, unreadEmailCount = 0 }) {
+  const { to, label, icon: Icon } = item;
+
+  return (
     <NavLink
-      key={to}
       to={to}
       onClick={onClick}
-      className={({ isActive }) =>
-        `group relative flex min-w-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-          isActive
-            ? "bg-neutral-100 text-ink before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded before:bg-brand-600"
-            : "text-neutral-500 hover:bg-neutral-100 hover:text-ink"
-        }`
-      }
+      className={({ isActive }) => `sidebar-item text-sm${isActive ? " active" : ""}`}
     >
-      <Icon size={18} className="shrink-0" />
+      <Icon size={18} className="icon shrink-0" />
       <span className="truncate">{label}</span>
       {to === "/email-inbox" && unreadEmailCount > 0 && (
         <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="Unread emails" />
       )}
     </NavLink>
-  ));
+  );
 }
 
-function pageTitle(pathname) {
-  const match = links.find((item) => pathname === item.to || pathname.startsWith(`${item.to}/`));
-  if (pathname.startsWith("/agents/") && pathname.endsWith("/edit")) return "Edit Agent";
-  if (pathname.startsWith("/agents/")) return "Agent Profile";
-  return match?.label || "AI Voice Agent Platform";
+function NavItems({ onClick, unreadEmailCount = 0 }) {
+  const { user } = useAuth();
+  const items = ["admin", "super_admin"].includes(user?.role) ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
+  const itemByPath = new Map(items.map((item) => [item.to, item]));
+  const groupedPaths = new Set(navSections.flatMap((section) => section.items));
+  const groupedSections = navSections.map((section) => ({
+    ...section,
+    items: section.items.map((to) => itemByPath.get(to)).filter(Boolean)
+  }));
+  const overflowItems = items.filter((item) => !groupedPaths.has(item.to));
+
+  return (
+    <>
+      {[...groupedSections, ...(overflowItems.length ? [{ label: "ADMIN", items: overflowItems }] : [])].map((section) => (
+        <div key={section.label} className="space-y-1">
+          <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">{section.label}</p>
+          {section.items.map((item) => (
+            <NavItem key={item.to} item={item} onClick={onClick} unreadEmailCount={unreadEmailCount} />
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function SidebarContent({ initials, user, unreadEmailCount, onNavigate, onClose, onLogout, mobile = false }) {
+  return (
+    <>
+      <div className="mb-4 flex min-w-0 items-center justify-between gap-3 px-2">
+        <Link to="/dashboard" onClick={onNavigate} className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-ink text-white shadow-soft">
+            <Headphones size={20} />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold tracking-tight text-ink">AI Voice Agent</p>
+            <p className="truncate text-xs font-medium text-neutral-500">Platform</p>
+          </div>
+        </Link>
+        {mobile ? (
+          <button className="rounded-xl border border-hairline p-2" onClick={onClose} aria-label="Close menu"><X size={18} /></button>
+        ) : (
+          <button className="rounded-xl border border-hairline p-2 text-neutral-500" aria-label="Sidebar layout">
+            <PanelLeft size={18} />
+          </button>
+        )}
+      </div>
+
+      <div className="mb-3 rounded-xl border border-hairline bg-neutral-50 p-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ink text-xs font-semibold text-white">{initials}</div>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold text-ink">{user?.email || user?.name || "User"}</p>
+          </div>
+          <span className="ml-auto text-xs text-neutral-400">⌄</span>
+        </div>
+      </div>
+
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        <NavItems onClick={onNavigate} unreadEmailCount={unreadEmailCount} />
+      </nav>
+
+      <div className="mt-4 rounded-2xl border border-hairline bg-neutral-50 p-3">
+        <div className="mb-3 flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">{user?.name || "User"}</p>
+            <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "free"} plan</p>
+          </div>
+        </div>
+        <button onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-neutral-600 hover:bg-white hover:text-ink">
+          <LogOut size={16} />
+          Logout
+        </button>
+      </div>
+    </>
+  );
 }
 
 export default function AppShell() {
@@ -89,7 +171,6 @@ export default function AppShell() {
   const [unreadEmailCount, setUnreadEmailCount] = useState(0);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const initials = (user?.name || "AI")
     .split(" ")
     .map((part) => part[0])
@@ -123,7 +204,7 @@ export default function AppShell() {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-canvas">
+    <div className="app-shell min-h-screen overflow-x-hidden">
       {user?.impersonatedBy && (
         <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-amber-500 px-4 py-2 text-sm font-semibold text-white">
           You are viewing as {user.email}.
@@ -141,49 +222,21 @@ export default function AppShell() {
         </div>
       )}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-hairline bg-white p-4 lg:flex lg:flex-col">
-        <Link to="/dashboard" className="mb-6 flex min-w-0 items-center gap-3 px-2">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-ink text-white shadow-soft">
-            <Headphones size={22} />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-lg font-semibold tracking-tight text-ink">AI Voice Agent</p>
-            <p className="truncate text-xs font-medium text-neutral-500">Platform</p>
-          </div>
-        </Link>
-
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-          <NavItems unreadEmailCount={unreadEmailCount} />
-        </nav>
-
-        <div className="mt-4 rounded-2xl border border-hairline bg-neutral-50 p-3">
-          <div className="mb-3 flex min-w-0 items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-ink">{user?.name || "User"}</p>
-              <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "free"} plan</p>
-            </div>
-          </div>
-          <button onClick={signOut} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-neutral-600 hover:bg-white hover:text-ink">
-            <LogOut size={16} />
-            Logout
-          </button>
-        </div>
+        <SidebarContent initials={initials} user={user} unreadEmailCount={unreadEmailCount} onLogout={signOut} />
       </aside>
 
       <div className="min-w-0 max-w-full lg:pl-72">
         <header className="sticky top-0 z-20 border-b border-hairline bg-white/95 backdrop-blur">
-          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center gap-2 px-4 py-2 sm:gap-3 sm:px-6 lg:px-8">
+          <div className="mx-auto flex min-h-16 w-full max-w-[1440px] items-center gap-2 px-4 py-3 sm:gap-3 sm:px-6 lg:px-8">
             <button className="shrink-0 rounded-xl border border-hairline p-2 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
               <Menu size={20} />
             </button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-ink">{pageTitle(location.pathname)}</p>
-              <p className="hidden truncate text-xs text-neutral-500 sm:block">Create outbound AI calling agents, sync runs, and convert conversations into leads.</p>
+            <div className="relative hidden min-w-0 max-w-2xl flex-1 md:block">
+              <input className="h-12  rounded-[30px] min-h-0 border border-hairline bg-white py-0 pl-4 pr-11 text-sm shadow-soft focus:ring-0" placeholder="Search agents, leads, calls..." />
+              <Search size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400" />
             </div>
-            <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-hairline bg-white px-3 py-2 shadow-soft md:flex">
-              <Search size={16} className="shrink-0 text-neutral-400" />
-              <input className="border-0 bg-transparent p-0 text-sm shadow-none focus:border-0 focus:ring-0" placeholder="Search agents, leads, calls..." />
-            </div>
+            <div className="flex-1 md:hidden" />
+            <div className="hidden flex-1 md:block" />
             <button className="hidden rounded-xl border border-hairline bg-white p-2 text-neutral-600 hover:bg-neutral-50 sm:block" aria-label="Notifications">
               <Bell size={18} />
             </button>
@@ -199,19 +252,15 @@ export default function AppShell() {
       {open && (
         <div className="fixed inset-0 z-40 bg-black/30 p-3 backdrop-blur-sm lg:hidden" onClick={() => setOpen(false)}>
           <div className="flex h-full w-full max-w-[22rem] min-w-0 flex-col rounded-2xl bg-white p-4 shadow-pop" onClick={(event) => event.stopPropagation()}>
-            <div className="mb-5 flex items-center justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-ink text-white"><Globe2 size={20} /></div>
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-ink">AI Voice Agent</p>
-                  <p className="truncate text-xs text-neutral-500">Platform</p>
-                </div>
-              </div>
-              <button className="rounded-xl border border-hairline p-2" onClick={() => setOpen(false)} aria-label="Close menu"><X size={18} /></button>
-            </div>
-            <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-              <NavItems onClick={() => setOpen(false)} unreadEmailCount={unreadEmailCount} />
-            </nav>
+            <SidebarContent
+              mobile
+              initials={initials}
+              user={user}
+              unreadEmailCount={unreadEmailCount}
+              onNavigate={() => setOpen(false)}
+              onClose={() => setOpen(false)}
+              onLogout={signOut}
+            />
           </div>
         </div>
       )}
