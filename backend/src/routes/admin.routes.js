@@ -19,6 +19,7 @@ import {
   adminLeads,
   adminStats,
   auditLogs,
+  cancelCampaign,
   cancelAppointment,
   cancelFollowUp,
   completeAppointment,
@@ -36,12 +37,14 @@ import {
   listUsers,
   overview,
   pauseAgent,
+  pauseCampaign,
   resetPassword,
   runFollowUpNow,
   stopImpersonation,
   suspendUser,
   updateAgent,
   updateAppointment,
+  updateCampaign,
   updateCredits,
   updateFollowUp,
   updateIntegrationSettings,
@@ -87,6 +90,9 @@ router.delete("/agents/:id", deleteAgent);
 
 router.get("/calls", adminCalls);
 router.get("/campaigns", adminCampaigns);
+router.patch("/campaigns/:id", updateCampaign);
+router.post("/campaigns/:id/pause", pauseCampaign);
+router.post("/campaigns/:id/cancel", cancelCampaign);
 router.get("/calls/:id", getCall);
 router.delete("/calls/:id", deleteCall);
 

@@ -25,6 +25,46 @@ function errorText(err) {
   return err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message;
 }
 
+function maskEmail(value = "") {
+  const [name, domain] = String(value || "").split("@");
+  if (!name || !domain) return value ? "***" : "";
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
+function maskPhone(value = "") {
+  const text = String(value || "");
+  if (text.length <= 4) return text ? "***" : "";
+  return `${"*".repeat(Math.max(0, text.length - 4))}${text.slice(-4)}`;
+}
+
+function debugAppointmentPayload(form, leads = []) {
+  const selectedLead = leads.find((lead) => lead._id === form.leadId);
+  return {
+    ...form,
+    selectedLead: selectedLead
+      ? {
+          id: selectedLead._id,
+          namePresent: Boolean(selectedLead.name || selectedLead.contactName || selectedLead.businessName),
+          phone: maskPhone(selectedLead.phone),
+          email: maskEmail(selectedLead.email)
+        }
+      : null
+  };
+}
+
+function debugAppointmentList(appointments = []) {
+  return appointments.map((appointment) => ({
+    id: appointment._id,
+    agentId: appointment.agentId?._id || appointment.agentId,
+    leadId: appointment.leadId?._id || appointment.leadId,
+    startAt: appointment.startAt,
+    status: appointment.status,
+    source: appointment.source,
+    customerPhone: maskPhone(appointment.customerPhone || appointment.leadId?.phone),
+    customerEmail: maskEmail(appointment.customerEmail || appointment.leadId?.email)
+  }));
+}
+
 function leadLabel(lead) {
   return lead?.businessName || lead?.contactName || lead?.name || lead?.phone || "Lead";
 }
@@ -76,12 +116,29 @@ export default function Appointments() {
     const params = new URLSearchParams(location.search);
     const requestedAgentId = params.get("agentId") || "";
     const requestedLeadId = params.get("leadId") || "";
+    const appointmentParams = new URLSearchParams();
+    if (requestedAgentId) appointmentParams.set("agentId", requestedAgentId);
+    if (requestedLeadId) appointmentParams.set("leadId", requestedLeadId);
+    const appointmentPath = `/appointments${appointmentParams.toString() ? `?${appointmentParams.toString()}` : ""}`;
+    console.log("[Appointment Debug][Frontend] Fetch endpoint", {
+      endpoint: appointmentPath,
+      requestedAgentId,
+      requestedLeadId
+    });
     const [appointmentList, agentList, leadList] = await Promise.all([
-      api("/appointments"),
+      api(appointmentPath),
       api("/agents"),
       api("/leads")
     ]);
+    console.log("[Appointment Debug][Frontend] Appointment fetch response", {
+      count: appointmentList.length,
+      appointments: debugAppointmentList(appointmentList)
+    });
     setAppointments(appointmentList);
+    console.log("[Appointment Debug][Frontend] Appointment list data after fetch", {
+      count: appointmentList.length,
+      appointments: debugAppointmentList(appointmentList)
+    });
     setAgents(agentList);
     setLeads(leadList);
     setForm((current) => ({
@@ -116,12 +173,25 @@ export default function Appointments() {
 
     try {
       if (selected) {
+        console.log("[Appointment Debug][Frontend] Submit clicked", { mode: "reschedule", appointmentId: selected._id });
+        console.log("[Appointment Debug][Frontend] Appointment payload before API", {
+          date: form.date,
+          time: form.time,
+          timezone: form.timezone
+        });
+        console.log("[Appointment Debug][Frontend] API endpoint", {
+          endpoint: `/appointments/${selected._id}/reschedule`,
+          method: "POST"
+        });
         const result = await api(`/appointments/${selected._id}/reschedule`, {
           method: "POST",
           body: { date: form.date, time: form.time, timezone: form.timezone }
         });
         setNotice(schedulingNotice(result, "Appointment rescheduled."));
       } else {
+        console.log("[Appointment Debug][Frontend] Submit clicked", { mode: "create" });
+        console.log("[Appointment Debug][Frontend] Appointment payload before API", debugAppointmentPayload(form, leads));
+        console.log("[Appointment Debug][Frontend] API endpoint", { endpoint: "/appointments", method: "POST" });
         const result = await api("/appointments", { method: "POST", body: form });
         setNotice(schedulingNotice(result, "Appointment booked."));
       }

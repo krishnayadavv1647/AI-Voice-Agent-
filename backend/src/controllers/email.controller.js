@@ -24,7 +24,7 @@ const SEND_BATCH_DELAY_MS = 2000;
 const OBJECT_ID_REGEX = /^[a-f\d]{24}$/i;
 
 function filter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 function clean(value) {
@@ -915,7 +915,7 @@ export const testInboundMatch = asyncHandler(async (req, res) => {
   const result = await findInboundEmailMatch({
     fromEmail,
     subject,
-    userId: req.user.role === "admin" ? undefined : req.user._id
+    userId: ["admin", "super_admin"].includes(req.user.role) ? undefined : req.user._id
   });
 
   res.json({

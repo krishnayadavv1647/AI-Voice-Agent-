@@ -64,6 +64,9 @@ export default function AgentDetails() {
   const [warning, setWarning] = useState("");
   const [callLoading, setCallLoading] = useState(false);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [modalNotice, setModalNotice] = useState("");
   const [selectedCall, setSelectedCall] = useState(null);
   const [scheduleForm, setScheduleForm] = useState({
     phoneNumber: "",
@@ -189,10 +192,22 @@ export default function AgentDetails() {
       timezone: current.timezone || defaultTimezone()
     }));
 
-    setSelectedCall(null);
-    setNotice("Repeat call details added to schedule form.");
+    closeCall();
+    setNotice("Repeat call details added to the schedule form below.");
     window.location.hash = "scheduled-calls";
     document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function openCall(call) {
+    setModalError("");
+    setModalNotice("");
+    setSelectedCall(call);
+  }
+
+  function closeCall() {
+    setModalError("");
+    setModalNotice("");
+    setSelectedCall(null);
   }
 
   function startCallPolling(callLogId) {
@@ -221,17 +236,20 @@ export default function AgentDetails() {
   }
 
   async function extractLead(callId) {
-    setError("");
-    setNotice("");
+    setModalError("");
+    setModalNotice("");
+    setExtracting(true);
     try {
       const result = await api(`/calls/${callId}/extract-lead`, { method: "POST" });
       const updatedCall = result.callLog || result;
       setCalls((current) => current.map((call) => call._id === updatedCall._id ? updatedCall : call));
       setSelectedCall((current) => current?._id === updatedCall._id ? updatedCall : current);
-      setNotice(result.lead ? "Lead extracted from transcript." : "No lead extracted from transcript.");
+      setModalNotice(result.lead ? "Lead extracted from transcript." : "No lead found in this call's transcript.");
       await load();
     } catch (err) {
-      setError(formatApiError(err));
+      setModalError(formatApiError(err));
+    } finally {
+      setExtracting(false);
     }
   }
 
@@ -409,7 +427,7 @@ export default function AgentDetails() {
                       <Info label="Date" value={new Date(call.createdAt).toLocaleString()} />
                     </div>
                     <div className="mt-4 action-row">
-                      <button className="btn-secondary" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                      <button className="btn-secondary" onClick={() => openCall(call)}><Eye size={14} />View</button>
                       <button className="btn-secondary" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
                       {call.recordingUrl && <a className="btn-secondary" href={call.recordingUrl} target="_blank">Recording</a>}
                     </div>
@@ -433,7 +451,7 @@ export default function AgentDetails() {
                         <td>{call.leadCaptured ? "Yes" : "No"}</td>
                         <td>
                           <div className="flex flex-wrap gap-2">
-                            <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setSelectedCall(call)}><Eye size={14} />View</button>
+                            <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => openCall(call)}><Eye size={14} />View</button>
                             <button className="btn-secondary px-3 py-1.5 text-xs" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
                             {call.recordingUrl && <a className="btn-secondary px-3 py-1.5 text-xs" href={call.recordingUrl} target="_blank">Recording</a>}
                           </div>
@@ -451,15 +469,18 @@ export default function AgentDetails() {
       )}
 
       {selectedCall && (
-        <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-black/30 p-4" onClick={() => setSelectedCall(null)}>
+        <div className="fixed inset-0 z-40 grid place-items-center overflow-y-auto bg-black/30 p-4" onClick={closeCall}>
           <div className="modal-panel rounded-2xl bg-white p-4 shadow-soft sm:max-w-4xl sm:p-6" onClick={(event) => event.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-ink">Call Details</h2>
                 <p className="text-sm text-neutral-500">{agent.agentName} call record.</p>
               </div>
-              <button type="button" className="rounded-lg border border-hairline p-2" onClick={() => setSelectedCall(null)}><X size={18} /></button>
+              <button type="button" className="rounded-lg border border-hairline p-2" onClick={closeCall}><X size={18} /></button>
             </div>
+
+            {modalError && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{modalError}</div>}
+            {modalNotice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{modalNotice}</div>}
 
             <div className="grid gap-4 md:grid-cols-2">
               <Info label="Agent" value={agent.agentName} />
@@ -489,19 +510,13 @@ export default function AgentDetails() {
             <DetailBlock title="Summary" value={selectedCall.summary || "No summary available"} />
             <DetailBlock title="Transcript" value={selectedCall.transcript} />
             <DetailBlock title="Lead Data" value={selectedCall.leadData ? JSON.stringify(selectedCall.leadData, null, 2) : "No extracted lead data available."} pre />
-            {!selectedCall.leadData && (
-              <button
-                className="btn-secondary mt-4"
-                onClick={() => extractLead(selectedCall._id)}
-              >
-                Extract Lead
-              </button>
-            )}
 
             <div className="mt-6 action-row sm:justify-end">
-              <button className="btn-secondary" onClick={() => extractLead(selectedCall._id)}>Extract Lead</button>
-              <button className="btn-secondary" disabled={!selectedCall.callerNumber} onClick={() => repeatCall(selectedCall)}><RefreshCw size={16} />Repeat</button>
-              <button className="btn-primary" onClick={() => setSelectedCall(null)}>Close</button>
+              <button className="btn-secondary" disabled={extracting} onClick={() => extractLead(selectedCall._id)}>
+                {extracting ? "Extracting…" : selectedCall.leadData ? "Re-extract Lead" : "Extract Lead"}
+              </button>
+              <button className="btn-secondary" disabled={!selectedCall.callerNumber} title={!selectedCall.callerNumber ? "This call has no caller number to dial." : ""} onClick={() => repeatCall(selectedCall)}><RefreshCw size={16} />Repeat</button>
+              <button className="btn-primary" onClick={closeCall}>Close</button>
             </div>
           </div>
         </div>

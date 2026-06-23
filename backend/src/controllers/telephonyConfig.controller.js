@@ -18,7 +18,7 @@ const INCOMING_LOOKUP_TIMEOUT_MS = 1500;
 const INBOUND_MODES = ["dograh_ai", "static_greeting", "disabled"];
 
 function userFilter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 function publicBaseUrl() {

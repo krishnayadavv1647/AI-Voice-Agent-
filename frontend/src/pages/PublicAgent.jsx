@@ -61,6 +61,26 @@ const topicIconMap = {
 
 const slots = ["10:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:00 PM"];
 
+function defaultTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Calcutta";
+}
+
+function toDateInputValue(date) {
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+function slotToTimeValue(slot) {
+  const match = String(slot || "").match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return "";
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const period = match[3].toUpperCase();
+  if (period === "AM" && hour === 12) hour = 0;
+  if (period === "PM" && hour !== 12) hour += 12;
+  return `${String(hour).padStart(2, "0")}:${minute}`;
+}
+
 function makeSessionId() {
   const existing = sessionStorage.getItem("public_agent_session_id");
   if (existing) return existing;
@@ -635,7 +655,8 @@ function Booking({ profile, agent, onBack, onChat }) {
         label: index === 0 ? "Today" : index === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }),
         dow: index === 0 ? "TODAY" : d.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase(),
         day: d.getDate(),
-        mon: d.toLocaleDateString(undefined, { month: "short" })
+        mon: d.toLocaleDateString(undefined, { month: "short" }),
+        value: toDateInputValue(d)
       };
     });
   }, []);
@@ -647,13 +668,17 @@ function Booking({ profile, agent, onBack, onChat }) {
     setSaving(true);
     setError("");
     try {
-      await api(`/public/agents/${agent._id}/request-call`, {
+      await api(`/public/agents/${agent._id}/appointments`, {
         method: "POST",
         auth: false,
         body: {
           ...form,
-          preferredTime: `${days[day].label}, ${time}`,
-          requirement: form.requirement || `${mode} counselling appointment`
+          date: days[day].value,
+          time: slotToTimeValue(time),
+          timezone: defaultTimezone(),
+          mode,
+          requirement: form.requirement || `${mode} counselling appointment`,
+          appointmentType: mode === "In-person" ? "meeting" : "consultation"
         }
       });
       setDone(true);
@@ -674,7 +699,7 @@ function Booking({ profile, agent, onBack, onChat }) {
             <Check size={24} strokeWidth={3} />
           </span>
           <h1 className="mt-4 text-[27px] font-extrabold tracking-normal">You're booked!</h1>
-          <p className="mt-2 text-[15px] text-[#64748b]">A counselling advisor will contact {form.name.split(" ")[0] || "you"} as scheduled.</p>
+          <p className="mt-2 text-[15px] text-[#64748b]">Your appointment is saved for {form.name.split(" ")[0] || "you"}.</p>
           <div className="vf-card-solid mt-6 w-full rounded-[18px] px-5 py-1 text-left">
             <InfoRow icon={CalendarDays} label="Date" value={days[day].label} first />
             <InfoRow icon={Clock} label="Time" value={time} />

@@ -322,6 +322,9 @@ export const updateAgent = asyncHandler(async (req, res) => res.json(await updat
 export const pauseAgent = asyncHandler(async (req, res) => res.json(await updateRecord(req, Agent, "agent_paused", { status: "Paused" })));
 export const activateAgent = asyncHandler(async (req, res) => res.json(await updateRecord(req, Agent, "agent_activated", { status: "Active" })));
 export const deleteAgent = asyncHandler(async (req, res) => res.json(await updateRecord(req, Agent, "agent_deleted", { status: "archived", archivedAt: new Date() })));
+export const updateCampaign = asyncHandler(async (req, res) => res.json(await updateRecord(req, Campaign, "campaign_updated", req.body)));
+export const pauseCampaign = asyncHandler(async (req, res) => res.json(await updateRecord(req, Campaign, "campaign_paused", { status: "paused" })));
+export const cancelCampaign = asyncHandler(async (req, res) => res.json(await updateRecord(req, Campaign, "campaign_cancelled", { status: "cancelled" })));
 export const getCall = asyncHandler(async (req, res) => res.json(await CallLog.findById(req.params.id).populate("userId", "name email").populate("agentId", "agentName").populate("leadId")));
 export const deleteCall = asyncHandler(async (req, res) => { const row = await updateRecord(req, CallLog, "call_deleted", { status: "deleted" }); res.json(row); });
 export const updateLead = asyncHandler(async (req, res) => res.json(await updateRecord(req, Lead, "lead_updated", req.body)));

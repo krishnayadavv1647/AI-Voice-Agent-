@@ -2,6 +2,7 @@ import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import Agent from "../models/Agent.js";
 import Lead from "../models/Lead.js";
+import { createAppointmentRecord } from "../services/appointment.service.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
@@ -189,5 +190,72 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
     message: "AI assistant is calling you now.",
     lead,
     callLog
+  });
+});
+
+export const createPublicAppointment = asyncHandler(async (req, res) => {
+  const {
+    name = "",
+    phoneNumber = "",
+    email = "",
+    requirement = "",
+    appointmentType = "consultation",
+    date,
+    time,
+    timezone = "Asia/Calcutta",
+    mode = "Online"
+  } = req.body;
+  const agent = await Agent.findById(req.params.agentId);
+
+  if (!agent) throw new ApiError(404, "Agent not found");
+  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  if (!agent.isPublic || agent.status === "archived" || bioPage.isPublished === false) {
+    throw new ApiError(403, "This agent page is currently unavailable.");
+  }
+  if ((bioPage.showAppointmentButton ?? bioPage.showAppointment) === false) {
+    throw new ApiError(403, "Appointment booking is not enabled for this agent.");
+  }
+  if (!date || !time) throw new ApiError(400, "Please select an appointment date and time.");
+  if (!name.trim()) throw new ApiError(400, "Name is required.");
+  if (!String(phoneNumber).trim()) throw new ApiError(400, "Phone number is required.");
+
+  const leadPayload = normalizeLeadToEnglish({
+    userId: agent.userId,
+    agentId: agent._id,
+    name,
+    phone: phoneNumber,
+    email,
+    requirement,
+    preferredDate: date,
+    preferredTime: time,
+    source: "public_appointment",
+    status: "appointment_booked",
+    customFields: { mode }
+  });
+
+  const lead = await Lead.create(leadPayload);
+  const result = await createAppointmentRecord({
+    userId: agent.userId,
+    agent,
+    lead,
+    title: `${mode} appointment with ${lead.name || lead.phone || "lead"}`,
+    appointmentType,
+    date,
+    time,
+    timezone,
+    customerName: lead.name,
+    customerPhone: lead.phone,
+    customerEmail: lead.email,
+    notes: requirement ? `${requirement}\nMode: ${mode}` : `Mode: ${mode}`,
+    source: "message",
+    reminderEnabled: true
+  });
+
+  res.status(result.created ? 201 : 200).json({
+    success: true,
+    message: result.created ? "Appointment booked." : "Appointment already exists.",
+    lead,
+    appointment: result.appointment,
+    meta: result.meta
   });
 });

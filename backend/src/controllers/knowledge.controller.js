@@ -3,7 +3,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import KnowledgeBase from "../models/KnowledgeBase.js";
 
 function filter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 export const createKnowledge = asyncHandler(async (req, res) => {

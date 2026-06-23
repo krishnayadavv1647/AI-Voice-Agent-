@@ -115,6 +115,15 @@ const agentSchema = new mongoose.Schema(
     dograhLastSyncedAt: Date,
     dograhEmbedToken: String,
     dograhWidgetEnabled: { type: Boolean, default: false },
+    imageUrl: { type: String, default: "" },
+    imagePrompt: { type: String, default: "" },
+    imageGeneratedAt: Date,
+    imageProvider: { type: String, default: "" },
+    imageMode: {
+      type: String,
+      enum: ["auto_generate", "upload_custom", "default_avatar"],
+      default: "auto_generate"
+    },
     lastSyncedAt: { type: Date, default: null },
     archivedAt: Date,
     status: { type: String, enum: ["Draft", "Active", "Paused", "Connected", "draft", "active", "archived"], default: "draft" },

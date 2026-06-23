@@ -6,7 +6,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 
 function userFilter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 function assertE164(value) {
