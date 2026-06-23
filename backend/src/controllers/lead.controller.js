@@ -5,7 +5,7 @@ import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 
 function filter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 export const listLeads = asyncHandler(async (req, res) => {

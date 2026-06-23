@@ -42,6 +42,7 @@ import {
   getDograhVoiceRuntimeSummary
 } from "../services/dograhVoiceConfigSync.service.js";
 import { BIO_PAGE_TEMPLATES, DEFAULT_QUICK_TOPICS, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
+import { applyGeneratedAgentImage, shouldGenerateAgentImage } from "../services/agentImage.service.js";
 
 function userFilter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -444,6 +445,48 @@ function sanitizeAgentBody(body = {}) {
   return sanitized;
 }
 
+function imageGenerationWarning(error) {
+  return `Agent created. Image generation failed, using fallback avatar. ${error?.message || ""}`.trim();
+}
+
+async function tryGenerateImageForAgent(agent, context = "create") {
+  if (!shouldGenerateAgentImage(agent)) return null;
+
+  try {
+    return await applyGeneratedAgentImage(agent);
+  } catch (error) {
+    console.error(`[agent-image] ${context} failed`, {
+      agentId: agent._id?.toString(),
+      message: error?.message
+    });
+    return { error };
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableImageError(error) {
+  const status = error?.response?.status || error?.statusCode;
+  return status === 408 || status === 409 || status === 429 || (status >= 500 && status < 600);
+}
+
+async function generateImageWithRetry(agent, { attempts = 3, delayMs = 1500 } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await applyGeneratedAgentImage(agent);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRetryableImageError(error)) break;
+      const retryAfter = Number(error?.response?.headers?.["retry-after"]);
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : delayMs * attempt);
+    }
+  }
+  throw lastError;
+}
+
 async function resolveRequestedDograhBinding(userId, body = {}) {
   const requestedType = body.dograhConnectionType || body.dograhRuntime || body.dograhRuntimeConnectionType;
   const requestedIntegrationId = cleanOptionalObjectId(body.dograhIntegrationId, "dograhIntegrationId");
@@ -644,6 +687,7 @@ export const createAgent = asyncHandler(async (req, res) => {
   const body = sanitizeAgentBody(req.body);
   const telephonyConfigId = body.telephonyConfigId;
   delete body.telephonyConfigId;
+  let imageWarning = null;
 
   const agent = new Agent({
     ...body,
@@ -736,6 +780,9 @@ export const createAgent = asyncHandler(async (req, res) => {
       const dograhError = readProviderErrorMessage(error);
       clearDograhWorkflowFields(agent, dograhError);
       await agent.save();
+      const imageResult = await tryGenerateImageForAgent(agent, "create-after-dograh-failure");
+      if (imageResult?.error) imageWarning = imageGenerationWarning(imageResult.error);
+      if (imageResult?.agent) agent.set(imageResult.agent.toObject());
 
       return res.status(201).json({
         agent,
@@ -744,7 +791,7 @@ export const createAgent = asyncHandler(async (req, res) => {
         providerResult: null,
         dograhCreated: false,
         dograhResponse: null,
-        warning: `Agent created locally, but Dograh workflow creation failed. ${dograhError}`,
+        warning: [`Agent created locally, but Dograh workflow creation failed. ${dograhError}`, imageWarning].filter(Boolean).join(" "),
         error: dograhError,
         dograhError
       });
@@ -762,6 +809,9 @@ export const createAgent = asyncHandler(async (req, res) => {
     const runtimeSyncWarning = runtimeSync?.error ? `Dograh runtime synchronization did not complete: ${runtimeSync.error}` : null;
     const refreshedAfterRuntimeSync = await Agent.findById(agent._id);
     if (refreshedAfterRuntimeSync) agent.set(refreshedAfterRuntimeSync.toObject());
+    const imageResult = await tryGenerateImageForAgent(agent, "create");
+    if (imageResult?.error) imageWarning = imageGenerationWarning(imageResult.error);
+    if (imageResult?.agent) agent.set(imageResult.agent.toObject());
 
     const creationWarnings = [
       runtimeSyncWarning,
@@ -771,7 +821,8 @@ export const createAgent = asyncHandler(async (req, res) => {
         : null,
       ["failed", "configuration_required"].includes(llmConfiguration?.dograhSyncStatus)
         ? `Dograh LLM synchronization did not complete: ${llmConfiguration.dograhSyncError || "Check the selected provider configuration."}`
-        : null
+        : null,
+      imageWarning
     ].filter(Boolean);
 
     return res.status(201).json({
@@ -803,6 +854,9 @@ export const createAgent = asyncHandler(async (req, res) => {
     const providerResult = await syncProvider(agent, "create");
 
     const dograhCreated = false;
+    const imageResult = await tryGenerateImageForAgent(agent, "create");
+    if (imageResult?.error) imageWarning = imageGenerationWarning(imageResult.error);
+    if (imageResult?.agent) agent.set(imageResult.agent.toObject());
 
     return res.status(201).json({
       agent,
@@ -811,11 +865,14 @@ export const createAgent = asyncHandler(async (req, res) => {
       providerResult: publicProviderResult(providerResult),
       dograhCreated,
       dograhResponse: null,
-      warning: null
+      warning: imageWarning
     });
   } catch (error) {
     agent.status = "draft";
     await agent.save();
+    const imageResult = await tryGenerateImageForAgent(agent, "create-after-provider-failure");
+    if (imageResult?.error) imageWarning = imageGenerationWarning(imageResult.error);
+    if (imageResult?.agent) agent.set(imageResult.agent.toObject());
 
     return res.status(201).json({
       agent,
@@ -823,7 +880,7 @@ export const createAgent = asyncHandler(async (req, res) => {
       llmConfiguration,
       providerResult: null,
       dograhCreated: false,
-      warning: `Agent created locally, but ${agent.provider} provider creation failed. ${error.message}`,
+      warning: [`Agent created locally, but ${agent.provider} provider creation failed. ${error.message}`, imageWarning].filter(Boolean).join(" "),
       error: error.message
     });
   }
@@ -1001,6 +1058,8 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "knowledgeBaseIds",
     "telephonyConfigId",
     "provider",
+    "imageMode",
+    "imageUrl",
     "tone",
     "speakingSpeed",
     "personality",
@@ -1170,6 +1229,82 @@ export const previewRegeneratedPrompt = asyncHandler(async (req, res) => {
   const systemPrompt = generateSystemPrompt(previewAgent);
 
   res.json({ systemPrompt });
+});
+
+export const generateAgentImageForAgent = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+  try {
+    const result = await applyGeneratedAgentImage(agent);
+    return res.json({
+      success: true,
+      agent: result.agent,
+      imageUrl: result.image.imageUrl,
+      imagePrompt: result.image.imagePrompt,
+      imageProvider: result.image.imageProvider,
+      imageGeneratedAt: result.image.imageGeneratedAt
+    });
+  } catch (error) {
+    console.error("[agent-image] manual generation failed", {
+      agentId: agent._id?.toString(),
+      message: error?.message
+    });
+    return res.json({
+      success: false,
+      fallbackUsed: true,
+      message: "Image generation failed. Default avatar used.",
+      agent
+    });
+  }
+});
+
+export const backfillAgentImages = asyncHandler(async (req, res) => {
+  const delayMs = Math.max(0, Math.min(Number(req.body?.delayMs ?? 1500), 10000));
+  const retryAttempts = Math.max(1, Math.min(Number(req.body?.retryAttempts ?? 3), 5));
+  const agents = await Agent.find({ status: { $ne: "archived" } }).sort({ createdAt: 1 });
+  const result = {
+    totalAgentsChecked: agents.length,
+    imagesGenerated: 0,
+    failed: 0,
+    skipped: 0
+  };
+  const failures = [];
+
+  for (const agent of agents) {
+    if (agent.imageUrl) {
+      result.skipped += 1;
+      continue;
+    }
+
+    try {
+      await generateImageWithRetry(agent, { attempts: retryAttempts, delayMs });
+      result.imagesGenerated += 1;
+    } catch (error) {
+      result.failed += 1;
+      failures.push({
+        agentId: agent._id,
+        agentName: agent.agentName || agent.name,
+        message: error?.message || "Image generation failed"
+      });
+      console.error("[agent-image] backfill failed", {
+        agentId: agent._id.toString(),
+        message: error?.message
+      });
+    }
+
+    if (delayMs > 0) await sleep(delayMs);
+  }
+
+  res.json({
+    success: true,
+    ...result,
+    count: {
+      totalAgentsChecked: result.totalAgentsChecked,
+      imagesGenerated: result.imagesGenerated,
+      failed: result.failed,
+      skipped: result.skipped
+    },
+    failures
+  });
 });
 
 export const removeAgent = asyncHandler(async (req, res) => {

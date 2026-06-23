@@ -30,6 +30,9 @@ const userSchema = new mongoose.Schema(
       monthlyLeadFinderLimit: { type: Number, default: 10 }
     },
     minutesUsed: { type: Number, default: 0 },
+    imageGenerationsUsed: { type: Number, default: 0 },
+    platformCreditsUsed: { type: Number, default: 0 },
+    customApiCreditsUsed: { type: Number, default: 0 },
     status: { type: String, enum: ["active", "suspended", "deleted"], default: "active" },
     lastLoginAt: Date,
     deletedAt: Date

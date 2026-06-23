@@ -10,23 +10,23 @@ import { startTelegramBot } from "./services/telegram/bot.js";
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(PORT, () => {
-  console.log(`AI Voice Agent API running on port ${PORT}`);
-});
-
-server.on("error", (error) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`Backend port ${PORT} is already in use. Another backend server is probably already running.`);
-    process.exit(1);
-  }
-
-  console.error("Backend server failed to start", error.message);
-  process.exit(1);
-});
-
 connectDB()
   .then(() => {
     console.log("Database connected");
+    const server = app.listen(PORT, () => {
+      console.log(`AI Voice Agent API running on port ${PORT}`);
+    });
+
+    server.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Backend port ${PORT} is already in use. Another backend server is probably already running.`);
+        process.exit(1);
+      }
+
+      console.error("Backend server failed to start", error.message);
+      process.exit(1);
+    });
+
     startScheduledCallWorker();
     startCampaignWorker();
     startFollowUpWorker();
@@ -35,4 +35,5 @@ connectDB()
   })
   .catch((error) => {
     console.error("Database connection failed", error.message);
+    process.exit(1);
   });

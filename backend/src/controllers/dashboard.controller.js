@@ -3,10 +3,10 @@ import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 
 export async function getDashboard(user) {
-  const filter = user.role === "admin" ? {} : { userId: user._id };
+  const filter = ["admin", "super_admin"].includes(user.role) ? {} : { userId: user._id };
   const [totalAgents, activeAgents, totalCalls, totalLeads, recentAgents, recentCalls, recentLeads] = await Promise.all([
     Agent.countDocuments(filter),
-    Agent.countDocuments({ ...filter, status: "Active" }),
+    Agent.countDocuments({ ...filter, status: { $in: ["Active", "active", "Connected"] } }),
     CallLog.countDocuments(filter),
     Lead.countDocuments(filter),
     Agent.find(filter).sort({ createdAt: -1 }).limit(5),

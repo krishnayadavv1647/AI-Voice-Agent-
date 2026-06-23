@@ -6,6 +6,34 @@ import { ApiError } from "../utils/apiError.js";
 const DEFAULT_DURATION_MINUTES = 30;
 const APPOINTMENT_TEST_MODE = String(process.env.APPOINTMENT_TEST_MODE || "").toLowerCase() === "true";
 
+function maskEmail(value = "") {
+  const [name, domain] = String(value || "").split("@");
+  if (!name || !domain) return value ? "***" : "";
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
+function maskPhone(value = "") {
+  const text = String(value || "");
+  if (text.length <= 4) return text ? "***" : "";
+  return `${"*".repeat(Math.max(0, text.length - 4))}${text.slice(-4)}`;
+}
+
+function safeAppointmentSummary(appointment) {
+  if (!appointment) return null;
+  return {
+    id: appointment._id?.toString(),
+    userId: appointment.userId?.toString(),
+    agentId: appointment.agentId?.toString(),
+    leadId: appointment.leadId?.toString(),
+    callLogId: appointment.callLogId?.toString(),
+    startAt: appointment.startAt,
+    status: appointment.status,
+    source: appointment.source,
+    customerPhone: maskPhone(appointment.customerPhone),
+    customerEmail: maskEmail(appointment.customerEmail)
+  };
+}
+
 export function assertTimezone(timezone) {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
@@ -240,6 +268,24 @@ export async function createAppointmentRecord({
   reminderEnabled = true,
   reminderAt
 }) {
+  console.log("[Appointment Debug][Backend] createAppointmentRecord input", {
+    userId: userId?.toString?.(),
+    agentId: agent?._id?.toString?.(),
+    leadId: lead?._id?.toString?.(),
+    callLogId: callLogId?.toString?.(),
+    appointmentType,
+    date,
+    time,
+    timezone,
+    startAt,
+    endAt,
+    source,
+    reminderEnabled,
+    customerNamePresent: Boolean(customerName),
+    customerPhone: maskPhone(customerPhone || lead?.phone),
+    customerEmail: maskEmail(customerEmail || lead?.email),
+    hasNotes: Boolean(notes)
+  });
   const finalStartAt = startAt ? new Date(startAt) : parseAppointmentDateTime({ date, time, timezone });
   if (Number.isNaN(finalStartAt.getTime())) throw new ApiError(400, "Appointment start time is invalid.");
   if (finalStartAt <= new Date()) throw new ApiError(400, "Appointment start time must be in the future.");
@@ -252,14 +298,23 @@ export async function createAppointmentRecord({
     startAt: finalStartAt,
     status: { $in: ["scheduled", "rescheduled"] }
   });
-  if (existing) return { appointment: existing, created: false, meta: {
-    appointmentCallScheduled: existing.appointmentCallScheduled,
-    reminderStatus: existing.reminderStatus,
-    reminderSkipReason: existing.reminderSkipReason || "",
-    reminderAt: existing.reminderAt,
-    appointmentCallStatus: existing.appointmentCallStatus || (existing.status === "completed" ? "completed" : "scheduled"),
-    appointmentCallScheduledAt: existing.startAt
-  } };
+  if (existing) {
+    const meta = {
+      appointmentCallScheduled: existing.appointmentCallScheduled,
+      reminderStatus: existing.reminderStatus,
+      reminderSkipReason: existing.reminderSkipReason || "",
+      reminderAt: existing.reminderAt,
+      appointmentCallStatus: existing.appointmentCallStatus || (existing.status === "completed" ? "completed" : "scheduled"),
+      appointmentCallScheduledAt: existing.startAt
+    };
+    console.log("[Appointment Debug][Backend] Database create/update result", {
+      created: false,
+      reason: "duplicate_existing_appointment",
+      appointment: safeAppointmentSummary(existing),
+      meta
+    });
+    return { appointment: existing, created: false, meta };
+  }
 
   const appointment = await Appointment.create({
     userId,
@@ -289,6 +344,11 @@ export async function createAppointmentRecord({
   lead.notes.push({ text: `Appointment booked for ${finalStartAt.toLocaleString([], { timeZone: timezone })}` });
   await lead.save();
   const meta = await syncAppointmentFollowUps(appointment, lead, reminderAt);
+  console.log("[Appointment Debug][Backend] Database create/update result", {
+    created: true,
+    appointment: safeAppointmentSummary(appointment),
+    meta
+  });
 
   return { appointment, created: true, meta };
 }

@@ -13,6 +13,8 @@ import {
   listBioPageTemplates,
   listAgentCalls,
   listAgents,
+  backfillAgentImages,
+  generateAgentImageForAgent,
   pauseAgent,
   previewRegeneratedPrompt,
   publishAgent,
@@ -37,14 +39,16 @@ import {
   uploadBioPageLogo,
   uploadBioPageTopicIcon
 } from "../controllers/agent.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+import { adminOnly, protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 router.use(protect);
 router.route("/").post(createAgent).get(listAgents);
+router.post("/backfill-images", adminOnly, backfillAgentImages);
 router.get("/bio-page/templates", listBioPageTemplates);
 router.route("/:id").get(getAgent).put(updateAgent).delete(removeAgent);
+router.post("/:id/generate-image", generateAgentImageForAgent);
 router.get("/:id/bio-page", getBioPage);
 router.patch("/:id/bio-page", updateBioPage);
 router.put("/:id/bio-page", updateBioPage);

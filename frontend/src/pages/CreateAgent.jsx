@@ -43,6 +43,8 @@ const initialForm = {
   voiceId: "",
   firstMessage: "",
   telephonyConfigId: "",
+  imageMode: "auto_generate",
+  imageUrl: "",
   voiceProvider: "Dograh Default",
   voiceGender: "Female",
   voiceStyle: "Natural",
@@ -151,6 +153,7 @@ export default function CreateAgent() {
     try {
       const payload = { ...form };
       if (!payload.telephonyConfigId) delete payload.telephonyConfigId;
+      if (payload.imageMode !== "upload_custom") delete payload.imageUrl;
       const result = await api("/agents", { method: "POST", body: payload });
       const agent = result.agent || result;
       navigate(`/agents/${agent._id}`, {
@@ -236,6 +239,14 @@ export default function CreateAgent() {
                 value: config._id
               }))
             ]} />
+            <Field label="Image Mode" name="imageMode" value={form.imageMode} onChange={setField} options={[
+              { label: "Auto Generate", value: "auto_generate" },
+              { label: "Upload Custom Image", value: "upload_custom" },
+              { label: "Use Default Avatar", value: "default_avatar" }
+            ]} />
+            {form.imageMode === "upload_custom" && (
+              <Field label="Custom Image URL" name="imageUrl" value={form.imageUrl} onChange={setField} />
+            )}
             <Field label="Agent Name" name="agentName" value={form.agentName} onChange={setField} />
             <Field label="Business Name" name="businessName" value={form.businessName} onChange={setField} />
             <Field label="Business Category" name="businessCategory" value={form.businessCategory} onChange={setField} />

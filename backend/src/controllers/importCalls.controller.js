@@ -11,7 +11,7 @@ import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 function filter(req) {
-  return req.user.role === "admin" ? {} : { userId: req.user._id };
+  return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
 
 async function ownedRun(req) {

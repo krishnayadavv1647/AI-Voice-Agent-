@@ -8,6 +8,7 @@ import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../services
 import { syncCampaignRecipientFromCall } from "../services/campaign.service.js";
 import { extractCallFields, hasUsefulLeadData, normalizeLeadData, pick } from "../services/callLogMapper.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
+import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js";
 
 async function findAgent(fields) {
   if (fields.localAgentId && mongoose.Types.ObjectId.isValid(fields.localAgentId)) {
@@ -153,6 +154,12 @@ export async function dograhWebhook(req, res) {
         ? User.findByIdAndUpdate(agent.userId, { $inc: { minutesUsed: Math.ceil(durationSeconds / 60) } })
         : Promise.resolve()
     ]);
+
+    // The call has ended: if Dograh did not hand us structured lead data, auto-generate
+    // the lead from the transcript so phone and public web calls capture leads without a manual step.
+    if (!leadCreated) {
+      await autoGenerateLeadFromCall(callLog);
+    }
 
     console.log("CallLog updated from Dograh:", callLog._id);
 
