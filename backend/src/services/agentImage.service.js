@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { ApiError } from "../utils/apiError.js";
 import User from "../models/User.js";
+import { chargeFeature } from "./billing/featureBilling.service.js";
 
 const DEFAULT_KIE_BASE_URL = "https://api.kie.ai";
 const DEFAULT_KIE_CREATE_TASK_ENDPOINT = "/api/v1/jobs/createTask";
@@ -290,12 +291,15 @@ export async function applyGeneratedAgentImage(agent, options = {}) {
   agent.imageMode = "auto_generate";
   await agent.save();
   if (agent.userId) {
-    await User.findByIdAndUpdate(agent.userId, {
-      $inc: {
-        imageGenerationsUsed: 1,
-        platformCreditsUsed: 1
-      }
-    });
+    await Promise.all([
+      User.findByIdAndUpdate(agent.userId, { $inc: { imageGenerationsUsed: 1, platformCreditsUsed: 1 } }),
+      chargeFeature({
+        userId: agent.userId,
+        featureKey: "image_generate",
+        idempotencyKey: `image_generate:${agent._id}:${Date.now()}`,
+        metadata: { agentId: String(agent._id) }
+      })
+    ]);
   }
   return { agent, image };
 }

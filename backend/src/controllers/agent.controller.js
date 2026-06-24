@@ -18,7 +18,7 @@ import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
 import { DograhProvider } from "../providers/dograh.provider.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
-import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
+import { assertDograhAgentReadyForCalls, triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { syncAgentDograhRuntime } from "../services/dograhWorkflowSync.service.js";
 import { getDograhClientForAgent, getDograhClientForIntegration, getPlatformDograhClient } from "../services/dograhClientResolver.js";
 import {
@@ -1395,6 +1395,10 @@ export const publishAgent = asyncHandler(async (req, res) => {
   if (agent.provider === "dograh" && !hasRealDograhWorkflow(agent)) {
     throw new ApiError(400, "Dograh workflow sync must finish before publishing this agent.");
   }
+
+  // Publish uses the same resolved TTS/STT/LLM configuration as Test/Outbound/Scheduled
+  // calls, so block publishing an agent whose BYOK voice or LLM sync did not complete.
+  await assertDograhAgentReadyForCalls({ agent, userId: agent.userId });
 
   agent.status = "Active";
   agent.shareableLink = `${process.env.CLIENT_URL}/test/${agent._id}`;

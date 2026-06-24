@@ -40,7 +40,15 @@ const callLogSchema = new mongoose.Schema(
     rawWebhookPayload: { type: mongoose.Schema.Types.Mixed },
     rawRunDetails: { type: mongoose.Schema.Types.Mixed },
     startedAt: Date,
-    endedAt: Date
+    endedAt: Date,
+
+    // Per-minute credit billing (Phase 1). Populated only when CREDIT_ENFORCEMENT was on at call
+    // start. The reservation is settled against the real durationSeconds when the call finalizes.
+    billingEnforced: { type: Boolean, default: false },
+    billingMode: { type: String, enum: ["platform_credits", "byok", null], default: null },
+    billingCallId: { type: String, default: null },
+    billingSettled: { type: Boolean, default: false },
+    creditsCharged: { type: Number, default: 0 }
   },
   { timestamps: true }
 );

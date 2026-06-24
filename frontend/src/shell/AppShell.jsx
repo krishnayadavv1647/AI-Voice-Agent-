@@ -2,6 +2,8 @@
   Bell,
   Bot,
   CalendarClock,
+  Coins,
+  CreditCard,
   Gauge,
   Headphones,
   Mail,
@@ -26,6 +28,7 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
+import { useCredits } from "../state/CreditsContext.jsx";
 
 const links = [
   { to: "/dashboard", label: "Dashboard", icon: Gauge },
@@ -44,6 +47,8 @@ const links = [
   { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/telephony-configuration", label: "Telephony Configuration", icon: PhoneCall },
   { to: "/dograh-settings", label: "Dograh Settings", icon: Workflow },
+  { to: "/credits", label: "Credits & Usage", icon: Coins },
+  { to: "/billing", label: "Plans & Billing", icon: CreditCard },
   { to: "/settings", label: "Settings", icon: Settings }
 ];
 
@@ -66,7 +71,7 @@ const navSections = [
   },
   {
     label: "MANAGE",
-    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/dograh-settings", "/settings"]
+    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/dograh-settings", "/credits", "/billing", "/settings"]
   }
 ];
 
@@ -113,6 +118,23 @@ function NavItems({ onClick, unreadEmailCount = 0 }) {
   );
 }
 
+function CreditsChip({ onNavigate }) {
+  const { balance, loading } = useCredits();
+  const low = !loading && balance <= 0;
+  return (
+    <Link
+      to={low ? "/billing" : "/credits"}
+      onClick={onNavigate}
+      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+        low ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-hairline bg-white text-ink hover:bg-neutral-50"
+      }`}
+    >
+      <span className="flex items-center gap-2"><Coins size={16} />{low ? "Get credits" : "Credits"}</span>
+      <span className="font-semibold">{loading ? "…" : balance.toLocaleString()}</span>
+    </Link>
+  );
+}
+
 function SidebarContent({ initials, user, unreadEmailCount, onNavigate, onClose, onLogout, mobile = false }) {
   return (
     <>
@@ -154,10 +176,11 @@ function SidebarContent({ initials, user, unreadEmailCount, onNavigate, onClose,
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-ink">{user?.name || "User"}</p>
-            <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "free"} plan</p>
+            <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "—"} plan</p>
           </div>
         </div>
-        <button onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-neutral-600 hover:bg-white hover:text-ink">
+        <CreditsChip onNavigate={onNavigate} />
+        <button onClick={onLogout} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-neutral-600 hover:bg-white hover:text-ink">
           <LogOut size={16} />
           Logout
         </button>

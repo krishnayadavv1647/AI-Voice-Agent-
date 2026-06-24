@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./shell/AppShell.jsx";
 import { AuthProvider, useAuth } from "./state/AuthContext.jsx";
+import { CreditsProvider } from "./state/CreditsContext.jsx";
 import "./styles.css";
 
 import AgentDetails from "./pages/AgentDetails.jsx";
@@ -36,6 +37,7 @@ import EmailIntegrationSettings from "./pages/EmailIntegrationSettings.jsx";
 import FollowUps from "./pages/FollowUps.jsx";
 import ImportCalls from "./pages/ImportCalls.jsx";
 import TelephonyConfiguration from "./pages/TelephonyConfiguration.jsx";
+import Credits from "./pages/Credits.jsx";
 import Welcome from "./pages/Welcome.jsx";
 
 function ProtectedRoute({ children, admin = false }) {
@@ -90,6 +92,7 @@ function Router() {
         <Route path="dograh-settings" element={<DograhSettings />} />
         <Route path="knowledge" element={<KnowledgeBase />} />
         <Route path="billing" element={<Billing />} />
+        <Route path="credits" element={<Credits />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/email" element={<EmailIntegrationSettings />} />
         <Route
@@ -113,7 +116,9 @@ root.render(
   <React.StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <Router />
+        <CreditsProvider>
+          <Router />
+        </CreditsProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

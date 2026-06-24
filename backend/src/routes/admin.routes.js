@@ -30,6 +30,7 @@ import {
   exportLeads,
   getCall,
   getIntegrationSettings,
+  getPlanConfig,
   getUser,
   getUserResource,
   getUserUsage,
@@ -51,6 +52,7 @@ import {
   updateLead,
   updateLimits,
   updatePlan,
+  updatePlanConfig,
   updateUser,
   usage
 } from "../controllers/admin.controller.js";
@@ -121,6 +123,9 @@ router.patch("/users/:id/plan", updatePlan);
 
 router.get("/settings/integrations", requireSuperAdmin, getIntegrationSettings);
 router.patch("/settings/integrations", requireSuperAdmin, updateIntegrationSettings);
+
+router.get("/plan-config", requireSuperAdmin, getPlanConfig);
+router.patch("/plan-config", requireSuperAdmin, updatePlanConfig);
 
 router.get("/audit-logs", auditLogs);
 

@@ -1,4 +1,4 @@
-import { Edit, Eye, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Edit, Eye, Link2, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
@@ -14,6 +14,7 @@ export default function Agents() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [generatingId, setGeneratingId] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
 
   async function load() {
     try {
@@ -36,6 +37,13 @@ export default function Agents() {
     } catch (err) {
       setError(requestMessage(err));
     }
+  }
+
+  async function copyAgentLink(agent) {
+    const url = `${window.location.origin}/a/${agent.publicSlug}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedId(agent._id);
+    window.setTimeout(() => setCopiedId(null), 1500);
   }
 
   async function regenerateImage(id) {
@@ -120,6 +128,15 @@ export default function Agents() {
                 <button title="Regenerate Image" type="button" onClick={() => regenerateImage(agent._id)} disabled={generatingId === agent._id}>
                   <RefreshCw size={13} />
                   <span>{generatingId === agent._id ? "Generating" : "AI Gen"}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!agent.publicSlug}
+                  title={agent.publicSlug ? "Copy public link" : "Publish agent first to get a shareable link"}
+                  onClick={() => copyAgentLink(agent)}
+                >
+                  <Link2 size={13} />
+                  <span>{copiedId === agent._id ? "Copied!" : "Share"}</span>
                 </button>
               </div>
 

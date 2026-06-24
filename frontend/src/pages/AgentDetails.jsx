@@ -1,4 +1,4 @@
-﻿import { CalendarClock, Edit, Eye, Globe2, PhoneCall, Play, Radio, RefreshCw, Trash2, X } from "lucide-react";
+﻿import { CalendarClock, Edit, Eye, Globe2, MoreVertical, PhoneCall, Play, Radio, RefreshCw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -426,10 +426,12 @@ export default function AgentDetails() {
                       <Info label="Lead" value={call.leadCaptured ? "Yes" : "No"} />
                       <Info label="Date" value={new Date(call.createdAt).toLocaleString()} />
                     </div>
-                    <div className="mt-4 action-row">
-                      <button className="btn-secondary" onClick={() => openCall(call)}><Eye size={14} />View</button>
-                      <button className="btn-secondary" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
-                      {call.recordingUrl && <a className="btn-secondary" href={call.recordingUrl} target="_blank">Recording</a>}
+                    <div className="mt-4">
+                      <ThreeDotMenu actions={[
+                        { label: "View", onClick: () => openCall(call) },
+                        { label: "Repeat", disabled: !call.callerNumber, onClick: () => repeatCall(call) },
+                        call.recordingUrl ? { label: "Recording", onClick: () => window.open(call.recordingUrl, "_blank") } : null
+                      ].filter(Boolean)} />
                     </div>
                   </article>
                 ))}
@@ -450,11 +452,11 @@ export default function AgentDetails() {
                         <td>{formatDuration(call)}</td>
                         <td>{call.leadCaptured ? "Yes" : "No"}</td>
                         <td>
-                          <div className="flex flex-wrap gap-2">
-                            <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => openCall(call)}><Eye size={14} />View</button>
-                            <button className="btn-secondary px-3 py-1.5 text-xs" disabled={!call.callerNumber} onClick={() => repeatCall(call)}><RefreshCw size={14} />Repeat</button>
-                            {call.recordingUrl && <a className="btn-secondary px-3 py-1.5 text-xs" href={call.recordingUrl} target="_blank">Recording</a>}
-                          </div>
+                          <ThreeDotMenu actions={[
+                            { label: "View", onClick: () => openCall(call) },
+                            { label: "Repeat", disabled: !call.callerNumber, onClick: () => repeatCall(call) },
+                            call.recordingUrl ? { label: "Recording", onClick: () => window.open(call.recordingUrl, "_blank") } : null
+                          ].filter(Boolean)} />
                         </td>
                       </tr>
                     ))}
@@ -544,5 +546,66 @@ function DetailBlock({ title, value, pre = false }) {
         <p className="whitespace-pre-wrap text-sm text-neutral-700">{value || "Not provided"}</p>
       )}
     </div>
+  );
+}
+
+function ThreeDotMenu({ actions }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e) {
+      if (!menuRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.right - 160 });
+    }
+    setOpen((prev) => !prev);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className="rounded-lg border border-hairline p-1.5 text-neutral-500 hover:bg-neutral-50"
+        onClick={handleToggle}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+          className="w-40 rounded-xl border border-hairline bg-white py-1 shadow-lg"
+        >
+          {actions.map((act, i) => (
+            <button
+              key={i}
+              type="button"
+              disabled={act.disabled}
+              className={`flex w-full items-center px-3 py-2 text-left text-sm disabled:opacity-40 ${act.danger ? "text-rose-600 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-50"}`}
+              onClick={() => {
+                act.onClick();
+                setOpen(false);
+              }}
+            >
+              {act.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

@@ -7,12 +7,15 @@ import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
 import { startEmailSyncWorker } from "./workers/emailSyncWorker.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
+import { refreshPlanConfig } from "./config/plans.js";
+import { refreshCreditPricing } from "./config/creditPricing.js";
 
 const PORT = process.env.PORT || 5000;
 
 connectDB()
-  .then(() => {
+  .then(async () => {
     console.log("Database connected");
+    await Promise.all([refreshPlanConfig(), refreshCreditPricing()]);
     const server = app.listen(PORT, () => {
       console.log(`AI Voice Agent API running on port ${PORT}`);
     });

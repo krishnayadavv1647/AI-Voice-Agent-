@@ -1,5 +1,5 @@
 ﻿import { AlertTriangle, CheckCircle2, KeyRound, RefreshCw, Server, ShieldCheck, Trash2, Workflow } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
@@ -12,10 +12,13 @@ function fmt(value) {
 
 export default function DograhSettings() {
   const [data, setData] = useState(null);
+  const [conn, setConn] = useState(null);
   const [form, setForm] = useState(defaultForm);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [prefsSaving, setPrefsSaving] = useState(false);
+  const apiKeyRef = useRef(null);
 
   useEffect(() => {
     load();
@@ -24,8 +27,12 @@ export default function DograhSettings() {
   async function load() {
     setError("");
     try {
-      const result = await api("/integrations/dograh");
+      const [result, connection] = await Promise.all([
+        api("/integrations/dograh"),
+        api("/connections/dograh").catch(() => null)
+      ]);
       setData(result);
+      setConn(connection);
       setForm((current) => ({
         ...current,
         baseUrl: result.userDograh?.baseUrl || current.baseUrl,
@@ -34,6 +41,27 @@ export default function DograhSettings() {
     } catch (err) {
       setError(err.response?.message || err.message);
     }
+  }
+
+  async function savePreferences(patch) {
+    // Optimistic update so the toggles feel instant.
+    setConn((current) => ({ ...(current || {}), ...patch }));
+    setPrefsSaving(true);
+    setError("");
+    try {
+      const updated = await api("/connections/dograh/preferences", { method: "PATCH", body: patch });
+      setConn(updated);
+    } catch (err) {
+      setError(err.response?.message || err.message);
+      await load();
+    } finally {
+      setPrefsSaving(false);
+    }
+  }
+
+  function focusApiKey() {
+    apiKeyRef.current?.focus();
+    apiKeyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   async function saveDograh() {
@@ -129,6 +157,7 @@ export default function DograhSettings() {
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <input
+              ref={apiKeyRef}
               type="password"
               placeholder={userDograh.maskedApiKey ? "Enter new API key to replace" : "Dograh API key"}
               value={form.apiKey}
@@ -148,6 +177,8 @@ export default function DograhSettings() {
               Platform Dograh may be used only while creating a new agent if My Dograh is unavailable. Existing agents never switch automatically.
             </span>
           </label>
+
+          <KeyPreferences conn={conn} saving={prefsSaving} onChange={savePreferences} onReconnect={focusApiKey} />
 
           <div className="mt-5 action-row">
             <button className="btn-primary" disabled={saving || (!form.apiKey && !userDograh.connected)} onClick={saveDograh}><KeyRound size={16} />Save & Connect</button>
@@ -199,6 +230,72 @@ function AgentList({ title, agents }) {
         {!agents.length && <p className="rounded-lg bg-neutral-50 p-3 text-sm text-neutral-500">No agents use this connection.</p>}
       </div>
     </div>
+  );
+}
+
+function KeyPreferences({ conn, saving, onChange, onReconnect }) {
+  const hasValidatedKey = Boolean(conn?.hasValidatedKey);
+  const preferOwnKey = Boolean(conn?.preferOwnKey);
+  const fallbackOnFailure = Boolean(conn?.fallbackOnFailure);
+  const deactivated = Boolean(conn) && conn.isActive === false;
+  const disabledHint = hasValidatedKey ? undefined : "Connect and validate a Dograh API key first.";
+
+  return (
+    <div className="mt-4 space-y-3">
+      {deactivated && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 shrink-0" size={18} />
+            <p>
+              Your Dograh key appears to be failing (last error: {conn?.lastFailureReason || "unknown"}). Reconnect or
+              fix your key to resume bring-your-own-key calls.
+            </p>
+          </div>
+          <button className="btn-secondary shrink-0" onClick={onReconnect}>Reconnect</button>
+        </div>
+      )}
+
+      <Toggle
+        label="Use my own Dograh key first"
+        help="When enabled, your own API key is used even if you still have platform credits remaining."
+        checked={preferOwnKey}
+        disabled={!hasValidatedKey || saving}
+        title={disabledHint}
+        onChange={(value) => onChange({ preferOwnKey: value })}
+      />
+
+      {preferOwnKey && (
+        <Toggle
+          label="Fall back to platform credits if my key fails"
+          help="If disabled (default), a failed call will show an error instead of using your credits."
+          checked={fallbackOnFailure}
+          disabled={!hasValidatedKey || saving}
+          title={disabledHint}
+          onChange={(value) => onChange({ fallbackOnFailure: value })}
+        />
+      )}
+    </div>
+  );
+}
+
+function Toggle({ label, help, checked, disabled, title, onChange }) {
+  return (
+    <label
+      title={title}
+      className={`flex items-start gap-3 rounded-xl border border-hairline p-3 text-sm text-neutral-700 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+    >
+      <input
+        className="mt-1 h-4 w-4"
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>
+        <span className="block font-semibold text-ink">{label}</span>
+        {help}
+      </span>
+    </label>
   );
 }
 
