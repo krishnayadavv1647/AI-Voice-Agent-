@@ -1,5 +1,5 @@
-import { Edit, Eye, Link2, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Edit, Eye, Link2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
 import EmptyState from "../components/EmptyState.jsx";
@@ -11,10 +11,21 @@ function requestMessage(err, fallback = "Request failed.") {
 
 export default function Agents() {
   const [agents, setAgents] = useState([]);
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [generatingId, setGeneratingId] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+
+  const filteredAgents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return agents;
+    return agents.filter((agent) =>
+      [agent.agentName, agent.businessName, agent.businessCategory, agent.status, agent.language]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [agents, search]);
 
   async function load() {
     try {
@@ -97,6 +108,17 @@ export default function Agents() {
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {toast && <div className="agent-toast" role="status">{toast}</div>}
 
+      <div className="relative mb-2">
+        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+        <input
+          className="pl-9"
+          style={{ height: 40, minHeight: 40 }}
+          placeholder="Search agents by name, category, status…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
       {!agents.length ? (
         <EmptyState
           title="No agents yet. Create your first AI voice agent."
@@ -104,8 +126,9 @@ export default function Agents() {
           action={<Link className="agents-library-create" to="/create-agent"><Plus size={16} />Create</Link>}
         />
       ) : (
+        {!filteredAgents.length && <p className="py-8 text-center text-sm text-neutral-500">No agents found for your search.</p>}
         <div className="agent-card-grid">
-          {agents.map((agent, index) => (
+          {filteredAgents.map((agent, index) => (
             <article
               className={`agent-card ${agent.imageUrl || index === 0 ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
               key={agent._id}

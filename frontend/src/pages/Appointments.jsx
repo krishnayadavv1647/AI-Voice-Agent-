@@ -1,4 +1,4 @@
-import { CalendarClock, CheckCircle, Eye, MoreVertical, Plus, RefreshCw, X, XCircle } from "lucide-react";
+import { CalendarClock, CheckCircle, Eye, MoreVertical, Plus, RefreshCw, Search, X, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -98,8 +98,25 @@ export default function Appointments() {
     notes: "",
     reminderEnabled: true
   });
+  const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const filteredAppointments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return appointments;
+    return appointments.filter((appt) =>
+      [
+        leadLabel(appt.leadId),
+        appt.customerPhone,
+        appt.leadId?.phone,
+        appt.appointmentType,
+        appt.status,
+        appt.agentId?.agentName,
+        appt.source
+      ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [appointments, search]);
 
   const summary = useMemo(() => {
     const now = new Date();
@@ -258,12 +275,24 @@ export default function Appointments() {
       </div>
 
       <section className="card overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-hairline p-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-hairline p-4">
           <h2 className="font-semibold text-ink">Appointments</h2>
+          <div className="relative flex-1" style={{ minWidth: "14rem" }}>
+            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              className="pl-8"
+              style={{ height: 36, minHeight: 36 }}
+              placeholder="Search by lead, phone, type, status…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>
         </div>
         {!appointments.length ? (
           <div className="p-6"><EmptyState title="No appointments yet" description="Book an appointment manually or let AI calls create appointments automatically." /></div>
+        ) : !filteredAppointments.length ? (
+          <p className="p-6 text-center text-sm text-neutral-500">No appointments found for your search.</p>
         ) : (
           <div className="table-wrap">
             <table className="table w-full min-w-[1180px]">
@@ -271,7 +300,7 @@ export default function Appointments() {
                 <tr><th>Lead</th><th>Agent</th><th>Date & Time</th><th>Phone</th><th>Type</th><th>Status</th><th>Reminder</th><th>Appointment Call</th><th>Source</th><th className="w-16 text-right">Options</th></tr>
               </thead>
               <tbody>
-                {appointments.map((appointment) => (
+                {filteredAppointments.map((appointment) => (
                   <tr key={appointment._id}>
                     <td className="break-anywhere">{leadLabel(appointment.leadId)}</td>
                     <td>{appointment.agentId?.agentName || "Agent"}</td>

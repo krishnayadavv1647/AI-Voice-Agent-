@@ -1,5 +1,5 @@
-﻿import { Download, FileText, MoreVertical, PhoneCall, PlayCircle, RefreshCw, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+﻿import { Download, FileText, MoreVertical, PhoneCall, PlayCircle, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -24,11 +24,22 @@ function callPhone(call) {
 
 export default function CallLogs() {
   const [calls, setCalls] = useState([]);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [actingId, setActingId] = useState("");
   const [openOptionsId, setOpenOptionsId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const filteredCalls = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return calls;
+    return calls.filter((call) =>
+      [callPhone(call), call.callingNumber, call.agentId?.agentName, call.status, call.outcome, call.normalizedStatus]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [calls, search]);
 
   async function load() {
     try {
@@ -109,12 +120,26 @@ export default function CallLogs() {
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
+      {!!calls.length && (
+        <div className="relative mb-4">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            className="pl-9"
+            style={{ height: 40, minHeight: 40 }}
+            placeholder="Search by phone, agent, status…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      )}
       {!calls.length ? (
         <EmptyState title="No calls yet. Start a test call to see call logs." description="Completed Dograh runs will sync duration, status, transcript URL, and recording URL." />
+      ) : !filteredCalls.length ? (
+        <p className="py-8 text-center text-sm text-neutral-500">No call logs found for your search.</p>
       ) : (
         <>
           <div className="mobile-card-list">
-            {calls.map((call) => (
+            {filteredCalls.map((call) => (
               <CallCard
                 key={call._id}
                 call={call}
@@ -134,7 +159,7 @@ export default function CallLogs() {
               <table className="table w-full min-w-[900px]">
                 <thead><tr><th>Date</th><th>Caller Number</th><th>Agent</th><th>Status</th><th>Retry</th><th>Duration</th><th>Lead</th><th className="w-16 text-right">Options</th></tr></thead>
                 <tbody>
-                  {calls.map((call) => (
+                  {filteredCalls.map((call) => (
                     <tr key={call._id}>
                       <td>{new Date(call.createdAt).toLocaleString()}</td>
                       <td className="break-anywhere">{callPhone(call) || "Unknown"}</td>

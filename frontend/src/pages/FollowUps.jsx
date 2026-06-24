@@ -1,4 +1,4 @@
-import { CalendarClock, Eye, MoreVertical, PhoneCall, RefreshCw, XCircle } from "lucide-react";
+import { CalendarClock, Eye, MoreVertical, PhoneCall, RefreshCw, Search, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -29,11 +29,28 @@ function triggerLabel(trigger) {
 
 export default function FollowUps() {
   const [followUps, setFollowUps] = useState([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState("");
   const [openActionsId, setOpenActionsId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const filteredFollowUps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return followUps;
+    return followUps.filter((fu) =>
+      [
+        leadLabel(fu.leadId),
+        fu.leadId?.phone,
+        fu.leadId?.email,
+        fu.agentId?.agentName,
+        fu.type,
+        fu.trigger,
+        fu.status
+      ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [followUps, search]);
 
   const summary = useMemo(() => ({
     pending: followUps.filter((item) => item.status === "pending").length,
@@ -105,10 +122,26 @@ export default function FollowUps() {
       </div>
 
       <section className="card overflow-hidden p-0">
+        {!loading && !!followUps.length && (
+          <div className="border-b border-hairline p-4">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+              <input
+                className="pl-8"
+                style={{ height: 36, minHeight: 36 }}
+                placeholder="Search by lead, agent, type, trigger, status…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="p-6"><EmptyState title="Loading follow-ups..." /></div>
         ) : !followUps.length ? (
           <div className="p-6"><EmptyState title="No follow-ups yet" description="Successful email campaigns will schedule call follow-ups automatically." /></div>
+        ) : !filteredFollowUps.length ? (
+          <p className="p-6 text-center text-sm text-neutral-500">No follow-ups found for your search.</p>
         ) : (
           <div className="table-wrap">
             <table className="table w-full min-w-[1120px]">
@@ -126,7 +159,7 @@ export default function FollowUps() {
                 </tr>
               </thead>
               <tbody>
-                {followUps.map((followUp) => (
+                {filteredFollowUps.map((followUp) => (
                   <tr key={followUp._id}>
                     <td className="break-anywhere">
                       <div className="font-semibold text-ink">{leadLabel(followUp.leadId)}</div>
