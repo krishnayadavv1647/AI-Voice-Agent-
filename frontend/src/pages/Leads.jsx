@@ -1,5 +1,5 @@
-﻿import { CalendarClock, Download, FileText, MailSearch, MoreVertical, PhoneCall, Trash2, UserRound } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+﻿import { CalendarClock, Download, FileText, MailSearch, MoreVertical, PhoneCall, Search, Trash2, UserRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -45,7 +45,18 @@ function truncateValue(value, max = 32) {
 
 export default function Leads() {
   const [leads, setLeads] = useState([]);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
+
+  const filteredLeads = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return leads;
+    return leads.filter((lead) =>
+      [lead.name, lead.phone, lead.email, lead.city, lead.requirement, lead.status, lead.source]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [leads, search]);
   const [followUpsByLead, setFollowUpsByLead] = useState({});
   const [threadsByLead, setThreadsByLead] = useState({});
   const [openActionsId, setOpenActionsId] = useState("");
@@ -197,8 +208,19 @@ export default function Leads() {
         <EmptyState title="No leads captured yet. Leads will appear after calls or messages." />
       ) : (
         <>
+          <div className="relative mb-4">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              className="pl-9"
+              style={{ height: 40, minHeight: 40 }}
+              placeholder="Search by name, phone, email, status…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          {!filteredLeads.length && <p className="py-8 text-center text-sm text-neutral-500">No leads found for your search.</p>}
           <div className="mobile-card-list">
-            {leads.map((lead) => (
+            {filteredLeads.map((lead) => (
               <article key={lead._id} className="card">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -238,7 +260,7 @@ export default function Leads() {
               <table className="table w-full min-w-[860px]">
                 <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Requirement</th><th>Preferred</th><th>Status</th><th>Created</th><th className="w-14 text-right">More</th></tr></thead>
                 <tbody>
-                  {leads.map((lead) => (
+                  {filteredLeads.map((lead) => (
                     <tr key={lead._id}>
                       <td><div className="max-w-[13rem] truncate" title={lead.name || "Unknown"}>{getShortLeadName(lead.name)}</div></td>
                       <td className="break-anywhere">{lead.phone || "-"}</td>

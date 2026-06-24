@@ -204,7 +204,7 @@ export default function Admin() {
           {active === "users" && (
             <section className="card p-0">
               <div className="flex flex-wrap items-center gap-3 border-b border-hairline p-4">
-                <div className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-xl border border-hairline bg-white px-3">
+                <div className="flex min-w-[16rem] flex-1 items-center gap-2 rounded-xl border border-[var(--border-dark)] px-3">
                   <Search size={16} className="text-neutral-400" />
                   <input className="border-0 shadow-none focus:ring-0" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users" />
                 </div>
