@@ -4,8 +4,10 @@ import Lead from "../models/Lead.js";
 import LeadFinder from "../models/LeadFinder.js";
 import { enrichLeadsWithEmails } from "../services/leadEnrichment/emailExtractor.js";
 import { listLeadFinderProviders, getLeadFinderProvider } from "../services/leadFinder/index.js";
+import { chargeFeatureOrThrow } from "../services/billing/featureBilling.service.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import crypto from "crypto";
 
 function filter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -147,6 +149,15 @@ export const searchLeadFinder = asyncHandler(async (req, res) => {
   } = req.body;
 
   await ensureAgentAccess(req, agentId);
+
+  // Plan/credit gate: blocks (and never starts a search) when the feature isn't in the plan or
+  // the wallet can't cover it. No-op unless CREDIT_ENFORCEMENT is on.
+  await chargeFeatureOrThrow({
+    userId: req.user._id,
+    featureKey: "lead_search",
+    idempotencyKey: `lead_search:${req.user._id}:${crypto.randomUUID()}`,
+    metadata: { agentId }
+  });
 
   const provider = getLeadFinderProvider(requestedProvider);
   const run = await LeadFinder.create({

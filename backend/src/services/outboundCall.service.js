@@ -7,6 +7,7 @@ import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { getDograhLLMRuntimeSummary } from "./dograhLLMConfigSync.service.js";
 import { assertDograhVoiceReadyForWebCall } from "./dograhVoiceConfigSync.service.js";
 import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "./dograhWorkflowConfig.service.js";
+import { reserveVoiceCallBilling, releaseVoiceReservation } from "./billing/voiceCallBilling.service.js";
 import { ApiError } from "../utils/apiError.js";
 
 function assertE164(value, fieldName) {
@@ -95,6 +96,40 @@ function publicCallLog(callLog) {
   return value;
 }
 
+// Consolidated pre-call / pre-publish readiness validation (no remote Dograh fetch).
+// Confirms the agent can place a call: workflow synced, voice + LLM verified, and (when
+// required) a phone number / caller ID present. Used by publish; the call triggers below
+// run this plus a live workflow read-back verification.
+export async function assertDograhAgentReadyForCalls({ agent, userId, requirePhone = false, phoneNumber }) {
+  if (agent?.provider !== "dograh") return;
+
+  const workflowId = agent.dograhWorkflowId || agent.providerWorkflowId;
+  if (!workflowId || !agent.dograhWorkflowUuid) {
+    throw new ApiError(400, "Dograh workflow sync must finish before this agent can place calls. Save the agent and wait until the workflow is synced.");
+  }
+  if (agent.workflowSyncStatus && agent.workflowSyncStatus !== "synced") {
+    throw new ApiError(400, agent.workflowSyncError || "Dograh workflow runtime sync is not complete yet. Save the agent and wait until sync is marked synced.");
+  }
+
+  try {
+    await assertDograhVoiceReadyForWebCall({ agent, userId: userId || agent.userId });
+  } catch (error) {
+    throw new ApiError(400, error.safeMessage || error.message || "The selected voice provider is not verified with Dograh yet.", { configurationRequired: true });
+  }
+
+  const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: userId || agent.userId });
+  if (llmRuntime.requiresSync && llmRuntime.dograhSyncStatus !== "synced") {
+    throw new ApiError(400, llmRuntime.dograhSyncError || "Dograh LLM settings are not verified yet. Save the agent and wait until the LLM status is synced.", { llmRuntime });
+  }
+
+  if (requirePhone) {
+    if (!phoneNumber) throw new ApiError(400, "phoneNumber is required before triggering a Dograh call.");
+    if (!agent.callerIdNumber) throw new ApiError(400, "callerIdNumber is required before triggering calls.");
+    assertE164(phoneNumber, "Phone number");
+    assertE164(agent.callerIdNumber, "Caller ID number");
+  }
+}
+
 export async function triggerOutboundCallForAgent({
   agent,
   userId,
@@ -156,8 +191,24 @@ export async function triggerOutboundCallForAgent({
   });
   assertRuntimeVerification(runtimeVerification);
 
+  // Credit gating (Phase 1): reserve estimated per-minute cost before placing the call. Blocks
+  // here (no Dograh call made) if the wallet can't cover it. No-op unless CREDIT_ENFORCEMENT=true.
+  const billing = await reserveVoiceCallBilling({ userId: userId || agent.userId, agent });
+  if (billing.blocked) {
+    throw new ApiError(402, billing.message || "Insufficient platform credits to place this call.", {
+      code: "INSUFFICIENT_CREDITS"
+    });
+  }
+
   const payload = dograhCallPayload(agent, phoneNumber, metadata);
-  const dograhResponse = await trigger(agent.dograhWorkflowUuid, payload, { userId: userId || agent.userId, agent });
+  let dograhResponse;
+  try {
+    dograhResponse = await trigger(agent.dograhWorkflowUuid, payload, { userId: userId || agent.userId, agent });
+  } catch (error) {
+    // The call never started — return the held credits.
+    if (billing.enforced) await releaseVoiceReservation(billing.billingCallId);
+    throw error;
+  }
   const dograhRunId = extractRunId(dograhResponse);
   const responseFields = extractCallFields(dograhResponse);
 
@@ -195,6 +246,9 @@ export async function triggerOutboundCallForAgent({
     transcript: null,
     rawDograhPayload: dograhResponse,
     startedAt: responseFields.startedAt || new Date(),
+    billingEnforced: Boolean(billing.enforced),
+    billingMode: billing.enforced ? billing.billingMode : null,
+    billingCallId: billing.enforced ? billing.billingCallId : null,
   });
   await applyCallOutcomeToLog(callLog, rawProviderStatus);
   await callLog.save();

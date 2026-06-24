@@ -156,6 +156,15 @@ async function upsertDograhIntegration({ userId, apiKey, baseUrl, testResult, st
     }
   };
 
+  // A successful (re)connection clears any auto-deactivation / failure streak from a prior
+  // broken key, so BYOK resumes immediately.
+  if (status === "connected") {
+    update.isActive = true;
+    update.consecutiveFailures = 0;
+    update.lastFailureReason = null;
+    update.lastFailureAt = null;
+  }
+
   if (allowPlatformFallback !== undefined) update.allowPlatformFallback = Boolean(allowPlatformFallback);
   if (apiKey) {
     update.apiKeyEncrypted = encryptSecret(apiKey);
@@ -246,6 +255,11 @@ export const testDograhIntegration = asyncHandler(async (req, res) => {
       integration.lastValidatedAt = new Date();
       integration.lastError = "";
       integration.lastErrorSafeMessage = "";
+      // Passing a live test reactivates a previously auto-deactivated key.
+      integration.isActive = true;
+      integration.consecutiveFailures = 0;
+      integration.lastFailureReason = null;
+      integration.lastFailureAt = null;
       integration.accountEmail = testResult.accountEmail || integration.accountEmail;
       integration.workspaceId = testResult.workspaceId || integration.workspaceId;
       integration.apiVersion = testResult.apiVersion || integration.apiVersion;

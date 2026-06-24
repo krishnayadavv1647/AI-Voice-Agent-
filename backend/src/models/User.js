@@ -10,8 +10,10 @@ const userSchema = new mongoose.Schema(
     avatar: String,
     authProvider: { type: String, enum: ["google", "local"], default: "local" },
     role: { type: String, enum: ["user", "admin", "super_admin"], default: "user" },
-    plan: { type: String, enum: ["free", "starter", "pro", "agency"], default: "free" },
-    planStatus: { type: String, enum: ["active", "expired", "cancelled", "trial"], default: "active" },
+    // Three paid plans. New users start with no active plan and 0 credits — they must purchase
+    // a plan to use paid features (see config/plans.js).
+    plan: { type: String, enum: ["starter", "growth", "scale"], default: "starter" },
+    planStatus: { type: String, enum: ["active", "inactive", "expired", "cancelled", "trial"], default: "inactive" },
     planStartedAt: Date,
     planExpiresAt: Date,
     credits: {

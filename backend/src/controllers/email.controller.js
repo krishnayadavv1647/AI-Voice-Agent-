@@ -13,6 +13,10 @@ import { emitToUser } from "../services/emailRealtime.service.js";
 import { getOrCreateEmailIntegration } from "../services/emailIntegrationStatus.service.js";
 import { syncEmailIntegration } from "../services/emailInboundSyncService.js";
 import { createEmailSentFollowUp, pauseEmailSentFollowUpsForLead } from "../services/followUp.service.js";
+import { chargeFeatureOrThrow } from "../services/billing/featureBilling.service.js";
+import { creditEnforcementEnabled } from "../services/billing/featureAccess.service.js";
+import ledger from "../services/billing/creditLedger.service.js";
+import { getActionPricing } from "../config/creditPricing.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -624,6 +628,32 @@ export const sendCampaign = asyncHandler(async (req, res) => {
   const recipients = Array.from(uniqueByEmail.values());
   await checkDailyLimit(req, recipients.length);
 
+  // Charge credits upfront for all recipients (1 credit per email). Blocks when balance is short.
+  if (creditEnforcementEnabled() && recipients.length > 0) {
+    const { cost } = getActionPricing("email_send");
+    const totalCost = cost * recipients.length;
+    const bill = await ledger.charge({
+      userId: req.user._id,
+      amount: totalCost,
+      action: "email_send",
+      mode: "platform_credits",
+      idempotencyKey: `email_campaign:${campaign._id}`,
+      metadata: { campaignId: campaign._id.toString(), count: recipients.length }
+    });
+    if (!bill.ok) {
+      throw new ApiError(402, `Not enough credits to send to ${recipients.length} recipients (need ${totalCost} credits).`, { code: "INSUFFICIENT_CREDITS" });
+    }
+    await ledger.recordUsage({
+      userId: req.user._id,
+      action: "email_send",
+      mode: "platform_credits",
+      success: true,
+      cost: totalCost,
+      creditsCharged: totalCost,
+      metadata: { campaignId: campaign._id.toString(), count: recipients.length }
+    });
+  }
+
   campaign.status = "sending";
   campaign.totalRecipients = recipients.length;
   campaign.sentCount = 0;
@@ -1107,6 +1137,14 @@ export const sendThreadReply = asyncHandler(async (req, res) => {
   if (!validEmail(toEmail)) throw new ApiError(400, "Thread lead email is missing or invalid.");
 
   const integration = await requireUserEmailIntegration(req.user._id);
+
+  await chargeFeatureOrThrow({
+    userId: req.user._id,
+    featureKey: "email_send",
+    idempotencyKey: `email_reply:${thread._id}:${Date.now()}`,
+    metadata: { threadId: thread._id.toString() }
+  });
+
   const finalSubject = clean(subject || thread.subject || "Following up");
   const replySubject = finalSubject.toLowerCase().startsWith("re:") ? finalSubject : `Re: ${finalSubject}`;
   const sentAt = new Date();

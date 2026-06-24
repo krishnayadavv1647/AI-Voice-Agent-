@@ -4,6 +4,7 @@ import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "./callOutco
 import { normalizeDograhRunDetails } from "./callLogMapper.js";
 import { getDograhCallRunDetails } from "./dograh.service.js";
 import { autoGenerateLeadFromCall } from "./leadGeneration.service.js";
+import { settleVoiceCallBilling } from "./billing/voiceCallBilling.service.js";
 
 const FINAL_STATUSES = new Set(["completed", "answered", "declined", "no_answer", "busy", "failed", "cancelled"]);
 const SYNC_DELAYS_MS = [30 * 1000, 90 * 1000, 180 * 1000];
@@ -49,6 +50,8 @@ export async function syncDograhCallStatus(callLogId) {
 
   await applyCallOutcomeToLog(callLog, rawProviderStatus, { endedAt: callLog.endedAt });
   await callLog.save();
+  // Settle per-minute credit billing now that the final duration/outcome is known (idempotent).
+  await settleVoiceCallBilling(callLog);
   await scheduleRetryFollowUpForCall(callLog);
   // Once the transcript is in, auto-generate the lead so it appears without a manual Extract Lead step.
   await autoGenerateLeadFromCall(callLog);

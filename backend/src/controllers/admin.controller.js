@@ -11,16 +11,12 @@ import Lead from "../models/Lead.js";
 import LeadFinder from "../models/LeadFinder.js";
 import UserIntegration from "../models/UserIntegration.js";
 import User from "../models/User.js";
+import PlanConfig from "../models/PlanConfig.js";
 import { signToken } from "../utils/token.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-
-const plans = {
-  free: { maxAgents: 1, maxCallsPerMonth: 25, maxEmailsPerMonth: 25, maxLeadSearchesPerMonth: 10 },
-  starter: { maxAgents: 3, maxCallsPerMonth: 250, maxEmailsPerMonth: 100, maxLeadSearchesPerMonth: 50 },
-  pro: { maxAgents: 10, maxCallsPerMonth: 1000, maxEmailsPerMonth: 500, maxLeadSearchesPerMonth: 200 },
-  agency: { maxAgents: 50, maxCallsPerMonth: 5000, maxEmailsPerMonth: 2000, maxLeadSearchesPerMonth: 1000 }
-};
+import { planLimits, listPlans, listTopupPacks, refreshPlanConfig } from "../config/plans.js";
+import { listPricingRaw, refreshCreditPricing } from "../config/creditPricing.js";
 
 function searchRegex(value) {
   return value ? new RegExp(String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
@@ -378,7 +374,7 @@ export const updatePlan = asyncHandler(async (req, res) => {
   user.planStatus = req.body.planStatus || user.planStatus || "active";
   user.planStartedAt = req.body.planStartedAt || user.planStartedAt || new Date();
   user.planExpiresAt = req.body.planExpiresAt || user.planExpiresAt;
-  user.limits = { ...(user.limits || {}), ...(plans[user.plan] || {}), ...req.body.limits };
+  user.limits = { ...(user.limits || {}), ...planLimits(user.plan), ...req.body.limits };
   await user.save();
   await audit(req, "plan_changed", { targetUserId: user._id, resourceType: "User", resourceId: user._id, metadata: req.body });
   res.json(await User.findById(user._id).select("-password"));
@@ -406,4 +402,45 @@ export const updateIntegrationSettings = asyncHandler(async (req, res) => {
 
 export const auditLogs = asyncHandler(async (req, res) => {
   res.json(await AuditLog.find().populate("actorUserId", "name email").populate("targetUserId", "name email").sort({ createdAt: -1 }).limit(300));
+});
+
+// Returns the full effective plan configuration (what's actually live after all overrides).
+export const getPlanConfig = asyncHandler(async (req, res) => {
+  res.json({
+    plans: listPlans(),
+    topupPacks: listTopupPacks(),
+    creditPricing: listPricingRaw()
+  });
+});
+
+// Deep-merges partial updates into the PlanConfig DB document and refreshes the in-memory cache.
+// Accepts { plans?, topupPacks?, creditPricing? } — all fields optional.
+export const updatePlanConfig = asyncHandler(async (req, res) => {
+  const { plans, topupPacks, creditPricing } = req.body;
+
+  const doc = await PlanConfig.findOneAndUpdate(
+    { key: "global" },
+    {
+      $set: {
+        ...(plans && Object.fromEntries(Object.entries(plans).map(([k, v]) => [`plans.${k}`, v]))),
+        ...(topupPacks && Object.fromEntries(Object.entries(topupPacks).map(([k, v]) => [`topupPacks.${k}`, v]))),
+        ...(creditPricing && Object.fromEntries(Object.entries(creditPricing).map(([k, v]) => [`creditPricing.${k}`, v]))),
+        updatedBy: req.user._id
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
+
+  await Promise.all([refreshPlanConfig(), refreshCreditPricing()]);
+  await audit(req, "plan_config_updated", {
+    resourceType: "PlanConfig",
+    resourceId: doc._id,
+    metadata: { updatedSections: Object.keys(req.body) }
+  });
+
+  res.json({
+    plans: listPlans(),
+    topupPacks: listTopupPacks(),
+    creditPricing: listPricingRaw()
+  });
 });

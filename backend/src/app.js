@@ -10,9 +10,12 @@ import adminRoutes from "./routes/admin.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import authRoutes from "./routes/auth.routes.js";
+import billingRoutes from "./routes/billing.routes.js";
 import bioPageRoutes from "./routes/bioPage.routes.js";
 import callRoutes from "./routes/call.routes.js";
 import campaignRoutes from "./routes/campaign.routes.js";
+import connectionsRoutes from "./routes/connections.routes.js";
+import creditsRoutes from "./routes/credits.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import dograhIntegrationRoutes from "./routes/dograhIntegration.routes.js";
 import dograhRoutes from "./routes/dograh.routes.js";
@@ -34,6 +37,7 @@ import voiceIntegrationRoutes from "./routes/voiceIntegration.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 
 import { dograhWebhook } from "./controllers/webhook.controller.js";
+import { handleBillingWebhook } from "./controllers/billing.controller.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -53,6 +57,9 @@ app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:5173",
   credentials: true,
 }));
+
+// Payment webhooks need the raw, unparsed body for signature verification, so mount before json.
+app.post("/api/billing/webhook/:provider", express.raw({ type: "*/*" }), handleBillingWebhook);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -98,6 +105,9 @@ app.use("/api/public", publicRoutes);
 app.use("/api/scheduled-calls", scheduledCallRoutes);
 app.use("/api/telephony-configs", telephonyConfigRoutes);
 app.use("/api/telephony", telephonyRoutes);
+app.use("/api/billing", billingRoutes);
+app.use("/api/connections", connectionsRoutes);
+app.use("/api/credits", creditsRoutes);
 app.use("/api/integrations/dograh", dograhIntegrationRoutes);
 app.use("/api/integrations/telegram", telegramIntegrationRoutes);
 app.use("/api", voiceIntegrationRoutes);

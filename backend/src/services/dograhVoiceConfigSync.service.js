@@ -4,6 +4,14 @@ import VoiceIntegration from "../models/VoiceIntegration.js";
 import { decryptSecret } from "../utils/crypto.js";
 import { getDograhClientForAgent } from "./dograhClientResolver.js";
 import { extractEffectiveRuntime, extractWorkflowDefinition } from "./dograhWorkflowConfig.service.js";
+import {
+  buildMissingModelConfigError,
+  describeShape,
+  detectModelConfigVersion,
+  findModelConfigPath,
+  getAtPath,
+  setAtPath
+} from "./dograhModelConfig.service.js";
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -98,51 +106,9 @@ function sttEffectiveMatches(expected, actual) {
   );
 }
 
-function v2TtsKeysScore(key, value) {
-  const lower = String(key || "").toLowerCase();
-  const object = asObject(value);
-  let score = 0;
-
-  if (["tts", "text_to_speech", "texttospeech", "speech_synthesis", "speechsynthesis", "synthesizer"].includes(lower)) score += 4;
-  if (lower.includes("tts") || lower.includes("voice") || lower.includes("speech")) score += 2;
-  if ("provider" in object || "model" in object || "model_id" in object || "modelId" in object) score += 2;
-  if ("voice" in object || "voice_id" in object || "voiceId" in object || "ttsVoiceId" in object) score += 2;
-
-  return score;
-}
-
-function findV2TtsPath(root) {
-  const seen = new Set();
-  let best = null;
-
-  function visit(value, path) {
-    if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value)) return;
-    seen.add(value);
-
-    for (const [key, child] of Object.entries(value)) {
-      if (!child || typeof child !== "object" || Array.isArray(child)) continue;
-      const score = v2TtsKeysScore(key, child);
-      if (score >= 6 && (!best || score > best.score)) best = { path: [...path, key], score };
-      visit(child, [...path, key]);
-    }
-  }
-
-  visit(root, []);
-  return best?.path || null;
-}
-
-function getAtPath(root, path) {
-  return path.reduce((current, key) => asObject(current)[key], root);
-}
-
-function setAtPath(root, path, value) {
-  let current = root;
-  for (let index = 0; index < path.length - 1; index += 1) {
-    current[path[index]] = asObject(current[path[index]]);
-    current = current[path[index]];
-  }
-  current[path[path.length - 1]] = value;
-}
+// Keys a previously-synced override block writes into a V2 slot; removed when the
+// provider is reverted to Dograh default so the slot returns to Dograh-managed values.
+const V2_SLOT_KEYS = ["provider", "api_key", "model", "model_id", "modelId", "model_name", "voice", "voice_id", "voiceId", "ttsVoiceId", "speed", "volume", "language"];
 
 function mergeTtsIntoExisting(existingTts, override) {
   const next = { ...asObject(existingTts), ...override };
@@ -160,7 +126,7 @@ function extractEffectiveTts(existingConfigurations) {
   if (legacy?.provider || legacy?.model || legacy?.voiceId) return legacy;
 
   const v2 = asObject(existingConfigurations?.model_configuration_v2_override);
-  const path = findV2TtsPath(v2);
+  const path = findModelConfigPath(v2, "tts");
   if (!path) return null;
   return readTtsEffectiveFromObject(getAtPath(v2, path));
 }
@@ -256,49 +222,62 @@ function buildTtsOverride(config, credential) {
   throw error;
 }
 
+// Applies one BYOK override (TTS or STT) into a Model Configuration V2 override object.
+// - custom provider + existing slot  -> selective patch (never overwrites the whole block)
+// - custom provider + no slot         -> fallback creation from the agent's saved settings
+// - Dograh default + existing slot     -> strip previously-synced keys (revert to Dograh)
+// - Dograh default + no slot           -> no-op
+function applyV2Slot(v2, type, override, languageValue) {
+  const path = findModelConfigPath(v2, type);
+
+  if (override) {
+    if (path) {
+      const existing = getAtPath(v2, path);
+      const merged = type === "tts"
+        ? mergeTtsIntoExisting(existing, override)
+        : compact({ ...asObject(existing), ...override });
+      setAtPath(v2, path, merged);
+    } else {
+      // Fallback: V2 exists but has no recognizable slot for this modality. Create a
+      // recognizable block from the agent's saved settings; read-back verification then
+      // confirms Dograh accepted it.
+      v2[type] = compact({ ...override, language: languageValue });
+    }
+    return;
+  }
+
+  if (path) {
+    const existing = { ...asObject(getAtPath(v2, path)) };
+    for (const key of V2_SLOT_KEYS) delete existing[key];
+    setAtPath(v2, path, existing);
+  }
+}
+
 function mergeModelOverrides(existingConfigurations, config, credentials) {
   const ttsOverride = buildTtsOverride(config, credentials.tts);
+  const sttOverride = buildSttOverride(config, credentials.stt);
 
   if (existingConfigurations.model_configuration_v2_override) {
     const nextConfigurations = { ...existingConfigurations };
     const v2 = { ...asObject(existingConfigurations.model_configuration_v2_override) };
-    const ttsPath = findV2TtsPath(v2);
 
-    if (!ttsPath) {
-      const error = new Error(
-        "This Dograh workflow uses Model Configuration V2, but no recognizable TTS configuration object was found for a safe selective update."
-      );
-      error.safeMessage = error.message;
-      error.configurationRequired = true;
-      throw error;
-    }
-
-    if (ttsOverride) {
-      const existingTts = getAtPath(v2, ttsPath);
-      setAtPath(v2, ttsPath, mergeTtsIntoExisting(existingTts, ttsOverride));
-    } else {
-      const existingTts = { ...asObject(getAtPath(v2, ttsPath)) };
-      for (const key of ["provider", "api_key", "model", "model_id", "modelId", "voice", "voice_id", "voiceId", "speed", "volume"]) {
-        delete existingTts[key];
-      }
-      setAtPath(v2, ttsPath, existingTts);
-    }
+    applyV2Slot(v2, "tts", ttsOverride, config.ttsLanguage);
+    applyV2Slot(v2, "stt", sttOverride, config.sttLanguage);
 
     nextConfigurations.model_configuration_v2_override = v2;
     return nextConfigurations;
   }
 
   if (existingConfigurations.modelConfigurationV2Override) {
-    const error = new Error(
-      "This Dograh workflow returned camelCase Model Configuration V2. Please confirm the deployed Dograh update schema before automatic BYOK synchronization."
-    );
-    error.safeMessage = error.message;
-    error.configurationRequired = true;
-    throw error;
+    // camelCase V2 is an unknown deployed schema; refuse to guess and surface a clear error.
+    throw buildMissingModelConfigError({
+      type: "tts",
+      configurations: existingConfigurations,
+      reason: "This Dograh workflow returned a camelCase Model Configuration V2 schema that is not yet supported for automatic synchronization."
+    });
   }
 
   const existingOverrides = { ...asObject(existingConfigurations.model_overrides) };
-  const sttOverride = buildSttOverride(config, credentials.stt);
 
   if (sttOverride) existingOverrides.stt = sttOverride;
   else delete existingOverrides.stt;
@@ -315,6 +294,29 @@ function mergeModelOverrides(existingConfigurations, config, credentials) {
 
 function debugSync(event) {
   console.log("[Dograh Voice Sync]", compact(event));
+}
+
+// Logs the full Dograh workflow model-configuration structure (keys only, no secret
+// values) so the real V2 schema can be inspected while resolving sync issues. Development
+// only — never runs in production to avoid noisy logs.
+function devLogWorkflowModelConfig(payload, existingConfigurations, { agentId, workflowId }) {
+  if (process.env.NODE_ENV === "production") return;
+  const workflow = payload?.workflow || payload?.data?.workflow || payload?.data || payload || {};
+  const definition = extractWorkflowDefinition(payload);
+  console.log("[Dograh Voice Sync] workflow model configuration (dev)", JSON.stringify({
+    agentId: String(agentId),
+    workflowId: String(workflowId),
+    detectedConfigurationVersion: detectModelConfigVersion(existingConfigurations),
+    model_overrides: describeShape(existingConfigurations.model_overrides),
+    model_configuration_v2_override: describeShape(existingConfigurations.model_configuration_v2_override),
+    modelConfiguration: describeShape(workflow.modelConfiguration ?? workflow.model_configuration),
+    modelConfigurationV2: describeShape(workflow.modelConfigurationV2 ?? workflow.model_configuration_v2),
+    nodes: describeShape(definition?.nodes),
+    steps: describeShape(workflow.steps),
+    voice: describeShape(workflow.voice),
+    tts: describeShape(workflow.tts),
+    stt: describeShape(workflow.stt)
+  }));
 }
 
 async function markRuntimeStatus(integrationIds, status, safeError = "") {
@@ -356,6 +358,7 @@ export async function syncAgentVoiceConfigurationToDograh({ agent, userId }) {
     const resolved = await getDograhClientForAgent(agent, userId);
     const current = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
     const existingConfigurations = extractWorkflowConfigurations(current.data);
+    devLogWorkflowModelConfig(current.data, existingConfigurations, { agentId: agent._id, workflowId });
     const workflowConfigurations = mergeModelOverrides(existingConfigurations, config, { stt, tts });
 
     debugSync({
@@ -401,9 +404,13 @@ export async function syncAgentVoiceConfigurationToDograh({ agent, userId }) {
     });
 
     if (!verificationResult) {
-      const error = new Error("Dograh accepted the update request, but read-back verification did not show the selected STT/TTS provider, model, and voice.");
-      error.safeMessage = error.message;
-      error.configurationRequired = true;
+      const error = buildMissingModelConfigError({
+        type: "tts",
+        agentId: agent._id,
+        workflowId,
+        configurations: verifiedConfigurations,
+        reason: "Dograh accepted the update, but the selected STT/TTS provider, model, and voice were not present on read-back."
+      });
       throw error;
     }
 
@@ -424,6 +431,7 @@ export async function syncAgentVoiceConfigurationToDograh({ agent, userId }) {
     return config;
   } catch (error) {
     const message = safeMessage(error);
+    if (error?.details) console.error("[Dograh Voice Sync] configuration diagnostics", error.details);
     config.dograhSyncStatus = error?.configurationRequired ? "configuration_required" : "failed";
     config.dograhSyncError = message;
     config.dograhEffectiveSttProvider = "";
@@ -466,13 +474,32 @@ export async function getDograhVoiceRuntimeSummary({ agent, userId }) {
   };
 }
 
+// Friendly, user-facing message for an unverified voice runtime — keeps raw technical
+// detail out of the UI while pointing the operator at the action that resolves it.
+export function friendlyVoiceReadinessMessage(runtime) {
+  if (runtime?.dograhSyncStatus === "configuration_required") {
+    return "Voice provider settings still need to be initialized on the Dograh workflow. Open the agent's Voice & Language tab and click \"Verify with Dograh\".";
+  }
+  if (runtime?.dograhSyncStatus === "syncing" || runtime?.dograhSyncStatus === "pending") {
+    return "Dograh is still verifying the selected voice provider. Wait a moment and try again.";
+  }
+  return "The selected voice provider is not verified with Dograh yet. Save the agent and wait until the voice status shows Synced.";
+}
+
 export async function assertDograhVoiceReadyForWebCall({ agent, userId }) {
   const runtime = await getDograhVoiceRuntimeSummary({ agent, userId });
   if (runtime.requiresSync && runtime.dograhSyncStatus !== "synced") {
     const error = new Error(runtime.dograhSyncError || "Dograh voice settings are not verified yet.");
-    error.safeMessage = "Web calling is waiting for Dograh voice synchronization. Save the agent and wait until the voice status is synced.";
+    error.safeMessage = friendlyVoiceReadinessMessage(runtime);
     error.configurationRequired = true;
     error.runtime = runtime;
+    throw error;
+  }
+  // A custom TTS provider must have a voice selected, and a custom STT provider a model.
+  if (runtime.configuredTtsProvider !== "dograh_default" && !runtime.configuredTtsVoiceId) {
+    const error = new Error("A voice must be selected for the configured TTS provider.");
+    error.safeMessage = error.message;
+    error.configurationRequired = true;
     throw error;
   }
   return runtime;

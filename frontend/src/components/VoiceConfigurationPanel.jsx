@@ -66,6 +66,22 @@ function formatStatus(value) {
   return String(value || "not_configured").replaceAll("_", " ");
 }
 
+// Maps raw backend/Dograh technical sync messages to a clean, actionable message.
+function friendlyVoiceError(raw) {
+  const text = String(raw || "").replace(/^TTS\/STT initialization failed:\s*/i, "");
+  if (!text) return "";
+  if (/no recognizable .*configuration|Model Configuration V2|read-back|could not initialize/i.test(text)) {
+    return "We couldn't initialize this voice provider on the Dograh workflow automatically. Re-check the selected provider, model, and voice, then click “Verify with Dograh”.";
+  }
+  if (/credential is required|api key/i.test(text)) {
+    return "Connect and select an API key for this voice provider, then verify with Dograh.";
+  }
+  if (/voice id|voice must be selected|aura model/i.test(text)) {
+    return "Select a voice for the chosen TTS provider before verifying with Dograh.";
+  }
+  return text;
+}
+
 function runtimeStatusClass(status) {
   if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (status === "syncing" || status === "pending") return "border-sky-200 bg-sky-50 text-sky-800";
@@ -289,7 +305,7 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
               )}
             </div>
           </div>
-          {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{config.dograhSyncError}</p>}
+          {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{friendlyVoiceError(config.dograhSyncError)}</p>}
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">

@@ -2,6 +2,7 @@ import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
 import AgentVoiceConfiguration from "../models/AgentVoiceConfiguration.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { ApiError } from "../utils/apiError.js";
+import { findModelConfigPath, getAtPath as getAtConfigPath } from "./dograhModelConfig.service.js";
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -133,45 +134,14 @@ function readSpeechEffectiveFromObject(value) {
   };
 }
 
-function scorePath(key, value, type) {
-  const lower = String(key || "").toLowerCase();
-  const object = asObject(value);
-  let score = 0;
-  const names = {
-    llm: ["llm", "language_model", "languagemodel", "chat_model", "chatmodel"],
-    tts: ["tts", "text_to_speech", "texttospeech", "speech_synthesis", "speechsynthesis", "synthesizer"],
-    stt: ["stt", "speech_to_text", "speechtotext", "transcription", "transcriber"]
-  }[type];
-  if (names.includes(lower)) score += 4;
-  if (lower.includes(type)) score += 3;
-  if (type === "llm" && (lower.includes("language") || lower.includes("chat"))) score += 2;
-  if (type === "tts" && (lower.includes("voice") || lower.includes("speech"))) score += 2;
-  if (type === "stt" && (lower.includes("transcri") || lower.includes("speech"))) score += 2;
-  if ("provider" in object || "model" in object || "model_id" in object || "modelId" in object) score += 3;
-  if (type === "tts" && ("voice" in object || "voice_id" in object || "voiceId" in object)) score += 2;
-  if ("api_key" in object || "api_subscription_key" in object || "base_url" in object) score += 1;
-  return score;
-}
-
+// Delegates to the shared resolver so the runtime verifier recognizes exactly the same
+// TTS/STT/LLM blocks that the BYOK sync writer detects, patches, or creates.
 function findV2Path(root, type) {
-  const seen = new Set();
-  let best = null;
-  function visit(value, path) {
-    if (!value || typeof value !== "object" || Array.isArray(value) || seen.has(value)) return;
-    seen.add(value);
-    for (const [key, child] of Object.entries(value)) {
-      if (!child || typeof child !== "object" || Array.isArray(child)) continue;
-      const score = scorePath(key, child, type);
-      if (score >= 6 && (!best || score > best.score)) best = { path: [...path, key], score };
-      visit(child, [...path, key]);
-    }
-  }
-  visit(root, []);
-  return best?.path || null;
+  return findModelConfigPath(root, type);
 }
 
 function getAtPath(root, path) {
-  return path.reduce((current, key) => asObject(current)[key], root);
+  return getAtConfigPath(root, path);
 }
 
 export function extractEffectiveRuntime(payloadOrConfigurations) {

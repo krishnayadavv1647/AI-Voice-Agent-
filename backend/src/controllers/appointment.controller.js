@@ -1,8 +1,10 @@
+import crypto from "crypto";
 import Agent from "../models/Agent.js";
 import Appointment from "../models/Appointment.js";
 import FollowUp from "../models/FollowUp.js";
 import Lead from "../models/Lead.js";
 import { createAppointmentRecord, parseAppointmentDateTime, syncAppointmentFollowUps } from "../services/appointment.service.js";
+import { chargeFeatureOrThrow } from "../services/billing/featureBilling.service.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -146,6 +148,13 @@ export const createAppointment = asyncHandler(async (req, res) => {
     });
     throw error;
   }
+  await chargeFeatureOrThrow({
+    userId: req.user._id,
+    featureKey: "appointment_book",
+    idempotencyKey: `appointment_book:${req.user._id}:${crypto.randomUUID()}`,
+    metadata: { agentId: String(agentId), leadId: String(leadId) }
+  });
+
   const result = await createAppointmentRecord({
     userId: req.user._id,
     agent,

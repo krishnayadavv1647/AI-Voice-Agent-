@@ -1,4 +1,4 @@
-﻿import {
+import {
   Activity,
   Bot,
   CalendarClock,
@@ -6,6 +6,7 @@
   Headphones,
   KeyRound,
   Mail,
+  MoreVertical,
   PhoneCall,
   RefreshCw,
   Search,
@@ -13,7 +14,7 @@
   UserCog,
   Users
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api, setToken } from "../lib/api.js";
@@ -95,7 +96,6 @@ export default function Admin() {
       followups: "/admin/followups",
       email: "/admin/email-campaigns",
       usage: "/admin/usage",
-      plans: "/admin/usage",
       integrations: "/admin/settings/integrations",
       audit: "/admin/audit-logs"
     };
@@ -224,17 +224,14 @@ export default function Admin() {
                   user.counts?.emailsSent || 0,
                   fmt(user.createdAt),
                   fmt(user.lastLoginAt),
-                  <div className="flex flex-nowrap items-center gap-2">
-                    <button className="btn-secondary" onClick={() => viewUser(user)}>View</button>
-                    <button className="btn-secondary" onClick={() => impersonate(user)}>Login As</button>
-                    <button className="btn-secondary" onClick={() => mutate("User suspended", () => api(`/admin/users/${user._id}/suspend`, { method: "POST" }))}>Suspend</button>
-                    <button className="btn-secondary" onClick={() => mutate("User activated", () => api(`/admin/users/${user._id}/activate`, { method: "POST" }))}>Activate</button>
-                    <button className="btn-secondary" onClick={async () => {
-                      const result = await mutate("Temporary password generated", () => api(`/admin/users/${user._id}/reset-password`, { method: "POST" }));
-                      if (result?.temporaryPassword) alert(`Temporary password: ${result.temporaryPassword}`);
-                    }}>Reset</button>
-                    <button className="btn-danger" onClick={() => confirm("Soft delete this user?") && mutate("User deleted", () => api(`/admin/users/${user._id}`, { method: "DELETE" }))}>Delete</button>
-                  </div>
+                  <ThreeDotMenu actions={[
+                    { label: "View", onClick: () => viewUser(user) },
+                    { label: "Login As", onClick: () => impersonate(user) },
+                    { label: "Suspend", onClick: () => mutate("User suspended", () => api(`/admin/users/${user._id}/suspend`, { method: "POST" })) },
+                    { label: "Activate", onClick: () => mutate("User activated", () => api(`/admin/users/${user._id}/activate`, { method: "POST" })) },
+                    { label: "Reset Password", onClick: async () => { const result = await mutate("Temporary password generated", () => api(`/admin/users/${user._id}/reset-password`, { method: "POST" })); if (result?.temporaryPassword) alert(`Temporary password: ${result.temporaryPassword}`); } },
+                    { label: "Delete", danger: true, onClick: () => confirm("Soft delete this user?") && mutate("User deleted", () => api(`/admin/users/${user._id}`, { method: "DELETE" })) }
+                  ]} />
                 ])}
               />
             </section>
@@ -244,9 +241,11 @@ export default function Admin() {
             <ResourceTable keyName={active} rows={resources[active] || []} mutate={mutate} />
           )}
 
-          {["usage", "plans"].includes(active) && (
-            <UsageTable rows={resources[active] || []} mutate={mutate} />
+          {active === "usage" && (
+            <UsageTable rows={resources.usage || []} mutate={mutate} />
           )}
+
+          {active === "plans" && <PlanConfigPanel />}
 
           {active === "integrations" && <Integrations data={resources.integrations} />}
           {active === "audit" && <AuditTable rows={resources.audit || []} />}
@@ -276,7 +275,7 @@ function AdminTable({ columns, rows }) {
     key={cellIndex}
     className={
       isActions
-        ? "whitespace-nowrap align-middle min-w-[280px]"
+        ? "whitespace-nowrap align-middle"
         : "break-words align-middle"
     }
   >
@@ -295,11 +294,11 @@ function AdminTable({ columns, rows }) {
 function ResourceTable({ keyName, rows, mutate }) {
   const configs = {
     agents: ["Agent", ["Agent Name", "User", "Category", "Status", "Dograh", "Calls", "Leads", "Created", "Actions"], (row) => [row.agentName, row.userId?.email, row.businessCategory, <StatusBadge status={row.status} />, row.dograhStatus || "-", row.totalCalls || 0, row.totalLeads || 0, fmt(row.createdAt), <RowActions row={row} base="/admin/agents" mutate={mutate} pause activate />]],
-    campaigns: ["Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Answered", "Failed", "Start", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.stats?.totalRecipients || 0, row.stats?.answered || 0, row.stats?.failed || 0, fmt(row.startAt), <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Campaign paused", () => api(`/admin/campaigns/${row._id}/pause`, { method: "POST" }))}>Pause</button><button className="btn-danger" onClick={() => mutate("Campaign cancelled", () => api(`/admin/campaigns/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
-    calls: ["Calls", ["Date", "User", "Agent", "Caller", "Calling", "Status", "Outcome", "Duration", "Lead", "Actions"], (row) => [fmt(row.createdAt), row.userId?.email, row.agentId?.agentName, row.callerNumber, row.callingNumber, <StatusBadge status={row.normalizedStatus || row.status} />, row.outcome || "-", row.duration || row.durationSeconds || "-", row.leadId ? "Yes" : "No", <button className="btn-danger" onClick={() => mutate("Call deleted", () => api(`/admin/calls/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
-    leads: ["Leads", ["Lead", "User", "Agent", "Phone", "Email", "City", "Source", "Status", "Created", "Actions"], (row) => [nameOf(row), row.userId?.email, row.agentId?.agentName, row.phone, row.email, row.city, row.source, <StatusBadge status={row.status} />, fmt(row.createdAt), <button className="btn-danger" onClick={() => mutate("Lead deleted", () => api(`/admin/leads/${row._id}`, { method: "DELETE" }))}>Delete</button>]],
-    appointments: ["Appointments", ["Lead", "User", "Agent", "Date & Time", "Phone", "Type", "Status", "Reminder", "Call Status", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, fmt(row.startAt), row.customerPhone, row.appointmentType, <StatusBadge status={row.status} />, row.reminderStatus, row.appointmentCallStatus, <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Appointment completed", () => api(`/admin/appointments/${row._id}/complete`, { method: "POST" }))}>Complete</button><button className="btn-danger" onClick={() => mutate("Appointment cancelled", () => api(`/admin/appointments/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
-    followups: ["Follow-ups", ["Lead", "User", "Agent", "Type", "Trigger", "Scheduled", "Status", "Attempts", "Error", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, row.type, row.trigger, fmt(row.scheduledAt), <StatusBadge status={row.status} />, `${row.attemptCount || 0}/${row.maxAttempts || 0}`, row.lastError || "-", <div className="flex min-w-max gap-2"><button className="btn-secondary" onClick={() => mutate("Follow-up queued", () => api(`/admin/followups/${row._id}/run`, { method: "POST" }))}>Run</button><button className="btn-danger" onClick={() => mutate("Follow-up cancelled", () => api(`/admin/followups/${row._id}/cancel`, { method: "POST" }))}>Cancel</button></div>]],
+    campaigns: ["Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Answered", "Failed", "Start", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.stats?.totalRecipients || 0, row.stats?.answered || 0, row.stats?.failed || 0, fmt(row.startAt), <ThreeDotMenu actions={[{ label: "Pause", onClick: () => mutate("Campaign paused", () => api(`/admin/campaigns/${row._id}/pause`, { method: "POST" })) }, { label: "Cancel", danger: true, onClick: () => mutate("Campaign cancelled", () => api(`/admin/campaigns/${row._id}/cancel`, { method: "POST" })) }]} />]],
+    calls: ["Calls", ["Date", "User", "Agent", "Caller", "Calling", "Status", "Outcome", "Duration", "Lead", "Actions"], (row) => [fmt(row.createdAt), row.userId?.email, row.agentId?.agentName, row.callerNumber, row.callingNumber, <StatusBadge status={row.normalizedStatus || row.status} />, row.outcome || "-", row.duration || row.durationSeconds || "-", row.leadId ? "Yes" : "No", <ThreeDotMenu actions={[{ label: "Delete", danger: true, onClick: () => mutate("Call deleted", () => api(`/admin/calls/${row._id}`, { method: "DELETE" })) }]} />]],
+    leads: ["Leads", ["Lead", "User", "Agent", "Phone", "Email", "City", "Source", "Status", "Created", "Actions"], (row) => [nameOf(row), row.userId?.email, row.agentId?.agentName, row.phone, row.email, row.city, row.source, <StatusBadge status={row.status} />, fmt(row.createdAt), <ThreeDotMenu actions={[{ label: "Delete", danger: true, onClick: () => mutate("Lead deleted", () => api(`/admin/leads/${row._id}`, { method: "DELETE" })) }]} />]],
+    appointments: ["Appointments", ["Lead", "User", "Agent", "Date & Time", "Phone", "Type", "Status", "Reminder", "Call Status", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, fmt(row.startAt), row.customerPhone, row.appointmentType, <StatusBadge status={row.status} />, row.reminderStatus, row.appointmentCallStatus, <ThreeDotMenu actions={[{ label: "Complete", onClick: () => mutate("Appointment completed", () => api(`/admin/appointments/${row._id}/complete`, { method: "POST" })) }, { label: "Cancel", danger: true, onClick: () => mutate("Appointment cancelled", () => api(`/admin/appointments/${row._id}/cancel`, { method: "POST" })) }]} />]],
+    followups: ["Follow-ups", ["Lead", "User", "Agent", "Type", "Trigger", "Scheduled", "Status", "Attempts", "Error", "Actions"], (row) => [nameOf(row.leadId), row.userId?.email, row.agentId?.agentName, row.type, row.trigger, fmt(row.scheduledAt), <StatusBadge status={row.status} />, `${row.attemptCount || 0}/${row.maxAttempts || 0}`, row.lastError || "-", <ThreeDotMenu actions={[{ label: "Run", onClick: () => mutate("Follow-up queued", () => api(`/admin/followups/${row._id}/run`, { method: "POST" })) }, { label: "Cancel", danger: true, onClick: () => mutate("Follow-up cancelled", () => api(`/admin/followups/${row._id}/cancel`, { method: "POST" })) }]} />]],
     email: ["Email Campaigns", ["Campaign", "User", "Agent", "Status", "Recipients", "Sent", "Failed", "Created", "Actions"], (row) => [row.name, row.userId?.email, row.agentId?.agentName, <StatusBadge status={row.status} />, row.totalRecipients || 0, row.sentCount || 0, row.failedCount || 0, fmt(row.createdAt), "-"]]
   };
   const [title, columns, mapper] = configs[keyName];
@@ -307,7 +306,12 @@ function ResourceTable({ keyName, rows, mutate }) {
 }
 
 function RowActions({ row, base, mutate, pause, activate }) {
-  return <div className="flex min-w-max gap-2">{pause && <button className="btn-secondary" onClick={() => mutate("Agent paused", () => api(`${base}/${row._id}/pause`, { method: "POST" }))}>Pause</button>}{activate && <button className="btn-secondary" onClick={() => mutate("Agent activated", () => api(`${base}/${row._id}/activate`, { method: "POST" }))}>Activate</button>}<button className="btn-danger" onClick={() => mutate("Agent deleted", () => api(`${base}/${row._id}`, { method: "DELETE" }))}>Delete</button></div>;
+  const actions = [
+    pause && { label: "Pause", onClick: () => mutate("Agent paused", () => api(`${base}/${row._id}/pause`, { method: "POST" })) },
+    activate && { label: "Activate", onClick: () => mutate("Agent activated", () => api(`${base}/${row._id}/activate`, { method: "POST" })) },
+    { label: "Delete", danger: true, onClick: () => mutate("Agent deleted", () => api(`${base}/${row._id}`, { method: "DELETE" })) }
+  ].filter(Boolean);
+  return <ThreeDotMenu actions={actions} />;
 }
 
 function UsageTable({ rows, mutate }) {
@@ -324,13 +328,10 @@ function UsageTable({ rows, mutate }) {
         usage?.calls || 0,
         usage?.emailsSent || 0,
         usage?.leads || 0,
-        <div className="flex flex-wrap gap-2"><button className="btn-secondary" onClick={() => {
-          const emailCredits = Number(prompt("Email credits", user.credits?.emailCredits || 0));
-          if (!Number.isNaN(emailCredits)) mutate("Credits updated", () => api(`/admin/users/${user._id}/credits`, { method: "PATCH", body: { emailCredits } }));
-        }}>Edit Credits</button><button className="btn-secondary" onClick={() => {
-          const plan = prompt("Plan", user.plan);
-          if (plan) mutate("Plan updated", () => api(`/admin/users/${user._id}/plan`, { method: "PATCH", body: { plan } }));
-        }}>Change Plan</button></div>
+        <ThreeDotMenu actions={[
+          { label: "Edit Credits", onClick: () => { const emailCredits = Number(prompt("Email credits", user.credits?.emailCredits || 0)); if (!Number.isNaN(emailCredits)) mutate("Credits updated", () => api(`/admin/users/${user._id}/credits`, { method: "PATCH", body: { emailCredits } })); } },
+          { label: "Change Plan", onClick: () => { const plan = prompt("Plan", user.plan); if (plan) mutate("Plan updated", () => api(`/admin/users/${user._id}/plan`, { method: "PATCH", body: { plan } })); } }
+        ]} />
       ])} />
     </section>
   );
@@ -342,6 +343,328 @@ function Integrations({ data }) {
 
 function AuditTable({ rows }) {
   return <section className="card p-0"><div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Audit Logs</h2></div><AdminTable columns={["Action", "Actor", "Target", "Resource", "Date", "Details"]} rows={rows.map((row) => [row.action, row.actorUserId?.email || "-", row.targetUserId?.email || "-", row.resourceType || "-", fmt(row.createdAt), row.description || JSON.stringify(row.metadata || {})])} /></section>;
+}
+
+function ThreeDotMenu({ actions }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutside(e) {
+      if (!menuRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.right - 160 });
+    }
+    setOpen((prev) => !prev);
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className="rounded-lg border border-hairline p-1.5 text-neutral-500 hover:bg-neutral-50"
+        onClick={handleToggle}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+          className="w-40 rounded-xl border border-hairline bg-white py-1 shadow-lg"
+        >
+          {actions.map((act, i) => (
+            <button
+              key={i}
+              type="button"
+              disabled={act.disabled}
+              className={`flex w-full items-center px-3 py-2 text-left text-sm disabled:opacity-40 ${act.danger ? "text-rose-600 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-50"}`}
+              onClick={() => {
+                act.onClick();
+                setOpen(false);
+              }}
+            >
+              {act.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+const ALL_FEATURES = ["voice_call", "email_send", "lead_search", "appointment_book", "image_generate"];
+const FEATURE_LABELS = { voice_call: "Voice calls", email_send: "Email send", lead_search: "Lead Finder", appointment_book: "Appointments", image_generate: "Agent images" };
+const PLAN_KEYS = ["starter", "growth", "scale"];
+const PACK_KEYS = ["tp_500", "tp_2000", "tp_5000"];
+const ACTION_KEYS = ["voice_call", "dograh_call", "email_send", "lead_search", "appointment_book", "image_generate"];
+
+function numVal(obj, key) { return Number(obj?.[key]) || 0; }
+
+function PlanConfigPanel() {
+  const [config, setConfig] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [saving, setSaving] = useState("");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => { loadConfig(); }, []);
+
+  async function loadConfig() {
+    try {
+      const data = await api("/admin/plan-config");
+      setConfig(data);
+      // Initialise editable drafts from live values
+      const planDrafts = {};
+      for (const plan of data.plans || []) {
+        planDrafts[plan.key] = {
+          credits: plan.credits,
+          priceInr: plan.priceInr,
+          priceUsd: plan.priceUsd,
+          features: [...(plan.features || [])],
+          maxAgents: plan.limits?.maxAgents,
+          maxCallsPerMonth: plan.limits?.maxCallsPerMonth,
+          maxEmailsPerMonth: plan.limits?.maxEmailsPerMonth,
+          maxLeadSearchesPerMonth: plan.limits?.maxLeadSearchesPerMonth
+        };
+      }
+      const packDrafts = {};
+      for (const pack of data.topupPacks || []) {
+        packDrafts[pack.key] = { credits: pack.credits, priceInr: pack.priceInr, priceUsd: pack.priceUsd };
+      }
+      const pricingDrafts = {};
+      for (const [action, rates] of Object.entries(data.creditPricing || {})) {
+        pricingDrafts[action] = { platform: rates.cost, byok: rates.platformFee };
+      }
+      setDrafts({ plans: planDrafts, packs: packDrafts, pricing: pricingDrafts });
+    } catch (err) {
+      setError(err.response?.message || err.message);
+    }
+  }
+
+  function setPlanField(planKey, field, value) {
+    setDrafts((prev) => ({ ...prev, plans: { ...prev.plans, [planKey]: { ...prev.plans?.[planKey], [field]: value } } }));
+  }
+
+  function toggleFeature(planKey, feature) {
+    const current = drafts.plans?.[planKey]?.features || [];
+    const next = current.includes(feature) ? current.filter((f) => f !== feature) : [...current, feature];
+    setPlanField(planKey, "features", next);
+  }
+
+  function setPackField(packKey, field, value) {
+    setDrafts((prev) => ({ ...prev, packs: { ...prev.packs, [packKey]: { ...prev.packs?.[packKey], [field]: value } } }));
+  }
+
+  function setPricingField(action, field, value) {
+    setDrafts((prev) => ({ ...prev, pricing: { ...prev.pricing, [action]: { ...prev.pricing?.[action], [field]: value } } }));
+  }
+
+  async function savePlans(planKey) {
+    setSaving(`plan_${planKey}`);
+    setNotice(""); setError("");
+    try {
+      const d = drafts.plans?.[planKey] || {};
+      await api("/admin/plan-config", {
+        method: "PATCH",
+        body: {
+          plans: {
+            [planKey]: {
+              credits: Number(d.credits) || 0,
+              priceInr: Number(d.priceInr) || 0,
+              priceUsd: Number(d.priceUsd) || 0,
+              features: d.features || [],
+              limits: {
+                maxAgents: Number(d.maxAgents) || 0,
+                maxCallsPerMonth: Number(d.maxCallsPerMonth) || 0,
+                maxEmailsPerMonth: Number(d.maxEmailsPerMonth) || 0,
+                maxLeadSearchesPerMonth: Number(d.maxLeadSearchesPerMonth) || 0
+              }
+            }
+          }
+        }
+      });
+      setNotice("Plan saved.");
+      await loadConfig();
+    } catch (err) {
+      setError(err.response?.message || err.message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function savePacks() {
+    setSaving("packs");
+    setNotice(""); setError("");
+    try {
+      const topupPacks = {};
+      for (const packKey of PACK_KEYS) {
+        const d = drafts.packs?.[packKey] || {};
+        topupPacks[packKey] = { credits: Number(d.credits) || 0, priceInr: Number(d.priceInr) || 0, priceUsd: Number(d.priceUsd) || 0 };
+      }
+      await api("/admin/plan-config", { method: "PATCH", body: { topupPacks } });
+      setNotice("Top-up packs saved.");
+      await loadConfig();
+    } catch (err) {
+      setError(err.response?.message || err.message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function savePricing() {
+    setSaving("pricing");
+    setNotice(""); setError("");
+    try {
+      const creditPricing = {};
+      for (const action of ACTION_KEYS) {
+        const d = drafts.pricing?.[action] || {};
+        creditPricing[action] = { platform: Number(d.platform) || 0, byok: Number(d.byok) || 0 };
+      }
+      await api("/admin/plan-config", { method: "PATCH", body: { creditPricing } });
+      setNotice("Credit pricing saved.");
+      await loadConfig();
+    } catch (err) {
+      setError(err.response?.message || err.message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  if (!config) return <div className="card text-sm text-neutral-500">Loading plan configuration...</div>;
+
+  return (
+    <div className="space-y-6">
+      {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+      {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+
+      {/* Plan Cards */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {PLAN_KEYS.map((planKey) => {
+          const d = drafts.plans?.[planKey] || {};
+          const busy = saving === `plan_${planKey}`;
+          const label = planKey.charAt(0).toUpperCase() + planKey.slice(1);
+          return (
+            <section key={planKey} className="card space-y-4">
+              <h2 className="font-semibold text-ink">{label} Plan</h2>
+
+              <div className="grid grid-cols-3 gap-3">
+                <label className="col-span-3 space-y-1 text-xs font-semibold uppercase text-neutral-500">
+                  Credits granted on purchase
+                  <input type="number" className="mt-1 input w-full" value={d.credits ?? ""} onChange={(e) => setPlanField(planKey, "credits", e.target.value)} />
+                </label>
+                <label className="space-y-1 text-xs font-semibold uppercase text-neutral-500">
+                  Price ₹
+                  <input type="number" className="mt-1 input w-full" value={d.priceInr ?? ""} onChange={(e) => setPlanField(planKey, "priceInr", e.target.value)} />
+                </label>
+                <label className="space-y-1 text-xs font-semibold uppercase text-neutral-500">
+                  Price $
+                  <input type="number" className="mt-1 input w-full" value={d.priceUsd ?? ""} onChange={(e) => setPlanField(planKey, "priceUsd", e.target.value)} />
+                </label>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-neutral-500">Features included</p>
+                <div className="space-y-1">
+                  {ALL_FEATURES.map((f) => (
+                    <label key={f} className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
+                      <input type="checkbox" checked={(d.features || []).includes(f)} onChange={() => toggleFeature(planKey, f)} />
+                      {FEATURE_LABELS[f] || f}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase text-neutral-500">Monthly limits</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[["maxAgents", "Max agents"], ["maxCallsPerMonth", "Calls/mo"], ["maxEmailsPerMonth", "Emails/mo"], ["maxLeadSearchesPerMonth", "Lead searches/mo"]].map(([field, lbl]) => (
+                    <label key={field} className="space-y-1 text-xs text-neutral-500">
+                      {lbl}
+                      <input type="number" className="mt-0.5 input w-full" value={d[field] ?? ""} onChange={(e) => setPlanField(planKey, field, e.target.value)} />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <button className="btn-primary w-full" disabled={busy} onClick={() => savePlans(planKey)}>
+                {busy ? "Saving…" : `Save ${label}`}
+              </button>
+            </section>
+          );
+        })}
+      </div>
+
+      {/* Top-up Packs */}
+      <section className="card">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Top-up Packs</h2>
+          <button className="btn-primary" disabled={saving === "packs"} onClick={savePacks}>{saving === "packs" ? "Saving…" : "Save Packs"}</button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {PACK_KEYS.map((packKey) => {
+            const d = drafts.packs?.[packKey] || {};
+            return (
+              <div key={packKey} className="rounded-xl border border-hairline p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase text-neutral-500">{packKey.replace("tp_", "")}-credit pack</p>
+                <label className="block text-xs text-neutral-500">Credits<input type="number" className="mt-1 input w-full" value={d.credits ?? ""} onChange={(e) => setPackField(packKey, "credits", e.target.value)} /></label>
+                <label className="block text-xs text-neutral-500">Price ₹<input type="number" className="mt-1 input w-full" value={d.priceInr ?? ""} onChange={(e) => setPackField(packKey, "priceInr", e.target.value)} /></label>
+                <label className="block text-xs text-neutral-500">Price $<input type="number" className="mt-1 input w-full" value={d.priceUsd ?? ""} onChange={(e) => setPackField(packKey, "priceUsd", e.target.value)} /></label>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Credit Pricing */}
+      <section className="card">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-ink">Credit Costs per Action</h2>
+          <button className="btn-primary" disabled={saving === "pricing"} onClick={savePricing}>{saving === "pricing" ? "Saving…" : "Save Pricing"}</button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-hairline text-xs uppercase text-neutral-500">
+                <th className="py-2 pr-4 font-semibold">Action</th>
+                <th className="py-2 pr-4 font-semibold">Platform credits</th>
+                <th className="py-2 pr-4 font-semibold">BYOK fee</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ACTION_KEYS.map((action) => {
+                const d = drafts.pricing?.[action] || {};
+                return (
+                  <tr key={action} className="border-b border-hairline/60">
+                    <td className="py-2 pr-4 font-medium text-neutral-700">{action.replace(/_/g, " ")}</td>
+                    <td className="py-2 pr-4">
+                      <input type="number" className="input w-24" value={d.platform ?? ""} onChange={(e) => setPricingField(action, "platform", e.target.value)} />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input type="number" className="input w-24" value={d.byok ?? ""} onChange={(e) => setPricingField(action, "byok", e.target.value)} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function UserDetailModal({ detail, onClose, mutate }) {

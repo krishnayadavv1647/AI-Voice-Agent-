@@ -9,6 +9,7 @@ import { syncCampaignRecipientFromCall } from "../services/campaign.service.js";
 import { extractCallFields, hasUsefulLeadData, normalizeLeadData, pick } from "../services/callLogMapper.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js";
+import { settleVoiceCallBilling } from "../services/billing/voiceCallBilling.service.js";
 
 async function findAgent(fields) {
   if (fields.localAgentId && mongoose.Types.ObjectId.isValid(fields.localAgentId)) {
@@ -154,6 +155,9 @@ export async function dograhWebhook(req, res) {
         ? User.findByIdAndUpdate(agent.userId, { $inc: { minutesUsed: Math.ceil(durationSeconds / 60) } })
         : Promise.resolve()
     ]);
+
+    // Settle per-minute credit billing against the final duration/outcome (idempotent).
+    await settleVoiceCallBilling(callLog);
 
     // The call has ended: if Dograh did not hand us structured lead data, auto-generate
     // the lead from the transcript so phone and public web calls capture leads without a manual step.

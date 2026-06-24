@@ -9,6 +9,17 @@ const userIntegrationSchema = new mongoose.Schema(
     status: { type: String, enum: ["connected", "disconnected", "failed", "invalid", "unavailable"], default: "disconnected", index: true },
     runtimeStatus: { type: String, enum: ["available", "unavailable", "configuration_required", "unknown"], default: "unknown" },
     allowPlatformFallback: { type: Boolean, default: false },
+
+    // BYOK preference & fail-closed controls (see services/billing/providerResolver.service.js).
+    // isActive is the runtime gate the resolver checks: a validated key is only eligible for
+    // BYOK while isActive !== false. It is auto-set false after repeated failures and reset on
+    // (re)connection or admin reactivation.
+    isActive: { type: Boolean, default: true },
+    preferOwnKey: { type: Boolean, default: false },
+    fallbackOnFailure: { type: Boolean, default: false },
+    consecutiveFailures: { type: Number, default: 0 },
+    lastFailureAt: { type: Date, default: null },
+    lastFailureReason: { type: String, default: null },
     apiKeyEncrypted: { type: String, default: "" },
     keyLastFour: { type: String, default: "" },
     baseUrl: { type: String, default: "" },
