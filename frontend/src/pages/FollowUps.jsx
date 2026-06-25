@@ -86,7 +86,6 @@ export default function FollowUps() {
         await api(`/followups/${id}/reschedule`, { method: "POST", body: { scheduledAt: new Date(scheduledAt).toISOString() } });
         setNotice("Follow-up rescheduled.");
       } else if (type === "cancel") {
-        if (!confirm("Cancel this follow-up?")) return;
         await api(`/followups/${id}/cancel`, { method: "POST" });
         setNotice("Follow-up cancelled.");
       } else if (type === "run") {

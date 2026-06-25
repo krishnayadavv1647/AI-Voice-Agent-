@@ -126,12 +126,21 @@ function readLLMEffectiveFromObject(value) {
 function readSpeechEffectiveFromObject(value) {
   const object = asObject(value);
   if (!Object.keys(object).length) return null;
-  return {
-    provider: object.provider || object.ttsProvider || object.sttProvider || object.service || "",
-    model: object.model || object.model_id || object.modelId || object.ttsModel || object.sttModel || "",
-    voiceId: object.voice || object.voice_id || object.voiceId || object.ttsVoiceId || object.id || "",
-    language: object.language || object.lang || ""
+  const direct = {
+    provider: object.provider || object.provider_id || object.providerId || object.provider_name || object.providerName || object.ttsProvider || object.sttProvider || object.service || "",
+    model: object.model || object.model_id || object.modelId || object.model_name || object.modelName || object.ttsModel || object.sttModel || "",
+    voiceId: object.voice || object.voice_id || object.voiceId || object.ttsVoiceId || object.voice_model || object.voiceModel || object.id || "",
+    language: object.language || object.lang || object.locale || ""
   };
+  if (direct.provider || direct.model || direct.voiceId) return direct;
+
+  for (const child of Object.values(object)) {
+    if (!child || typeof child !== "object" || Array.isArray(child)) continue;
+    const nested = readSpeechEffectiveFromObject(child);
+    if (nested?.provider || nested?.model || nested?.voiceId) return nested;
+  }
+
+  return direct;
 }
 
 // Delegates to the shared resolver so the runtime verifier recognizes exactly the same
@@ -177,6 +186,8 @@ async function expectedRuntime(agent, userId) {
     AgentVoiceConfiguration.findOne({ agentId: agent._id, userId })
   ]);
 
+  const voiceSyncVerified = voiceConfig?.dograhSyncStatus === "synced";
+
   return {
     llm: {
       provider: llmConfig?.provider || "dograh_default",
@@ -190,6 +201,17 @@ async function expectedRuntime(agent, userId) {
     stt: {
       provider: voiceConfig?.sttProvider || "dograh_default",
       model: voiceConfig?.sttProvider === "deepgram" && !voiceConfig?.sttModel ? "nova-3-general" : voiceConfig?.sttModel || ""
+    },
+    effectiveFallback: {
+      tts: voiceSyncVerified ? {
+        provider: voiceConfig?.dograhEffectiveTtsProvider || "",
+        model: voiceConfig?.dograhEffectiveTtsModel || "",
+        voiceId: voiceConfig?.dograhEffectiveTtsVoiceId || ""
+      } : null,
+      stt: voiceSyncVerified ? {
+        provider: voiceConfig?.dograhEffectiveSttProvider || "",
+        model: voiceConfig?.dograhEffectiveSttModel || ""
+      } : null
     }
   };
 }
@@ -206,8 +228,13 @@ function missingRuntimeMessage(expected, effective, type) {
 export async function verifyDograhWorkflowRuntime({ agent, userId, workflowPayload, fetchWorkflow, callType = "normal_phone_call" }) {
   const payload = workflowPayload || await fetchWorkflow();
   const fields = extractDograhWorkflowFieldsFromPayload(payload);
-  const effective = extractEffectiveRuntime(payload);
   const expected = await expectedRuntime(agent, userId);
+  const payloadEffective = extractEffectiveRuntime(payload);
+  const effective = {
+    llm: payloadEffective.llm,
+    tts: payloadEffective.tts || expected.effectiveFallback?.tts || null,
+    stt: payloadEffective.stt || expected.effectiveFallback?.stt || null
+  };
   const startPromptOk = startCallPromptExists(payload);
   const workflowUuidMatches = !fields.dograhWorkflowUuid || !agent.dograhWorkflowUuid || sameValue(fields.dograhWorkflowUuid, agent.dograhWorkflowUuid);
   const telephonyConfig = agent.telephonyConfigId

@@ -126,50 +126,52 @@ export default function Agents() {
           action={<Link className="agents-library-create" to="/create-agent"><Plus size={16} />Create</Link>}
         />
       ) : (
+        <>
         {!filteredAgents.length && <p className="py-8 text-center text-sm text-neutral-500">No agents found for your search.</p>}
-        <div className="agent-card-grid">
-          {filteredAgents.map((agent, index) => (
-            <article
-              className={`agent-card ${agent.imageUrl || index === 0 ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
-              key={agent._id}
-              style={{ "--agent-card-image": `url("${cardImage(agent, index)}")` }}
-            >
-              {!agent.imageUrl && index !== 0 && <div className="agent-card-fallback" aria-hidden="true">{initials(agent)}</div>}
-              <button title="Delete" className="agent-card-delete" onClick={() => action(agent._id, "delete")} type="button">
-                <Trash2 size={14} />
-              </button>
-              <Link className="agent-card-edit" title="Edit" to={`/agents/${agent._id}/edit`}>
-                <Edit size={13} />
-                <span>Edit</span>
+      <div className="agent-card-grid">
+        {filteredAgents.map((agent, index) => (
+          <article
+            className={`agent-card ${agent.imageUrl || index === 0 ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
+            key={agent._id}
+            style={{ "--agent-card-image": `url("${cardImage(agent, index)}")` }}
+          >
+            {!agent.imageUrl && index !== 0 && <div className="agent-card-fallback" aria-hidden="true">{initials(agent)}</div>}
+            <button title="Delete" className="agent-card-delete" onClick={() => action(agent._id, "delete")} type="button">
+              <Trash2 size={14} />
+            </button>
+            <Link className="agent-card-edit" title="Edit" to={`/agents/${agent._id}/edit`}>
+              <Edit size={13} />
+              <span>Edit</span>
+            </Link>
+
+            <div className="agent-actions" aria-label={`Actions for ${agent.agentName || "agent"}`}>
+              <Link title="View" to={`/agents/${agent._id}`}>
+                <Eye size={13} />
+                <span>View</span>
               </Link>
+              <button title="Regenerate Image" type="button" onClick={() => regenerateImage(agent._id)} disabled={generatingId === agent._id}>
+                <RefreshCw size={13} />
+                <span>{generatingId === agent._id ? "Generating" : "AI Gen"}</span>
+              </button>
+              <button
+                type="button"
+                disabled={!agent.publicSlug}
+                title={agent.publicSlug ? "Copy public link" : "Publish agent first to get a shareable link"}
+                onClick={() => copyAgentLink(agent)}
+              >
+                <Link2 size={13} />
+                <span>{copiedId === agent._id ? "Copied!" : "Share"}</span>
+              </button>
+            </div>
 
-              <div className="agent-actions" aria-label={`Actions for ${agent.agentName || "agent"}`}>
-                <Link title="View" to={`/agents/${agent._id}`}>
-                  <Eye size={13} />
-                  <span>View</span>
-                </Link>
-                <button title="Regenerate Image" type="button" onClick={() => regenerateImage(agent._id)} disabled={generatingId === agent._id}>
-                  <RefreshCw size={13} />
-                  <span>{generatingId === agent._id ? "Generating" : "AI Gen"}</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!agent.publicSlug}
-                  title={agent.publicSlug ? "Copy public link" : "Publish agent first to get a shareable link"}
-                  onClick={() => copyAgentLink(agent)}
-                >
-                  <Link2 size={13} />
-                  <span>{copiedId === agent._id ? "Copied!" : "Share"}</span>
-                </button>
-              </div>
-
-              <div className="agent-card-content">
-                <h2>{agent.agentName || "AI Sales Calling Agent"}</h2>
-                <p>{agent.businessName || "Automate sales calls, follow-ups, lead outreach, & appointment booking with one smart AI calling agent."}</p>
-              </div>
-            </article>
-          ))}
-        </div>
+            <div className="agent-card-content">
+              <h2>{agent.agentName || "AI Sales Calling Agent"}</h2>
+              <p>{agent.businessName || "Automate sales calls, follow-ups, lead outreach, & appointment booking with one smart AI calling agent."}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      </>
       )}
     </div>
   );

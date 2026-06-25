@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import adminRoutes from "./routes/admin.routes.js";
+import plansRoutes from "./routes/plans.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -106,6 +107,7 @@ app.use("/api/scheduled-calls", scheduledCallRoutes);
 app.use("/api/telephony-configs", telephonyConfigRoutes);
 app.use("/api/telephony", telephonyRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/plans", plansRoutes);
 app.use("/api/connections", connectionsRoutes);
 app.use("/api/credits", creditsRoutes);
 app.use("/api/integrations/dograh", dograhIntegrationRoutes);

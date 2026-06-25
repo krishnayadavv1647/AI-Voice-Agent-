@@ -8,7 +8,7 @@ const SUCCESS_OUTCOMES = new Set(["completed", "answered", "cancelled"]);
 const MAX_RETRY_ATTEMPTS = 3;
 
 export function normalizeCallOutcome(rawStatus) {
-  const status = String(rawStatus || "").trim().toLowerCase().replace(/\s+/g, "_");
+  const status = String(rawStatus || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 
   if (["completed", "complete", "done", "ended", "success"].includes(status)) return "completed";
   if (["answered", "answer", "connected"].includes(status)) return "answered";
@@ -79,14 +79,18 @@ async function findLeadForCall(callLog) {
 }
 
 export async function applyCallOutcomeToLog(callLog, rawStatus, { endedAt } = {}) {
-  const normalizedStatus = normalizeCallOutcome(rawStatus);
+  let normalizedStatus = normalizeCallOutcome(rawStatus);
+  const hasEnded = Boolean(endedAt || callLog.endedAt || callLog.callEndedAt);
+  if (hasEnded && normalizedStatus === "in_progress") {
+    normalizedStatus = "completed";
+  }
   const retryEligible = isRetryEligible(normalizedStatus);
 
   callLog.rawProviderStatus = rawStatus || callLog.rawProviderStatus || callLog.status;
   callLog.normalizedStatus = normalizedStatus;
   callLog.outcome = normalizedStatus;
   callLog.retryEligible = retryEligible;
-  if (endedAt || retryEligible || SUCCESS_OUTCOMES.has(normalizedStatus)) {
+  if (hasEnded || retryEligible || SUCCESS_OUTCOMES.has(normalizedStatus)) {
     callLog.callEndedAt = endedAt || callLog.endedAt || new Date();
   }
 
@@ -145,6 +149,13 @@ async function syncAppointmentCallOutcome(callLog, normalizedStatus) {
 
 export async function scheduleRetryFollowUpForCall(callLog) {
   if (!callLog?.retryEligible || !callLog.userId || !callLog.agentId) return null;
+
+  // pipeline_error means Dograh's voice/LLM pipeline couldn't start — a configuration
+  // issue, not a call outcome. Retrying would loop forever until the agent is re-synced.
+  if (callLog.rawProviderStatus === "pipeline_error") {
+    console.log("[Call Outcome] retry skipped: pipeline_error requires agent re-sync, not retry", callLog._id?.toString());
+    return null;
+  }
 
   const trigger = retryTriggerForOutcome(callLog.normalizedStatus);
   if (!trigger) return null;

@@ -142,6 +142,13 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
 
   useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
+  useEffect(() => {
+    if (!voices.length || !config.ttsVoiceId) return;
+    const selectedVoice = voices.find((voice) => voice.id === config.ttsVoiceId);
+    if (!selectedVoice?.language || selectedVoice.language === config.ttsLanguage) return;
+    patch({ ttsLanguage: selectedVoice.language });
+  }, [voices, config.ttsVoiceId]);
+
   const sttOptions = useMemo(() => {
     const options = [{ value: "dograh_default", label: "Dograh Default" }];
     for (const integration of integrations) {
@@ -188,7 +195,16 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   function changeTtsProvider(provider) {
     const integration = integrationFor(integrations, provider);
     setAudioUrl("");
-    patch({ ttsProvider: provider, ttsIntegrationId: integration?.id || null, ttsModel: "", ttsVoiceId: "" });
+    patch({ ttsProvider: provider, ttsIntegrationId: integration?.id || null, ttsModel: "", ttsVoiceId: "", dograhSyncStatus: provider === "dograh_default" ? "not_configured" : "pending" });
+  }
+
+  function changeTtsVoice(voiceId) {
+    const selectedVoice = voices.find((voice) => voice.id === voiceId);
+    patch({
+      ttsVoiceId: voiceId,
+      ...(selectedVoice?.language ? { ttsLanguage: selectedVoice.language } : {}),
+      dograhSyncStatus: "pending"
+    });
   }
 
   async function preview() {
@@ -274,7 +290,7 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
               <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} /><input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voices by name, gender, language, or style" /></label>
               <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)}><option value="">All languages</option>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select>
             </div>
-            <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })}><option value="">Select voice</option>{filteredVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` · ${voice.language}` : ""}{voice.gender ? ` · ${voice.gender}` : ""}</option>)}</select></label>
+            <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => changeTtsVoice(event.target.value)}><option value="">Select voice</option>{filteredVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` · ${voice.language}` : ""}{voice.gender ? ` · ${voice.gender}` : ""}</option>)}</select></label>
             <label className="mt-3 block text-sm font-semibold text-neutral-700">Manual Voice ID / Aura model<input className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })} placeholder="Paste voice ID when it is not listed" /></label>
           </div>
         )}

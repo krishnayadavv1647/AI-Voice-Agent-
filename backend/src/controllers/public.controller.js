@@ -9,6 +9,13 @@ import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 import { defaultBioPage } from "../services/bioPageTemplates.js";
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
+const PUBLIC_AGENT_FILTER = {
+  status: { $ne: "archived" },
+  $or: [
+    { isPublic: true },
+    { status: { $in: ["Active", "active"] } }
+  ]
+};
 
 function todayStart() {
   const date = new Date();
@@ -21,6 +28,14 @@ function requesterIp(req) {
     .toString()
     .split(",")[0]
     .trim();
+}
+
+function bioPageAllowsWebCall(bioPage = {}) {
+  return (bioPage.showVoiceCallButton ?? bioPage.showWebCallButton ?? bioPage.showWebCall) !== false;
+}
+
+function agentWebCallReady(agent) {
+  return Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken);
 }
 
 async function enforceCallbackLimits({ phoneNumber, ip }) {
@@ -37,7 +52,7 @@ async function enforceCallbackLimits({ phoneNumber, ip }) {
 
 function publicAgentResponse(agent) {
   const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
-  const publicWebCallEnabled = Boolean((bioPage.showWebCallButton ?? bioPage.showWebCall) !== false && agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken);
+  const publicWebCallEnabled = Boolean(bioPageAllowsWebCall(bioPage) && agentWebCallReady(agent));
 
   return {
     _id: agent._id,
@@ -60,14 +75,17 @@ function publicAgentResponse(agent) {
   };
 }
 
-async function getPublicAgentBySlug(publicSlug) {
-  const agent = await Agent.findOne({ publicSlug, isPublic: true, status: { $ne: "archived" } });
+async function getPublicAgentByIdOrSlug(idOrSlug) {
+  const query = Agent.db.base.Types.ObjectId.isValid(idOrSlug)
+    ? { _id: idOrSlug, ...PUBLIC_AGENT_FILTER }
+    : { publicSlug: idOrSlug, ...PUBLIC_AGENT_FILTER };
+  const agent = await Agent.findOne(query);
   if (!agent) throw new ApiError(404, "Public agent not found");
   return agent;
 }
 
 export const getPublicAgent = asyncHandler(async (req, res) => {
-  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+  const agent = await getPublicAgentByIdOrSlug(req.params.publicSlug);
   const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
   if (bioPage.isPublished === false) throw new ApiError(403, "This agent page is currently unavailable.");
   res.json(publicAgentResponse(agent));
@@ -76,8 +94,8 @@ export const getPublicAgent = asyncHandler(async (req, res) => {
 export const getPublicAgentBioPage = asyncHandler(async (req, res) => {
   const value = req.params.idOrSlug;
   const query = Agent.db.base.Types.ObjectId.isValid(value)
-    ? { _id: value, isPublic: true, status: { $ne: "archived" } }
-    : { publicSlug: value, isPublic: true, status: { $ne: "archived" } };
+    ? { _id: value, ...PUBLIC_AGENT_FILTER }
+    : { publicSlug: value, ...PUBLIC_AGENT_FILTER };
   const agent = await Agent.findOne(query);
   if (!agent) throw new ApiError(404, "Public agent not found");
 
@@ -93,14 +111,14 @@ export const getPublicAgentBioPage = asyncHandler(async (req, res) => {
     publicTitle: agent.publicTitle || agent.businessName || agent.agentName || agent.name,
     publicDescription: agent.publicDescription || agent.businessDescription || agent.description || "",
     publicChatEnabled: Boolean(agent.publicChatEnabled),
-    publicWebCallEnabled: Boolean((bioPage.showWebCallButton ?? bioPage.showWebCall) !== false && agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken),
+    publicWebCallEnabled: Boolean(bioPageAllowsWebCall(bioPage) && agentWebCallReady(agent)),
     bioPage
   });
 });
 
 export const chatWithPublicAgent = asyncHandler(async (req, res) => {
   const { message, sessionId } = req.body;
-  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+  const agent = await getPublicAgentByIdOrSlug(req.params.publicSlug);
 
   if (!agent.publicChatEnabled) throw new ApiError(403, "Public chat is not enabled for this agent.");
   if (!message || !message.trim()) throw new ApiError(400, "Message is required.");
@@ -124,12 +142,12 @@ export const chatWithPublicAgent = asyncHandler(async (req, res) => {
 });
 
 export const getPublicWebCallToken = asyncHandler(async (req, res) => {
-  const agent = await getPublicAgentBySlug(req.params.publicSlug);
+  const agent = await getPublicAgentByIdOrSlug(req.params.publicSlug);
   const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
 
   if (bioPage.isPublished === false) throw new ApiError(403, "This agent page is currently unavailable.");
-  if ((bioPage.showWebCallButton ?? bioPage.showWebCall) === false || !agent.publicWebCallEnabled) throw new ApiError(403, "Public web call is not enabled for this agent.");
-  if (!agent.dograhWidgetEnabled || !agent.dograhEmbedToken) throw new ApiError(400, "Web call is not ready for this agent.");
+  if (!bioPageAllowsWebCall(bioPage)) throw new ApiError(403, "Public web call is not enabled for this agent.");
+  if (!agentWebCallReady(agent)) throw new ApiError(400, "Web call is not ready for this agent.");
 
   res.json({
     success: true,

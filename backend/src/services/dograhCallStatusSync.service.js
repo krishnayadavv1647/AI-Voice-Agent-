@@ -6,7 +6,7 @@ import { getDograhCallRunDetails } from "./dograh.service.js";
 import { autoGenerateLeadFromCall } from "./leadGeneration.service.js";
 import { settleVoiceCallBilling } from "./billing/voiceCallBilling.service.js";
 
-const FINAL_STATUSES = new Set(["completed", "answered", "declined", "no_answer", "busy", "failed", "cancelled"]);
+const FINAL_STATUSES = new Set(["completed", "answered", "declined", "no_answer", "busy", "failed", "cancelled", "pipeline_error"]);
 const SYNC_DELAYS_MS = [30 * 1000, 90 * 1000, 180 * 1000];
 
 function compactUpdate(update) {

@@ -1401,7 +1401,11 @@ export const publishAgent = asyncHandler(async (req, res) => {
   await assertDograhAgentReadyForCalls({ agent, userId: agent.userId });
 
   agent.status = "Active";
-  agent.shareableLink = `${process.env.CLIENT_URL}/test/${agent._id}`;
+  if (!agent.publicSlug) {
+    agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
+  }
+  agent.isPublic = true;
+  agent.shareableLink = `${process.env.CLIENT_URL}/a/${agent.publicSlug}`;
   agent.embedCode = `<script src="${process.env.CLIENT_URL}/widget.js" data-agent-id="${agent._id}"></script>`;
 
   await agent.save();
@@ -1486,6 +1490,7 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId, agent });
   agent.dograhEmbedToken = embedToken;
   agent.dograhWidgetEnabled = true;
+  agent.publicWebCallEnabled = true;
   await agent.save();
 
   res.json({
@@ -1522,6 +1527,7 @@ export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   await deleteDograhEmbedToken(workflowId, { userId: agent.userId, agent });
   agent.dograhEmbedToken = undefined;
   agent.dograhWidgetEnabled = false;
+  agent.publicWebCallEnabled = false;
   await agent.save();
 
   res.json({

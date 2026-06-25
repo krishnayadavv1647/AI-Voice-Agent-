@@ -7,17 +7,20 @@ import {
   KeyRound,
   Mail,
   MoreVertical,
+  Package,
   PhoneCall,
   RefreshCw,
   Search,
   Shield,
   UserCog,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api, setToken } from "../lib/api.js";
+import { useAuth } from "../state/AuthContext.jsx";
 
 const tabs = [
   ["dashboard", "Admin Dashboard", Shield],
@@ -31,6 +34,7 @@ const tabs = [
   ["email", "Email Campaigns", Mail],
   ["usage", "Usage & Credits", CreditCard],
   ["plans", "Plans", CreditCard],
+  ["catalog", "Plan Catalog", Package],
   ["integrations", "Integration Settings", KeyRound],
   ["audit", "Audit Logs", Activity]
 ];
@@ -48,6 +52,7 @@ function nameOf(record) {
 }
 
 export default function Admin() {
+  const { user: currentUser } = useAuth();
   const [active, setActive] = useState("dashboard");
   const [overview, setOverview] = useState(null);
   const [users, setUsers] = useState([]);
@@ -146,6 +151,17 @@ export default function Admin() {
     setSelectedUser({ ...detail, tabs: { agents, leads, calls, campaigns, appointments, followups, emailCampaigns, usage } });
   }
 
+  async function addCredits(user) {
+    const amount = Number(prompt(`Credits to add for ${user.email}`, "1000"));
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const note = prompt("Note for audit log", "Manual Super Admin credit grant") || "";
+    await mutate("Credits added", () => api(`/admin/users/${user._id}/wallet-credits`, { method: "POST", body: { amount, note } }));
+    if (String(selectedUser?.user?._id || "") === String(user._id || "")) {
+      const refreshed = await api(`/admin/users/${user._id}`);
+      setSelectedUser((current) => current ? { ...current, ...refreshed } : current);
+    }
+  }
+
   const cards = [
     ["Total Users", overview?.totalUsers || 0, Users],
     ["Active Users", overview?.activeUsers || 0, Users],
@@ -210,13 +226,14 @@ export default function Admin() {
                 </div>
               </div>
               <AdminTable
-                columns={["Name", "Email", "Role", "Status", "Plan", "Dograh", "Agents", "Calls", "Leads", "Emails", "Created", "Last Login", "Actions"]}
+                columns={["Name", "Email", "Role", "Status", "Plan", "Wallet Credits", "Dograh", "Agents", "Calls", "Leads", "Emails", "Created", "Last Login", "Actions"]}
                 rows={filteredUsers.map((user) => [
                   user.name,
                   user.email,
                   <StatusBadge status={user.role} />,
                   <StatusBadge status={user.status} />,
                   user.plan,
+                  (user.creditWallet?.balance || 0).toLocaleString(),
                   <StatusBadge status={user.dograhIntegration?.status || "not_connected"} />,
                   user.counts?.agents || 0,
                   user.counts?.calls || 0,
@@ -226,12 +243,13 @@ export default function Admin() {
                   fmt(user.lastLoginAt),
                   <ThreeDotMenu actions={[
                     { label: "View", onClick: () => viewUser(user) },
+                    currentUser?.role === "super_admin" && { label: "Add Credits", onClick: () => addCredits(user) },
                     { label: "Login As", onClick: () => impersonate(user) },
                     { label: "Suspend", onClick: () => mutate("User suspended", () => api(`/admin/users/${user._id}/suspend`, { method: "POST" })) },
                     { label: "Activate", onClick: () => mutate("User activated", () => api(`/admin/users/${user._id}/activate`, { method: "POST" })) },
                     { label: "Reset Password", onClick: async () => { const result = await mutate("Temporary password generated", () => api(`/admin/users/${user._id}/reset-password`, { method: "POST" })); if (result?.temporaryPassword) alert(`Temporary password: ${result.temporaryPassword}`); } },
                     { label: "Delete", danger: true, onClick: () => confirm("Soft delete this user?") && mutate("User deleted", () => api(`/admin/users/${user._id}`, { method: "DELETE" })) }
-                  ]} />
+                  ].filter(Boolean)} />
                 ])}
               />
             </section>
@@ -242,17 +260,19 @@ export default function Admin() {
           )}
 
           {active === "usage" && (
-            <UsageTable rows={resources.usage || []} mutate={mutate} />
+            <UsageTable rows={resources.usage || []} mutate={mutate} addCredits={addCredits} canAddCredits={currentUser?.role === "super_admin"} />
           )}
 
           {active === "plans" && <PlanConfigPanel />}
+
+          {active === "catalog" && <PlanCatalogPanel users={users} />}
 
           {active === "integrations" && <Integrations data={resources.integrations} />}
           {active === "audit" && <AuditTable rows={resources.audit || []} />}
         </main>
       </div>
 
-      {selectedUser && <UserDetailModal detail={selectedUser} onClose={() => setSelectedUser(null)} mutate={mutate} />}
+      {selectedUser && <UserDetailModal detail={selectedUser} onClose={() => setSelectedUser(null)} mutate={mutate} addCredits={addCredits} canAddCredits={currentUser?.role === "super_admin"} />}
     </div>
   );
 }
@@ -314,13 +334,14 @@ function RowActions({ row, base, mutate, pause, activate }) {
   return <ThreeDotMenu actions={actions} />;
 }
 
-function UsageTable({ rows, mutate }) {
+function UsageTable({ rows, mutate, addCredits, canAddCredits }) {
   return (
     <section className="card p-0">
       <div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Usage & Credits</h2></div>
-      <AdminTable columns={["User", "Plan", "Call Credits", "Email Credits", "Lead Credits", "Minutes", "Calls", "Emails", "Leads", "Actions"]} rows={rows.map(({ user, usage }) => [
+      <AdminTable columns={["User", "Plan", "Wallet Credits", "Call Credits", "Email Credits", "Lead Credits", "Minutes", "Calls", "Emails", "Leads", "Actions"]} rows={rows.map(({ user, usage }) => [
         user.email,
         user.plan,
+        (user.creditWallet?.balance || 0).toLocaleString(),
         user.credits?.callCredits || 0,
         user.credits?.emailCredits || 0,
         user.credits?.leadFinderCredits || 0,
@@ -329,9 +350,10 @@ function UsageTable({ rows, mutate }) {
         usage?.emailsSent || 0,
         usage?.leads || 0,
         <ThreeDotMenu actions={[
+          canAddCredits && { label: "Add Wallet Credits", onClick: () => addCredits(user) },
           { label: "Edit Credits", onClick: () => { const emailCredits = Number(prompt("Email credits", user.credits?.emailCredits || 0)); if (!Number.isNaN(emailCredits)) mutate("Credits updated", () => api(`/admin/users/${user._id}/credits`, { method: "PATCH", body: { emailCredits } })); } },
           { label: "Change Plan", onClick: () => { const plan = prompt("Plan", user.plan); if (plan) mutate("Plan updated", () => api(`/admin/users/${user._id}/plan`, { method: "PATCH", body: { plan } })); } }
-        ]} />
+        ].filter(Boolean)} />
       ])} />
     </section>
   );
@@ -667,7 +689,7 @@ function PlanConfigPanel() {
   );
 }
 
-function UserDetailModal({ detail, onClose, mutate }) {
+function UserDetailModal({ detail, onClose, mutate, addCredits, canAddCredits }) {
   const { user, usage, dograhIntegration, tabs: userTabs } = detail;
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -678,6 +700,7 @@ function UserDetailModal({ detail, onClose, mutate }) {
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {["status", "role", "plan", "planStatus"].map((key) => <div key={key} className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">{key}</p><p className="font-semibold text-ink">{user[key] || "-"}</p></div>)}
+          <div className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">Wallet Credits</p><p className="font-semibold text-ink">{(user.creditWallet?.balance || 0).toLocaleString()}</p></div>
           <div className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">Dograh Integration</p><p className="font-semibold text-ink">{dograhIntegration?.status || "not_connected"}</p></div>
           <div className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">Dograh Last Error</p><p className="break-anywhere font-semibold text-ink">{dograhIntegration?.lastError || "-"}</p></div>
           {Object.entries(usage || {}).map(([key, value]) => <div key={key} className="rounded-2xl bg-neutral-50 p-3"><p className="text-xs font-semibold uppercase text-neutral-500">{key}</p><p className="font-semibold text-ink">{value}</p></div>)}
@@ -686,6 +709,7 @@ function UserDetailModal({ detail, onClose, mutate }) {
           {Object.entries(userTabs || {}).filter(([key]) => key !== "usage").map(([key, rows]) => <MiniList key={key} title={key} rows={(rows || []).slice(0, 8).map((row) => `${nameOf(row)} - ${row.status || row.normalizedStatus || row.createdAt || ""}`)} />)}
         </div>
         <div className="mt-5 action-row">
+          {canAddCredits && <button className="btn-primary" onClick={() => addCredits(user)}>Add Credits</button>}
           <button className="btn-secondary" onClick={() => {
             const plan = prompt("Plan", user.plan);
             if (plan) mutate("Plan updated", () => api(`/admin/users/${user._id}/plan`, { method: "PATCH", body: { plan } }));
@@ -694,6 +718,552 @@ function UserDetailModal({ detail, onClose, mutate }) {
           <button className="btn-secondary" onClick={() => mutate("User activated", () => api(`/admin/users/${user._id}/activate`, { method: "POST" }))}>Activate</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Plan Catalog Panel ───────────────────────────────────────────────────────
+
+const TIERS = ["trial", "starter", "growth", "scale", "pro", "agency", "enterprise", "custom"];
+const ALL_PLAN_FEATURES = ["voice_call", "email_send", "lead_search", "appointment_book", "image_generate"];
+const PLAN_FEATURE_LABELS = {
+  voice_call: "Voice calls", email_send: "Email campaigns", lead_search: "Lead Finder",
+  appointment_book: "Appointments", image_generate: "Agent images"
+};
+const LIMIT_FIELDS = [
+  ["maxAgents", "Max Agents"], ["maxContacts", "Max Contacts"], ["maxCampaigns", "Max Campaigns"],
+  ["callsPerDay", "Calls/day"], ["emailsPerDay", "Emails/day"], ["teamMembers", "Team Members"]
+];
+
+const BLANK_FORM = {
+  name: "", description: "", badge: "", tier: "custom",
+  visibility: "public", assignedUserIds: [],
+  pricing: { monthlyPrice: 0, yearlyPrice: "", currency: "USD", isContactSales: false },
+  monthlyCredits: 0, rollover: false,
+  limits: { maxAgents: "", maxContacts: "", maxCampaigns: "", callsPerDay: "", emailsPerDay: "", teamMembers: "", actionsPerMin: 60 },
+  unlimitedFlags: { maxAgents: true, maxContacts: true, maxCampaigns: true, callsPerDay: true, emailsPerDay: true, teamMembers: true },
+  byokAllowed: true, features: [],
+  applyImmediately: false,
+};
+
+function PlanCatalogPanel({ users }) {
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [form, setForm] = useState(BLANK_FORM);
+  const [saving, setSaving] = useState(false);
+  const [modalError, setModalError] = useState("");
+  const [archiveConfirm, setArchiveConfirm] = useState(null);
+  const [archiveInput, setArchiveInput] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+
+  useEffect(() => { loadPlans(); }, []);
+
+  async function loadPlans() {
+    setLoading(true);
+    try {
+      const data = await api("/admin/catalog-plans");
+      setPlans(data);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openCreate() {
+    setEditingPlan(null);
+    setForm(BLANK_FORM);
+    setModalError("");
+    setModalOpen(true);
+  }
+
+  function openEdit(plan) {
+    const unlimitedFlags = {};
+    for (const [field] of LIMIT_FIELDS) {
+      unlimitedFlags[field] = plan.limits?.[field] == null;
+    }
+    setEditingPlan(plan);
+    setForm({
+      name: plan.name || "",
+      description: plan.description || "",
+      badge: plan.badge || "",
+      tier: plan.tier || "custom",
+      visibility: plan.visibility || "public",
+      assignedUserIds: (plan.assignedUserIds || []).map((u) => u._id || u),
+      pricing: {
+        monthlyPrice: plan.pricing?.monthlyPrice ?? "",
+        yearlyPrice: plan.pricing?.yearlyPrice ?? "",
+        currency: plan.pricing?.currency || "USD",
+        isContactSales: plan.pricing?.isContactSales || false,
+      },
+      monthlyCredits: plan.monthlyCredits ?? 0,
+      rollover: plan.rollover || false,
+      limits: {
+        maxAgents: plan.limits?.maxAgents ?? "",
+        maxContacts: plan.limits?.maxContacts ?? "",
+        maxCampaigns: plan.limits?.maxCampaigns ?? "",
+        callsPerDay: plan.limits?.callsPerDay ?? "",
+        emailsPerDay: plan.limits?.emailsPerDay ?? "",
+        teamMembers: plan.limits?.teamMembers ?? "",
+        actionsPerMin: plan.limits?.actionsPerMin ?? "",
+      },
+      unlimitedFlags,
+      byokAllowed: plan.byokAllowed !== false,
+      features: plan.features || [],
+      applyImmediately: false,
+    });
+    setModalError("");
+    setModalOpen(true);
+  }
+
+  function setField(path, value) {
+    setForm((prev) => {
+      const next = { ...prev };
+      const parts = path.split(".");
+      if (parts.length === 1) {
+        next[parts[0]] = value;
+      } else if (parts.length === 2) {
+        next[parts[0]] = { ...next[parts[0]], [parts[1]]: value };
+      }
+      return next;
+    });
+  }
+
+  function toggleFeature(feat) {
+    setForm((prev) => {
+      const has = prev.features.includes(feat);
+      return { ...prev, features: has ? prev.features.filter((f) => f !== feat) : [...prev.features, feat] };
+    });
+  }
+
+  function toggleAssignedUser(userId) {
+    setForm((prev) => {
+      const str = String(userId);
+      const has = prev.assignedUserIds.some((id) => String(id) === str);
+      return { ...prev, assignedUserIds: has ? prev.assignedUserIds.filter((id) => String(id) !== str) : [...prev.assignedUserIds, str] };
+    });
+  }
+
+  function buildBody() {
+    const limits = {};
+    for (const [field] of LIMIT_FIELDS) {
+      limits[field] = form.unlimitedFlags[field] ? null : (form.limits[field] === "" ? null : Number(form.limits[field]));
+    }
+    limits.actionsPerMin = Number(form.limits.actionsPerMin) || 0;
+
+    return {
+      name: form.name,
+      description: form.description || undefined,
+      badge: form.badge || undefined,
+      tier: form.tier,
+      visibility: form.visibility,
+      assignedUserIds: form.visibility === "private" ? form.assignedUserIds : [],
+      pricing: {
+        monthlyPrice: form.pricing.isContactSales ? null : (form.pricing.monthlyPrice === "" ? null : Number(form.pricing.monthlyPrice)),
+        yearlyPrice: form.pricing.yearlyPrice === "" ? null : Number(form.pricing.yearlyPrice),
+        currency: form.pricing.currency,
+        isContactSales: form.pricing.isContactSales,
+      },
+      monthlyCredits: Number(form.monthlyCredits) || 0,
+      rollover: form.rollover,
+      limits,
+      byokAllowed: form.byokAllowed,
+      features: form.features,
+      ...(editingPlan ? { applyImmediately: form.applyImmediately, __v: editingPlan.__v } : {}),
+    };
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setModalError("");
+    try {
+      const body = buildBody();
+      if (editingPlan) {
+        await api(`/admin/catalog-plans/${editingPlan._id}`, { method: "PUT", body });
+        setNotice("Plan updated.");
+      } else {
+        await api("/admin/catalog-plans", { method: "POST", body });
+        setNotice("Plan created.");
+      }
+      setModalOpen(false);
+      await loadPlans();
+    } catch (err) {
+      setModalError(err.response?.message || err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDuplicate(plan) {
+    try {
+      await api(`/admin/catalog-plans/${plan._id}/duplicate`, { method: "POST" });
+      setNotice("Plan duplicated.");
+      await loadPlans();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function handleArchive(plan) {
+    if (archiveInput !== "ARCHIVE") {
+      setError("Type ARCHIVE to confirm");
+      return;
+    }
+    try {
+      const result = await api(`/admin/catalog-plans/${plan._id}/archive`, { method: "PATCH" });
+      setNotice(result.message || "Plan archived.");
+      setArchiveConfirm(null);
+      setArchiveInput("");
+      await loadPlans();
+    } catch (err) {
+      setError(errorText(err));
+      setArchiveConfirm(null);
+    }
+  }
+
+  async function handleRestore(plan) {
+    try {
+      await api(`/admin/catalog-plans/${plan._id}/restore`, { method: "PATCH" });
+      setNotice("Plan restored.");
+      await loadPlans();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function handleDelete(plan) {
+    if (!confirm(`Permanently delete "${plan.name}"? This cannot be undone.`)) return;
+    try {
+      await api(`/admin/catalog-plans/${plan._id}`, { method: "DELETE" });
+      setNotice("Plan deleted.");
+      await loadPlans();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  const filteredUsers = users.filter((u) => {
+    const q = userSearch.toLowerCase();
+    return !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
+  });
+
+  if (loading) return <div className="card text-sm text-neutral-500">Loading plan catalog...</div>;
+
+  return (
+    <div className="space-y-4">
+      {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+      {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+
+      <section className="card p-0">
+        <div className="flex items-center justify-between border-b border-hairline p-4">
+          <h2 className="font-semibold text-ink">Plan Catalog</h2>
+          <button className="btn-primary" onClick={openCreate}>+ New Plan</button>
+        </div>
+
+        <div className="table-wrap">
+          <table className="table w-full min-w-[900px]">
+            <thead>
+              <tr>
+                {["Name", "Tier", "Visibility", "Status", "Subscribers", "Credits/mo", "Updated", "Actions"].map((col) => (
+                  <th key={col}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map((plan) => (
+                <tr key={plan._id}>
+                  <td className="align-middle">
+                    <div className="font-medium text-ink">{plan.name}</div>
+                    {plan.badge && <div className="text-xs text-neutral-400">{plan.badge}</div>}
+                  </td>
+                  <td className="align-middle">
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-semibold capitalize text-neutral-700">{plan.tier}</span>
+                  </td>
+                  <td className="align-middle">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${plan.visibility === "public" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                      {plan.visibility}
+                    </span>
+                  </td>
+                  <td className="align-middle">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${plan.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-neutral-100 text-neutral-500"}`}>
+                      {plan.status}
+                    </span>
+                  </td>
+                  <td className="align-middle text-sm">{plan.subscriberCount ?? 0}</td>
+                  <td className="align-middle text-sm">{(plan.monthlyCredits || 0).toLocaleString()}</td>
+                  <td className="align-middle text-xs text-neutral-500">{plan.updatedAt ? new Date(plan.updatedAt).toLocaleDateString() : "-"}</td>
+                  <td className="whitespace-nowrap align-middle">
+                    <ThreeDotMenu actions={[
+                      { label: "Edit", onClick: () => openEdit(plan) },
+                      { label: "Duplicate", onClick: () => handleDuplicate(plan) },
+                      plan.status === "active"
+                        ? { label: "Archive", onClick: () => { setArchiveConfirm(plan); setArchiveInput(""); } }
+                        : { label: "Restore", onClick: () => handleRestore(plan) },
+                      {
+                        label: "Delete",
+                        danger: true,
+                        disabled: (plan.subscriberCount ?? 0) > 0,
+                        onClick: () => handleDelete(plan),
+                      },
+                    ]} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!plans.length && <div className="p-6 text-sm text-neutral-500">No plans yet. Create one above.</div>}
+        </div>
+      </section>
+
+      {/* Archive confirmation dialog */}
+      {archiveConfirm && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4 backdrop-blur-sm" onClick={() => setArchiveConfirm(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-pop" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-ink">Archive "{archiveConfirm.name}"?</h3>
+            <p className="mt-2 text-sm text-neutral-600">
+              {archiveConfirm.subscriberCount > 0
+                ? `${archiveConfirm.subscriberCount} active subscriber(s) will keep their limits until their next cycle. They won't be able to re-select this plan.`
+                : "No active subscribers. Safe to archive."}
+            </p>
+            <p className="mt-3 text-sm text-neutral-600">Type <strong>ARCHIVE</strong> to confirm:</p>
+            <input
+              className="input mt-2 w-full"
+              value={archiveInput}
+              onChange={(e) => setArchiveInput(e.target.value)}
+              placeholder="ARCHIVE"
+            />
+            <div className="mt-4 flex gap-2">
+              <button className="btn-secondary flex-1" onClick={() => setArchiveConfirm(null)}>Cancel</button>
+              <button className="btn-primary flex-1 !bg-rose-600 hover:!bg-rose-700" onClick={() => handleArchive(archiveConfirm)}>Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/30 p-4 backdrop-blur-sm">
+          <div className="mx-auto my-8 w-full max-w-2xl rounded-2xl bg-white shadow-pop">
+            <div className="flex items-center justify-between border-b border-hairline p-5">
+              <h2 className="text-lg font-semibold text-ink">{editingPlan ? "Edit Plan" : "Create Plan"}</h2>
+              <button className="rounded-lg p-1.5 text-neutral-500 hover:bg-neutral-100" onClick={() => setModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-6 p-5">
+              {modalError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{modalError}</div>}
+
+              {/* Basics */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Basics</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="col-span-2 space-y-1 text-xs font-medium text-neutral-600">
+                    Name <span className="text-rose-500">*</span>
+                    <input className="input mt-1 w-full" value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="e.g. Agency Plus" />
+                  </label>
+                  <label className="col-span-2 space-y-1 text-xs font-medium text-neutral-600">
+                    Description
+                    <input className="input mt-1 w-full" value={form.description} onChange={(e) => setField("description", e.target.value)} placeholder="Optional short description" />
+                  </label>
+                  <label className="space-y-1 text-xs font-medium text-neutral-600">
+                    Badge (optional UI tag)
+                    <input className="input mt-1 w-full" value={form.badge} onChange={(e) => setField("badge", e.target.value)} placeholder="e.g. Most Popular" />
+                  </label>
+                  <label className="space-y-1 text-xs font-medium text-neutral-600">
+                    Tier (cosmetic)
+                    <select className="input mt-1 w-full" value={form.tier} onChange={(e) => setField("tier", e.target.value)}>
+                      {TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              {/* Visibility */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Visibility</p>
+                <div className="flex gap-4">
+                  {["public", "private"].map((v) => (
+                    <label key={v} className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
+                      <input type="radio" name="visibility" value={v} checked={form.visibility === v} onChange={() => setField("visibility", v)} />
+                      {v.charAt(0).toUpperCase() + v.slice(1)}
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-neutral-400">
+                  Public plans appear to every user on Plans &amp; Billing. Private plans appear only to the people you assign below.
+                </p>
+                {form.visibility === "private" && (
+                  <div className="mt-3">
+                    <p className="mb-2 text-xs font-medium text-neutral-600">Assign users</p>
+                    <input
+                      className="input mb-2 w-full"
+                      placeholder="Search by name or email…"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                    />
+                    <div className="max-h-40 overflow-y-auto rounded-xl border border-hairline">
+                      {filteredUsers.slice(0, 50).map((u) => {
+                        const checked = form.assignedUserIds.some((id) => String(id) === String(u._id));
+                        return (
+                          <label key={u._id} className="flex cursor-pointer items-center gap-2 border-b border-hairline/60 px-3 py-2 text-sm hover:bg-neutral-50">
+                            <input type="checkbox" checked={checked} onChange={() => toggleAssignedUser(u._id)} />
+                            <span className="flex-1 truncate">{u.name}</span>
+                            <span className="text-xs text-neutral-400">{u.email}</span>
+                          </label>
+                        );
+                      })}
+                      {filteredUsers.length === 0 && <p className="p-3 text-xs text-neutral-400">No users match</p>}
+                    </div>
+                    {form.assignedUserIds.length > 0 && (
+                      <p className="mt-1 text-xs text-neutral-500">{form.assignedUserIds.length} user(s) selected</p>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* Pricing */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Pricing</p>
+                <label className="mb-3 flex items-center gap-2 text-sm text-neutral-700">
+                  <input type="checkbox" checked={form.pricing.isContactSales} onChange={(e) => setField("pricing.isContactSales", e.target.checked)} />
+                  Show "Contact Sales" instead of a price
+                </label>
+                {!form.pricing.isContactSales && (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="space-y-1 text-xs font-medium text-neutral-600">
+                      Monthly price <span className="text-rose-500">*</span>
+                      <input type="number" min="0" className="input mt-1 w-full" value={form.pricing.monthlyPrice} onChange={(e) => setField("pricing.monthlyPrice", e.target.value)} />
+                    </label>
+                    <label className="space-y-1 text-xs font-medium text-neutral-600">
+                      Yearly price
+                      <input type="number" min="0" className="input mt-1 w-full" value={form.pricing.yearlyPrice} onChange={(e) => setField("pricing.yearlyPrice", e.target.value)} />
+                    </label>
+                    <label className="space-y-1 text-xs font-medium text-neutral-600">
+                      Currency
+                      <select className="input mt-1 w-full" value={form.pricing.currency} onChange={(e) => setField("pricing.currency", e.target.value)}>
+                        {["USD", "INR", "EUR", "GBP"].map((c) => <option key={c}>{c}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                )}
+              </section>
+
+              {/* Credits & Rollover */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Credits &amp; Rollover</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-xs font-medium text-neutral-600">
+                    Monthly Credits
+                    <input type="number" min="0" className="input mt-1 w-full" value={form.monthlyCredits} onChange={(e) => setField("monthlyCredits", e.target.value)} />
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700 pt-5">
+                    <input type="checkbox" checked={form.rollover} onChange={(e) => setField("rollover", e.target.checked)} />
+                    Unused credits roll over to next cycle
+                  </label>
+                </div>
+              </section>
+
+              {/* Limits */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Limits</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {LIMIT_FIELDS.map(([field, label]) => (
+                    <div key={field} className="space-y-1">
+                      <p className="text-xs font-medium text-neutral-600">{label}</p>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          className="input flex-1"
+                          value={form.unlimitedFlags[field] ? "" : form.limits[field]}
+                          disabled={form.unlimitedFlags[field]}
+                          onChange={(e) => setField(`limits.${field}`, e.target.value)}
+                          placeholder={form.unlimitedFlags[field] ? "Unlimited" : "0"}
+                        />
+                        <label className="flex items-center gap-1 text-xs text-neutral-500 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.unlimitedFlags[field] || false}
+                            onChange={(e) => setForm((prev) => ({
+                              ...prev,
+                              unlimitedFlags: { ...prev.unlimitedFlags, [field]: e.target.checked },
+                              limits: { ...prev.limits, [field]: e.target.checked ? "" : prev.limits[field] }
+                            }))}
+                          />
+                          ∞
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-neutral-600">
+                      Actions/min <span className="text-rose-500">*</span>
+                      <span className="ml-1 text-neutral-400" title="Fair-usage ceiling — always enforced, cannot be unlimited">⚠ required</span>
+                    </p>
+                    <input
+                      type="number"
+                      min="1"
+                      className="input w-full"
+                      value={form.limits.actionsPerMin}
+                      onChange={(e) => setField("limits.actionsPerMin", e.target.value)}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Features */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Features included</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ALL_PLAN_FEATURES.map((f) => (
+                    <label key={f} className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
+                      <input type="checkbox" checked={form.features.includes(f)} onChange={() => toggleFeature(f)} />
+                      {PLAN_FEATURE_LABELS[f] || f}
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              {/* BYOK */}
+              <section>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">BYOK</p>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-700">
+                  <input type="checkbox" checked={form.byokAllowed} onChange={(e) => setField("byokAllowed", e.target.checked)} />
+                  Allow Bring Your Own Key on this plan
+                </label>
+              </section>
+
+              {/* Apply immediately — edit only */}
+              {editingPlan && (
+                <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-amber-800">
+                    <input type="checkbox" checked={form.applyImmediately} onChange={(e) => setField("applyImmediately", e.target.checked)} />
+                    Apply changes immediately to all current subscribers
+                  </label>
+                  <p className="mt-1 text-xs text-amber-700">
+                    By default, limit/credit changes take effect at the subscriber's next billing cycle. Check this to re-snapshot all active subscribers right now. One log entry will be written per affected user.
+                  </p>
+                  {editingPlan.subscriberCount > 0 && (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">{editingPlan.subscriberCount} active subscriber(s) currently on this plan.</p>
+                  )}
+                </section>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-hairline p-5">
+              <button className="btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
+              <button className="btn-primary" disabled={saving} onClick={handleSave}>
+                {saving ? "Saving…" : editingPlan ? "Save Changes" : "Create Plan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

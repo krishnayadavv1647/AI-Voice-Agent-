@@ -152,7 +152,7 @@ export default function PublicAgent() {
   const bio = agent?.bioPage || {};
   const businessInfo = bio.businessInfo || {};
   const showAppointment = (bio.showAppointmentButton ?? bio.showAppointment) !== false;
-  const showVoiceCall = (bio.showVoiceCallButton ?? bio.showWebCallButton ?? bio.showWebCall) !== false;
+  const showVoiceCall = (bio.showVoiceCallButton ?? bio.showWebCallButton ?? bio.showWebCall) !== false && Boolean(agent?.publicWebCallEnabled);
   const primaryCta = text(bio.primaryCtaText || bio.ctaText, "Talk to AI Agent");
   const quickTopics = (Array.isArray(bio.quickTopics) && bio.quickTopics.length ? bio.quickTopics : defaultQuickTopics)
     .filter((topic) => topic.isVisible !== false)
