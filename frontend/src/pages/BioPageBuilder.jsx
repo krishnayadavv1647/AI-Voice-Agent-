@@ -163,6 +163,8 @@ export default function BioPageBuilder() {
   const [agent, setAgent] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [form, setForm] = useState(null);
+  const [webCallStatus, setWebCallStatus] = useState(null);
+  const [webCallBusy, setWebCallBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -181,9 +183,16 @@ export default function BioPageBuilder() {
       setAgent(loadedAgent);
       setForm(cleanForm(bioData.bioPage, loadedAgent));
       setTemplates(templateData);
+      loadWebCallStatus().catch(() => {});
     } catch (err) {
       setError(errorText(err));
     }
+  }
+
+  async function loadWebCallStatus() {
+    const status = await api(`/agents/${id}/dograh/embed-token`);
+    setWebCallStatus(status);
+    return status;
   }
 
   useEffect(() => {
@@ -343,6 +352,22 @@ export default function BioPageBuilder() {
     }
   }
 
+  async function setWebCalling(enabled) {
+    setError("");
+    setNotice("");
+    setWebCallBusy(true);
+    try {
+      const result = await api(`/agents/${id}/dograh/embed-token`, { method: enabled ? "POST" : "DELETE" });
+      if (result.agent) setAgent(result.agent);
+      await loadWebCallStatus();
+      setNotice(enabled ? "Web calling enabled for the public page." : "Web calling disabled for the public page.");
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setWebCallBusy(false);
+    }
+  }
+
   function previewTemplate(template) {
     setForm((current) => ({ ...current, template: template.templateId, ...(template.colors || {}) }));
   }
@@ -456,6 +481,27 @@ export default function BioPageBuilder() {
             </div>
           </Panel>
 
+          <Panel title="Web Calling" icon={Phone}>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-hairline bg-white p-4">
+              <div>
+                <p className="font-semibold text-ink">
+                  {webCallStatus?.dograhWidgetEnabled ? "Public web calling is enabled" : "Public web calling is not enabled"}
+                </p>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Enable this after your Dograh workflow, voice, and LLM sync are ready.
+                </p>
+              </div>
+              <button
+                className={webCallStatus?.dograhWidgetEnabled ? "btn-secondary" : "btn-primary"}
+                disabled={webCallBusy}
+                onClick={() => setWebCalling(!webCallStatus?.dograhWidgetEnabled)}
+              >
+                <Phone size={16} />
+                {webCallBusy ? "Updating..." : webCallStatus?.dograhWidgetEnabled ? "Disable Web Call" : "Enable Web Call"}
+              </button>
+            </div>
+          </Panel>
+
           <Panel title="Quick Topics" icon={MessageCircle}>
             <div className="space-y-4">
               {[...(form.quickTopics || [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((topic, index) => (
@@ -503,7 +549,7 @@ export default function BioPageBuilder() {
         </section>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-hairline bg-white/90 px-4 py-3 shadow-[0_-10px_30px_rgba(15,23,42,.08)] backdrop-blur">
+      <div className="bio-page-action-bar fixed inset-x-0 bottom-0 z-30 px-4 py-3">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
           <button className="btn-primary" disabled={saving} onClick={() => save()}><Save size={16} />{saving ? "Saving..." : "Save Changes"}</button>
           <a className="btn-secondary" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Preview Public Page</a>

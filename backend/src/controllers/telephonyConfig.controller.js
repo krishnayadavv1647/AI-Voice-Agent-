@@ -5,6 +5,7 @@ import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
 import { getDograhClientForAgent } from "../services/dograhClientResolver.js";
 import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "../services/dograhWorkflowConfig.service.js";
+import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -699,7 +700,7 @@ function recordInboundCallInBackground({ providerName, phoneNumber, callerNumber
       }
     }
 
-    await CallLog.create({
+    const callLog = await CallLog.create({
       userId: agent.userId,
       agentId: agent._id,
       callerNumber,
@@ -711,6 +712,7 @@ function recordInboundCallInBackground({ providerName, phoneNumber, callerNumber
       rawWebhookPayload: { body: req.body, query: req.query },
       startedAt: new Date()
     });
+    await autoGenerateLeadFromCall(callLog);
   }).catch((error) => {
     console.error("[Telephony Incoming] Background call logging failed", {
       provider: providerName,

@@ -222,7 +222,7 @@ export default function AgentDetails() {
         setCalls(latestCalls);
         const watchedCall = latestCalls.find((call) => call._id === callLogId) || latestCalls[0];
 
-        if (attempts >= 12 || isFinalCallStatus(watchedCall?.status)) {
+        if (attempts >= 12 || isFinalCallStatus(watchedCall?.normalizedStatus || watchedCall?.status)) {
           window.clearInterval(pollingRef.current);
           pollingRef.current = null;
         }
@@ -245,6 +245,24 @@ export default function AgentDetails() {
       setCalls((current) => current.map((call) => call._id === updatedCall._id ? updatedCall : call));
       setSelectedCall((current) => current?._id === updatedCall._id ? updatedCall : current);
       setModalNotice(result.lead ? "Lead extracted from transcript." : "No lead found in this call's transcript.");
+      await load();
+    } catch (err) {
+      setModalError(formatApiError(err));
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function syncSelectedCall(callId) {
+    setModalError("");
+    setModalNotice("");
+    setExtracting(true);
+    try {
+      const result = await api(`/calls/${callId}/sync`, { method: "POST" });
+      const updatedCall = result.callLog || result;
+      setCalls((current) => current.map((call) => call._id === updatedCall._id ? updatedCall : call));
+      setSelectedCall((current) => current?._id === updatedCall._id ? updatedCall : current);
+      setModalNotice(updatedCall.transcript ? "Call synced and transcript loaded." : "Call synced. Transcript is not ready yet.");
       await load();
     } catch (err) {
       setModalError(formatApiError(err));
@@ -419,7 +437,7 @@ export default function AgentDetails() {
                         <p className="break-anywhere font-semibold text-ink">{call.callerNumber || "Unknown caller"}</p>
                         <p className="break-anywhere text-sm text-neutral-500">{call.callingNumber || "No caller ID"}</p>
                       </div>
-                      <StatusBadge status={call.status || "pending"} />
+                      <StatusBadge status={call.normalizedStatus || call.status || "pending"} />
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                       <Info label="Duration" value={formatDuration(call)} />
@@ -448,7 +466,7 @@ export default function AgentDetails() {
                         <td>{new Date(call.createdAt).toLocaleString()}</td>
                         <td>{call.callerNumber || "-"}</td>
                         <td>{call.callingNumber || "-"}</td>
-                        <td><StatusBadge status={call.status || "pending"} /></td>
+                        <td><StatusBadge status={call.normalizedStatus || call.status || "pending"} /></td>
                         <td>{formatDuration(call)}</td>
                         <td>{call.leadCaptured ? "Yes" : "No"}</td>
                         <td>
@@ -486,7 +504,7 @@ export default function AgentDetails() {
 
             <div className="grid gap-4 md:grid-cols-2">
               <Info label="Agent" value={agent.agentName} />
-              <Info label="Status" value={selectedCall.status} />
+              <Info label="Status" value={selectedCall.normalizedStatus || selectedCall.status} />
               <Info label="Caller Number" value={selectedCall.callerNumber} />
               <Info label="Calling Number" value={selectedCall.callingNumber} />
               <Info label="Duration" value={formatDuration(selectedCall)} />
@@ -514,6 +532,9 @@ export default function AgentDetails() {
             <DetailBlock title="Lead Data" value={selectedCall.leadData ? JSON.stringify(selectedCall.leadData, null, 2) : "No extracted lead data available."} pre />
 
             <div className="mt-6 action-row sm:justify-end">
+              <button className="btn-secondary" disabled={extracting || !selectedCall.dograhRunId} title={!selectedCall.dograhRunId ? "Dograh run ID is missing for this call." : ""} onClick={() => syncSelectedCall(selectedCall._id)}>
+                <RefreshCw size={16} />Sync Transcript
+              </button>
               <button className="btn-secondary" disabled={extracting} onClick={() => extractLead(selectedCall._id)}>
                 {extracting ? "Extracting…" : selectedCall.leadData ? "Re-extract Lead" : "Extract Lead"}
               </button>

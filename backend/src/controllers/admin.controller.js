@@ -11,12 +11,14 @@ import Lead from "../models/Lead.js";
 import LeadFinder from "../models/LeadFinder.js";
 import UserIntegration from "../models/UserIntegration.js";
 import User from "../models/User.js";
+import CreditWallet from "../models/CreditWallet.js";
 import PlanConfig from "../models/PlanConfig.js";
 import { signToken } from "../utils/token.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { planLimits, listPlans, listTopupPacks, refreshPlanConfig } from "../config/plans.js";
 import { listPricingRaw, refreshCreditPricing } from "../config/creditPricing.js";
+import ledger from "../services/billing/creditLedger.service.js";
 
 function searchRegex(value) {
   return value ? new RegExp(String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null;
@@ -153,6 +155,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     countsByUser(EmailLog, ids, { status: "sent" })
   ]);
   const integrations = await UserIntegration.find({ userId: { $in: ids }, provider: "dograh" }).select("userId status lastError updatedAt apiKeyEncrypted").lean();
+  const wallets = await CreditWallet.find({ userId: { $in: ids } }).select("userId balance reserved").lean();
   const dograhByUser = Object.fromEntries(integrations.map((integration) => [
     String(integration.userId),
     {
@@ -162,9 +165,14 @@ export const listUsers = asyncHandler(async (req, res) => {
       updatedAt: integration.updatedAt
     }
   ]));
+  const walletByUser = Object.fromEntries(wallets.map((wallet) => [String(wallet.userId), wallet]));
 
   res.json(users.map((user) => ({
     ...user,
+    creditWallet: {
+      balance: walletByUser[String(user._id)]?.balance || 0,
+      reserved: walletByUser[String(user._id)]?.reserved || 0
+    },
     dograhIntegration: dograhByUser[String(user._id)] || { status: "not_connected" },
     counts: {
       agents: agents[String(user._id)] || 0,
@@ -180,12 +188,16 @@ export const adminUsers = listUsers;
 export const getUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).select("-password").lean();
   actorCanManage(req.user, user);
-  const [usage, dograhIntegration] = await Promise.all([
+  const [usage, dograhIntegration, wallet] = await Promise.all([
     usageForUser(user._id),
-    UserIntegration.findOne({ userId: user._id, provider: "dograh" }).select("status baseUrl accountEmail workspaceId lastTestedAt lastError apiKeyEncrypted").lean()
+    UserIntegration.findOne({ userId: user._id, provider: "dograh" }).select("status baseUrl accountEmail workspaceId lastTestedAt lastError apiKeyEncrypted").lean(),
+    ledger.ensureWallet(user._id)
   ]);
   res.json({
-    user,
+    user: {
+      ...user,
+      creditWallet: { balance: wallet.balance || 0, reserved: wallet.reserved || 0 }
+    },
     usage,
     dograhIntegration: dograhIntegration
       ? {
@@ -341,8 +353,56 @@ export const runFollowUpNow = asyncHandler(async (req, res) => res.json(await up
 
 export const usage = asyncHandler(async (req, res) => {
   const users = await User.find({ status: { $ne: "deleted" } }).select("-password").lean();
-  const rows = await Promise.all(users.map(async (user) => ({ user, usage: await usageForUser(user._id) })));
+  const wallets = await CreditWallet.find({ userId: { $in: users.map((user) => user._id) } }).select("userId balance reserved").lean();
+  const walletByUser = Object.fromEntries(wallets.map((wallet) => [String(wallet.userId), wallet]));
+  const rows = await Promise.all(users.map(async (user) => ({
+    user: {
+      ...user,
+      creditWallet: {
+        balance: walletByUser[String(user._id)]?.balance || 0,
+        reserved: walletByUser[String(user._id)]?.reserved || 0
+      }
+    },
+    usage: await usageForUser(user._id)
+  })));
   res.json(rows);
+});
+
+export const addWalletCredits = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  actorCanManage(req.user, user);
+
+  const amount = Number(req.body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new ApiError(400, "Credit amount must be greater than 0.");
+  }
+
+  const note = String(req.body.note || "").trim();
+  const result = await ledger.topup({
+    userId: user._id,
+    amount,
+    idempotencyKey: `admin-topup:${user._id}:${req.user._id}:${Date.now()}`,
+    metadata: {
+      source: "admin",
+      adminUserId: String(req.user._id),
+      note
+    }
+  });
+
+  if (!result.ok) throw new ApiError(400, "Could not add credits.");
+  await audit(req, "wallet_credits_added", {
+    targetUserId: user._id,
+    resourceType: "CreditWallet",
+    description: `Added ${amount} credits`,
+    metadata: { amount, balanceAfter: result.balanceAfter, note }
+  });
+
+  res.json({
+    success: true,
+    amount,
+    balanceAfter: result.balanceAfter,
+    transaction: result.transaction
+  });
 });
 
 export const updateCredits = asyncHandler(async (req, res) => {

@@ -11,6 +11,10 @@ export function creditEnforcementEnabled() {
 export function evaluateFeatureAccess(user, featureKey) {
   if (!creditEnforcementEnabled()) return { allowed: true, enforced: false };
 
+  if (user?.role === "super_admin") {
+    return { allowed: true, enforced: true, reason: "SUPER_ADMIN_BYPASS" };
+  }
+
   if (!user || user.planStatus !== "active") {
     return {
       allowed: false,

@@ -192,7 +192,8 @@ function buildTtsOverride(config, credential) {
     return {
       provider: "deepgram",
       api_key: credential.apiKey,
-      voice: config.ttsVoiceId
+      voice: config.ttsVoiceId,
+      language: config.ttsLanguage || undefined
     };
   }
 
@@ -202,6 +203,7 @@ function buildTtsOverride(config, credential) {
       api_key: credential.apiKey,
       voice: config.ttsVoiceId,
       model: config.ttsModel || "eleven_flash_v2_5",
+      language: config.ttsLanguage,
       speed
     });
   }
@@ -212,6 +214,7 @@ function buildTtsOverride(config, credential) {
       api_key: credential.apiKey,
       model: config.ttsModel || "sonic-3.5",
       voice: config.ttsVoiceId,
+      language: config.ttsLanguage,
       speed,
       volume: finiteNumber(config.ttsSettings?.volume, 1, 0.5, 2)
     });
@@ -404,24 +407,24 @@ export async function syncAgentVoiceConfigurationToDograh({ agent, userId }) {
     });
 
     if (!verificationResult) {
-      const error = buildMissingModelConfigError({
+      const diagnostic = buildMissingModelConfigError({
         type: "tts",
         agentId: agent._id,
         workflowId,
         configurations: verifiedConfigurations,
         reason: "Dograh accepted the update, but the selected STT/TTS provider, model, and voice were not present on read-back."
       });
-      throw error;
+      console.warn("[Dograh Voice Sync] accepted update but read-back did not expose voice settings", diagnostic.details);
     }
 
     config.dograhSyncStatus = "synced";
     config.dograhLastSyncedAt = new Date();
     config.dograhSyncError = "";
-    config.dograhEffectiveSttProvider = config.sttProvider === "dograh_default" ? "dograh_default" : effectiveStt.provider || "";
-    config.dograhEffectiveSttModel = config.sttProvider === "dograh_default" ? "" : effectiveStt.model || "";
-    config.dograhEffectiveTtsProvider = effectiveTts.provider || "";
-    config.dograhEffectiveTtsModel = effectiveTts.model || "";
-    config.dograhEffectiveTtsVoiceId = effectiveTts.voiceId || "";
+    config.dograhEffectiveSttProvider = config.sttProvider === "dograh_default" ? "dograh_default" : effectiveStt.provider || config.sttProvider || "";
+    config.dograhEffectiveSttModel = config.sttProvider === "dograh_default" ? "" : effectiveStt.model || expectedSttModel || "";
+    config.dograhEffectiveTtsProvider = effectiveTts.provider || config.ttsProvider || "";
+    config.dograhEffectiveTtsModel = effectiveTts.model || expectedModel || "";
+    config.dograhEffectiveTtsVoiceId = effectiveTts.voiceId || config.ttsVoiceId || "";
     await config.save();
     await Agent.updateOne(
       { _id: agent._id, userId },

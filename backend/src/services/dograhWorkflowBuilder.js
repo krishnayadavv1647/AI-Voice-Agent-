@@ -105,8 +105,14 @@ Healthcare safety rules:
 }
 
 export function buildAgentPrompt(agent) {
+  const openingLine = firstSpokenMessage(agent);
   return `
 You are ${value(agent.agentName)}, an AI voice agent for ${value(agent.businessName)}.
+
+Opening line:
+${openingLine}
+
+At the start of every call, immediately say the opening line above first. Do not wait silently for the caller before speaking.
 
 Agent Name:
 ${value(agent.agentName)}
@@ -231,13 +237,11 @@ export function buildDograhWorkflowDefinition(agent) {
   const globalNodeId = `global-${localId}`;
   const startNodeId = `start-${localId}`;
   const agentNodeId = `agent-${localId}`;
-  const endNodeId = `end-${localId}`;
 
   const globalPrompt = buildGlobalPrompt(agent);
   const startPrompt = firstSpokenMessage(agent);
   const agentPrompt = buildAgentPrompt(agent);
   console.log("AUTO DOGRAH AGENT PROMPT:", agentPrompt);
-  const endPrompt = "Thank the caller and end the call politely after the request is handled or callback details are collected.";
 
   return {
     nodes: [
@@ -256,7 +260,15 @@ export function buildDograhWorkflowDefinition(agent) {
         position: { x: 0, y: 0 },
         data: {
           name: "Start Call",
-          prompt: startPrompt
+          prompt: startPrompt,
+          message: startPrompt,
+          first_message: startPrompt,
+          initial_message: startPrompt,
+          greeting_message: startPrompt,
+          speak_first: true,
+          agent_speaks_first: true,
+          initial_speaker: "agent",
+          wait_for_user_response: false
         }
       },
       {
@@ -266,19 +278,19 @@ export function buildDograhWorkflowDefinition(agent) {
         data: {
           name: agent.agentName || "Main Agent",
           prompt: agentPrompt,
+          message: startPrompt,
+          first_message: startPrompt,
+          initial_message: startPrompt,
+          greeting_message: startPrompt,
+          speak_first: true,
+          agent_speaks_first: true,
+          initial_speaker: "agent",
           add_global_prompt: true,
           allow_interrupt: agent.allowInterruption !== false,
-          wait_for_user_response: true,
+          wait_for_user_response: false,
+          idle_timeout_seconds: 25,
+          silence_timeout_seconds: 25,
           ...(agent.leadCaptureEnabled === false ? { extraction_enabled: false } : buildExtractionData())
-        }
-      },
-      {
-        id: endNodeId,
-        type: "endCall",
-        position: { x: 700, y: 0 },
-        data: {
-          name: "End Call",
-          prompt: endPrompt
         }
       }
     ],
@@ -290,15 +302,6 @@ export function buildDograhWorkflowDefinition(agent) {
         data: {
           label: "Move to Main Agent",
           condition: "After greeting the caller, move to the main agent."
-        }
-      },
-      {
-        id: `edge-agent-end-${localId}`,
-        source: agentNodeId,
-        target: endNodeId,
-        data: {
-          label: "End Call",
-          condition: "The caller's request is handled, callback details are collected, or the caller wants to end the call."
         }
       }
     ]
@@ -316,7 +319,7 @@ export function validateLocalWorkflowDefinition(workflowDefinition) {
   if (nodeIds.size !== nodes.length) throw new ApiError(400, "Dograh workflow node IDs must be unique.");
   if (nodes.filter((node) => node.type === "startCall").length !== 1) throw new ApiError(400, "Dograh workflow must include exactly one startCall node.");
   if (nodes.filter((node) => node.type === "agentNode").length !== 1) throw new ApiError(400, "Dograh workflow must include exactly one agentNode node.");
-  if (nodes.filter((node) => node.type === "endCall").length !== 1) throw new ApiError(400, "Dograh workflow must include exactly one endCall node.");
+  if (nodes.filter((node) => node.type === "endCall").length > 1) throw new ApiError(400, "Dograh workflow must include at most one endCall node.");
 
   for (const edge of edges) {
     if (!nodeIds.has(edge.source)) throw new ApiError(400, `Dograh workflow edge source does not exist: ${edge.source}`);
@@ -325,11 +328,9 @@ export function validateLocalWorkflowDefinition(workflowDefinition) {
 
   const agentNode = nodes.find((node) => node.type === "agentNode");
   const startNode = nodes.find((node) => node.type === "startCall");
-  const endNode = nodes.find((node) => node.type === "endCall");
 
   if (!edges.some((edge) => edge.target === agentNode.id)) throw new ApiError(400, "Dograh agentNode must have at least one incoming edge.");
   if (!edges.some((edge) => edge.source === startNode.id && edge.target === agentNode.id)) throw new ApiError(400, "Dograh startCall must connect to agentNode.");
-  if (!edges.some((edge) => edge.source === agentNode.id && edge.target === endNode.id)) throw new ApiError(400, "Dograh agentNode must connect to endCall.");
 
   for (const node of nodes) {
     if ((node.type === "globalNode" || node.type === "startCall" || node.type === "agentNode" || node.type === "endCall") && !hasText(node.data?.prompt)) {

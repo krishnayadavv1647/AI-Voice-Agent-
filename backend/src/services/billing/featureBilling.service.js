@@ -10,7 +10,7 @@ import { creditEnforcementEnabled, evaluateFeatureAccess } from "./featureAccess
 export async function chargeFeatureOrThrow({ userId, user, featureKey, idempotencyKey, metadata = {} }) {
   if (!creditEnforcementEnabled()) return { enforced: false, charged: 0 };
 
-  const account = user || (await User.findById(userId).select("plan planStatus"));
+  const account = user || (await User.findById(userId).select("plan planStatus role"));
   const access = evaluateFeatureAccess(account, featureKey);
   if (!access.allowed) {
     throw new ApiError(access.reason === "NO_ACTIVE_PLAN" ? 402 : 403, access.message, { code: access.reason });

@@ -108,10 +108,10 @@ function buildLeadPayload(callLog, leadData) {
 }
 
 export async function upsertLeadFromCallData(callLog, leadData) {
-  if (!hasUsefulLeadData(leadData)) return false;
+  if (!hasUsefulLeadData(leadData) && !callLog.callerNumber) return false;
   if (!callLog.userId || !callLog.agentId) return false;
 
-  const leadPayload = buildLeadPayload(callLog, leadData);
+  const leadPayload = buildLeadPayload(callLog, leadData || {});
   const existingLead = await Lead.findOne({ callLogId: callLog._id });
 
   if (existingLead) {
@@ -290,10 +290,36 @@ export async function extractLeadForCallLog(callLog, { failOnGeminiError }) {
 export async function autoGenerateLeadFromCall(callLog) {
   if (!callLog) return null;
   if (callLog.leadCaptured && hasUsefulLeadData(callLog.leadData)) return null;
-  if (!callLog.transcript && !callLog.transcriptUrl) return null;
+  if (!callLog.transcript && !callLog.transcriptUrl && !callLog.callerNumber) return null;
 
   try {
-    return await extractLeadForCallLog(callLog, { failOnGeminiError: false });
+    const result = await extractLeadForCallLog(callLog, { failOnGeminiError: false });
+    if (result?.lead || !callLog.callerNumber) return result;
+
+    const fallbackLeadResult = await upsertLeadFromCallData(callLog, {
+      phone: callLog.callerNumber,
+      summary: callLog.summary,
+      requirement: callLog.summary || ""
+    });
+
+    if (fallbackLeadResult) {
+      callLog.leadCaptured = true;
+      callLog.leadData = {
+        phone: callLog.callerNumber,
+        summary: callLog.summary || "",
+        source: "caller_number_fallback"
+      };
+      callLog.leadId = fallbackLeadResult.lead._id;
+      await callLog.save();
+
+      if (fallbackLeadResult.created && callLog.agentId) {
+        await Agent.findByIdAndUpdate(callLog.agentId, { $inc: { totalLeads: 1 } });
+      }
+
+      return { callLog, lead: fallbackLeadResult.lead, extracted: callLog.leadData };
+    }
+
+    return result;
   } catch (error) {
     console.error("[Lead Auto-Gen] Failed to auto-generate lead on call end:", {
       callLogId: callLog?._id?.toString(),

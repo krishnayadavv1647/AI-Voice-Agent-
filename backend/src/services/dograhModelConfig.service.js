@@ -95,6 +95,15 @@ function hasVoiceFields(object) {
   return "voice" in object || "voice_id" in object || "voiceId" in object || "ttsVoiceId" in object;
 }
 
+function childHasFields(object, predicate) {
+  return Object.values(object).some((value) => (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    predicate(value)
+  ));
+}
+
 function scoreNode(accessKey, object, type) {
   const spec = TYPE_SPECS[type];
   const key = String(accessKey ?? "").toLowerCase();
@@ -108,7 +117,9 @@ function scoreNode(accessKey, object, type) {
   else if (hint && spec.partials.some((part) => hint.includes(part))) score += 2;
 
   if (hasModelFields(object)) score += 2;
+  else if (childHasFields(object, hasModelFields)) score += 1;
   if (type === "tts" && hasVoiceFields(object)) score += 2;
+  else if (type === "tts" && childHasFields(object, hasVoiceFields)) score += 1;
 
   return score;
 }

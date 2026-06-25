@@ -168,6 +168,19 @@ textarea {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  min-height: 1rem;
+  padding: 0;
+  border-radius: 3px;
+  box-shadow: none;
+  cursor: pointer;
+  accent-color: var(--purple-500, #6366f1);
+  flex-shrink: 0;
+}
+
 input::placeholder,
 textarea::placeholder {
   color: #737373;
@@ -1752,6 +1765,51 @@ pre {
   color: var(--button-disabled-text) !important;
   box-shadow: none !important;
   transform: none !important;
+}
+
+.bio-page-action-bar {
+  border-top: 1px solid var(--border-dark-strong);
+  background:
+    linear-gradient(180deg, rgba(9, 18, 11, 0.74), rgba(4, 9, 5, 0.94)),
+    var(--surface-dark-solid);
+  box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.36), 0 -1px 0 rgba(200, 255, 46, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.bio-page-action-bar > div {
+  min-height: 3.5rem;
+}
+
+.bio-page-action-bar .btn-primary,
+.bio-page-action-bar .btn-secondary {
+  min-height: 2.625rem;
+}
+
+.bio-page-action-bar .badge {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(200, 255, 46, 0.18) !important;
+  color: var(--text-mid) !important;
+}
+
+@media (max-width: 720px) {
+  .bio-page-action-bar {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .bio-page-action-bar > div {
+    align-items: stretch;
+  }
+
+  .bio-page-action-bar .btn-primary,
+  .bio-page-action-bar .btn-secondary {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
+  }
+
+  .bio-page-action-bar .ml-auto {
+    margin-left: 0 !important;
+    width: 100%;
+  }
 }
 
 /* Form controls on dark surfaces */

@@ -9,7 +9,7 @@ import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../services
 import { hasUsefulLeadData, normalizeDograhRunDetails } from "../services/callLogMapper.js";
 import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { runFollowUp } from "../services/followUp.service.js";
-import { autoCreateAppointmentFromCall, extractLeadForCallLog, upsertLeadFromCallData } from "../services/leadGeneration.service.js";
+import { autoCreateAppointmentFromCall, autoGenerateLeadFromCall, extractLeadForCallLog, upsertLeadFromCallData } from "../services/leadGeneration.service.js";
 
 function filter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -238,8 +238,6 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
     callLog.leadId = leadResult.lead._id;
     await callLog.save();
     await autoCreateAppointmentFromCall(callLog, leadResult.lead);
-  } else if (callLog.transcript || callLog.transcriptUrl) {
-    console.log("No extracted lead data returned by Dograh. TODO: Gemini transcript-based lead extraction.");
   }
 
   if (leadResult?.created && callLog.agentId) {
@@ -247,7 +245,7 @@ async function applyRunDetailsToCallLog(callLog, runDetails) {
   }
 
   if (!leadResult) {
-    await extractLeadForCallLog(callLog, { failOnGeminiError: false });
+    await autoGenerateLeadFromCall(callLog);
   }
 
   await scheduleRetryFollowUpForCall(callLog);

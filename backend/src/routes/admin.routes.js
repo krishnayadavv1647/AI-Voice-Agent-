@@ -46,6 +46,7 @@ import {
   updateAgent,
   updateAppointment,
   updateCampaign,
+  addWalletCredits,
   updateCredits,
   updateFollowUp,
   updateIntegrationSettings,
@@ -56,6 +57,19 @@ import {
   updateUser,
   usage
 } from "../controllers/admin.controller.js";
+import {
+  adminListPlans,
+  adminGetPlan,
+  adminCreatePlan,
+  adminUpdatePlan,
+  adminDuplicatePlan,
+  adminArchivePlan,
+  adminRestorePlan,
+  adminDeletePlan,
+  adminAssignUsers,
+  adminUnassignUsers,
+  adminMovePlan,
+} from "../controllers/planCatalog.controller.js";
 import { protect, requireAdmin, requireSuperAdmin } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
@@ -117,6 +131,7 @@ router.get("/email-campaigns", adminEmailCampaigns);
 router.get("/email-logs", adminEmailLogs);
 
 router.get("/usage", usage);
+router.post("/users/:id/wallet-credits", requireSuperAdmin, addWalletCredits);
 router.patch("/users/:id/credits", updateCredits);
 router.patch("/users/:id/limits", updateLimits);
 router.patch("/users/:id/plan", updatePlan);
@@ -126,6 +141,19 @@ router.patch("/settings/integrations", requireSuperAdmin, updateIntegrationSetti
 
 router.get("/plan-config", requireSuperAdmin, getPlanConfig);
 router.patch("/plan-config", requireSuperAdmin, updatePlanConfig);
+
+// Plan catalog (super admin only)
+router.get("/catalog-plans", requireSuperAdmin, adminListPlans);
+router.get("/catalog-plans/:id", requireSuperAdmin, adminGetPlan);
+router.post("/catalog-plans", requireSuperAdmin, adminCreatePlan);
+router.put("/catalog-plans/:id", requireSuperAdmin, adminUpdatePlan);
+router.post("/catalog-plans/:id/duplicate", requireSuperAdmin, adminDuplicatePlan);
+router.patch("/catalog-plans/:id/archive", requireSuperAdmin, adminArchivePlan);
+router.patch("/catalog-plans/:id/restore", requireSuperAdmin, adminRestorePlan);
+router.delete("/catalog-plans/:id", requireSuperAdmin, adminDeletePlan);
+router.post("/catalog-plans/:id/assign", requireSuperAdmin, adminAssignUsers);
+router.post("/catalog-plans/:id/unassign", requireSuperAdmin, adminUnassignUsers);
+router.put("/users/:userId/catalog-plan", requireSuperAdmin, adminMovePlan);
 
 router.get("/audit-logs", auditLogs);
 

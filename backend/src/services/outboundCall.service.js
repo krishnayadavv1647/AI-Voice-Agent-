@@ -66,6 +66,14 @@ function dograhCallPayload(agent, phoneNumber, metadata = {}) {
     first_message: openingMessage,
     initial_message: openingMessage,
     greeting_message: openingMessage,
+    message: openingMessage,
+    start_message: openingMessage,
+    welcome_message: openingMessage,
+    speak_first: true,
+    agent_speaks_first: true,
+    initial_speaker: "agent",
+    call_direction: "outbound",
+    is_outbound: true,
 
     initial_context: {
       businessName: agent.businessName,
