@@ -288,7 +288,9 @@ export default function Campaigns() {
                           <td>{fmt(recipient.scheduledAt)}</td>
                           <td>{recipient.attemptCount || 0}/{recipient.maxAttempts || 0}</td>
                           <td>{recipient.lastOutcome || "-"}</td>
-                          <td className="text-rose-700">{recipient.lastError || "-"}</td>
+                          <td className="max-w-[20rem]">
+                            <span className="line-clamp-3 text-rose-700" title={recipient.lastError || ""}>{recipient.lastError || "-"}</span>
+                          </td>
                           <td className="break-anywhere">{recipient.dograhRunId || "-"}</td>
                         </tr>
                       ))}

@@ -193,8 +193,17 @@ export async function triggerOutboundCallForAgent({
     userId: userId || agent.userId,
     callType: "outbound_phone_call",
     fetchWorkflow: async () => {
-      const response = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
-      return response.data;
+      try {
+        const response = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
+        return response.data;
+      } catch (error) {
+        if (error?.response?.status === 404) {
+          throw new ApiError(404, "Dograh workflow was not found for this agent. Re-sync the agent workflow, then retry the call.", {
+            code: "DOGRAH_WORKFLOW_NOT_FOUND"
+          });
+        }
+        throw error;
+      }
     }
   });
   assertRuntimeVerification(runtimeVerification);

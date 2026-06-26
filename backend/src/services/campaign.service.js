@@ -10,6 +10,37 @@ import { ApiError } from "../utils/apiError.js";
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const FINAL_STATUSES = ["answered", "completed", "no_answer", "busy", "failed", "declined", "skipped", "cancelled"];
 
+function campaignCallErrorMessage(error) {
+  const data = error?.details || error?.response?.data || {};
+  const status = error?.statusCode || error?.response?.status;
+  const text = [
+    error?.message,
+    data?.userMessage,
+    data?.message,
+    data?.error,
+    data?.detail,
+    JSON.stringify(data)
+  ].filter(Boolean).join(" ");
+
+  if (/21219|unverified/i.test(text)) {
+    return "Phone number is not verified in the calling provider. Verify this recipient number or upgrade/configure the provider account, then retry.";
+  }
+
+  if (status === 404 || /status code 404|not found/i.test(text)) {
+    return "Dograh workflow was not found for this agent. Re-sync the agent workflow, then retry the failed campaign recipients.";
+  }
+
+  if (/telephony provider not configured/i.test(text)) {
+    return "Telephony provider is not configured in Dograh. Configure the caller/telephony provider, re-sync the agent, then retry.";
+  }
+
+  if (/callerIdNumber is required|calling_number|caller id/i.test(text)) {
+    return "Caller ID number is missing or invalid. Configure a valid outbound caller number, then retry.";
+  }
+
+  return error?.message || "Campaign call failed.";
+}
+
 export function userFilter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
@@ -253,14 +284,14 @@ export async function triggerCampaignRecipient(recipient) {
     return claimed;
   } catch (error) {
     claimed.status = "failed";
-    claimed.lastError = error.message;
+    claimed.lastError = campaignCallErrorMessage(error);
     claimed.lastOutcome = "failed";
     await claimed.save();
     await refreshCampaignStats(campaign._id);
     console.error("[Campaign Worker] call failed", {
       campaignId: campaign._id.toString(),
       recipientId: claimed._id.toString(),
-      error: error.message
+      error: claimed.lastError
     });
     return claimed;
   }

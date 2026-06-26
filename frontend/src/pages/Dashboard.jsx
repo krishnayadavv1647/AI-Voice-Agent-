@@ -12,8 +12,6 @@ import dashboardIconRobot from "../assets/dashboard-icon-robot-cutout.png";
 import dashboardIconTarget from "../assets/dashboard-icon-target-cutout.png";
 import { api } from "../lib/api.js";
 
-const chartBars = [28, 44, 36, 62, 48, 74, 69, 86, 58, 92, 78, 96];
-
 function durationLabel(call) {
   if (typeof call?.durationSeconds === "number") return `${call.durationSeconds}s`;
   return call?.duration || "Pending";
@@ -51,6 +49,9 @@ export default function Dashboard() {
   const totalAgents = stats.totalAgents || 0;
   const totalCalls = stats.totalCalls || 0;
   const totalLeads = stats.totalLeads || 0;
+  const outboundCallVolume = data?.outboundCallVolume || [];
+  const maxOutboundCalls = Math.max(1, ...outboundCallVolume.map((item) => item.count || 0));
+  const hasOutboundCalls = outboundCallVolume.some((item) => item.count > 0);
 
   const successRate = useMemo(() => {
     if (!totalCalls) return 0;
@@ -106,16 +107,29 @@ export default function Dashboard() {
                 </div>
                 <StatusBadge status="Active" />
               </div>
-              <div className="flex h-52 min-w-0 items-end gap-1 rounded-2xl bg-neutral-50 p-3 sm:h-64 sm:gap-2 sm:p-4">
-                {chartBars.map((height, index) => (
-                  <div key={index} className="flex min-w-0 flex-1 items-end">
-                    <div
-                      className="w-full rounded-t-xl bg-brand-600"
-                      style={{ height: `${height}%` }}
-                      title={`${height} calls`}
-                    />
+              <div className="relative flex h-52 min-w-0 items-end gap-1 rounded-2xl bg-neutral-50 p-3 sm:h-64 sm:gap-2 sm:p-4">
+                {outboundCallVolume.map((item) => {
+                  const height = item.count ? Math.max(10, Math.round((item.count / maxOutboundCalls) * 100)) : 2;
+                  return (
+                    <div key={item.key} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                      <div className="flex h-full w-full items-end">
+                        <div
+                          className="w-full rounded-t-xl border border-[#c8ff2e]/30 bg-[linear-gradient(180deg,#d9ff5a_0%,#7dff4a_100%)] shadow-[0_0_18px_rgba(200,255,46,.22)] transition group-hover:brightness-110"
+                          style={{ height: `${height}%`, opacity: item.count ? 1 : 0.28 }}
+                          title={`${item.count} outbound call${item.count === 1 ? "" : "s"} on ${item.label}`}
+                        />
+                      </div>
+                      <span className="hidden max-w-full truncate text-[10px] text-neutral-500 sm:block">{item.label}</span>
+                    </div>
+                  );
+                })}
+                {!hasOutboundCalls && (
+                  <div className="absolute inset-0 grid place-items-center p-6 text-center">
+                    <p className="rounded-xl border border-hairline bg-black/20 px-4 py-3 text-sm text-neutral-500">
+                      No outbound calls in the last 12 days.
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
             </section>
 
