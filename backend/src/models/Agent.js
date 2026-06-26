@@ -124,6 +124,8 @@ const agentSchema = new mongoose.Schema(
       enum: ["auto_generate", "upload_custom", "default_avatar"],
       default: "auto_generate"
     },
+    avatarImagePath: { type: String, default: null },
+    bio: { type: String, trim: true, maxlength: 500, default: "" },
     lastSyncedAt: { type: Date, default: null },
     archivedAt: Date,
     status: { type: String, enum: ["Draft", "Active", "Paused", "Connected", "draft", "active", "archived"], default: "draft" },

@@ -48,7 +48,19 @@ const callLogSchema = new mongoose.Schema(
     billingMode: { type: String, enum: ["platform_credits", "byok", null], default: null },
     billingCallId: { type: String, default: null },
     billingSettled: { type: Boolean, default: false },
-    creditsCharged: { type: Number, default: 0 }
+    creditsCharged: { type: Number, default: 0 },
+
+    // Auto-pipeline tracking (written by pipelineScheduler; never read by sync/extract logic)
+    autoSyncedAt: { type: Date, default: null },
+    autoSyncFailureCount: { type: Number, default: 0 },
+    autoExtractedAt: { type: Date, default: null },
+    autoExtractFailureCount: { type: Number, default: 0 },
+    pipelineStatus: {
+      type: String,
+      enum: ["pending", "syncing", "synced", "extracting", "completed", "failed"],
+      default: "pending"
+    },
+    lastPipelineError: { type: String, default: null }
   },
   { timestamps: true }
 );

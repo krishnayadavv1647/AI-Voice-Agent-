@@ -18,7 +18,7 @@ const editableFields = [
   "language", "responseStyle", "callMode", "allowInterruption", "fastReplyMode", "leadCaptureEnabled",
   "voiceGender", "voiceStyle", "voiceProvider", "voiceId", "sttProvider", "sttModel", "sttLanguage", "sttSettings", "ttsProvider", "ttsModel", "ttsLanguage", "ttsSettings", "firstMessage", "telephonyConfigId",
   "voiceSpeed", "tone", "speakingSpeed", "personality",
-  "provider"
+  "provider", "bio"
 ];
 
 function formatApiError(error) {
@@ -382,6 +382,9 @@ export default function EditAgent() {
             <Field label="Business Name" name="businessName" value={form.businessName} setField={setField} />
             <Field label="Business Category" name="businessCategory" value={form.businessCategory} setField={setField} />
             <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} setField={setField} textarea /></div>
+            <div className="md:col-span-2">
+              <BioField value={form.bio ?? ""} onChange={(v) => setField("bio", v)} disabled={saving} />
+            </div>
           </div>
         )}
 
@@ -511,4 +514,40 @@ function Info({ label, value }) {
 
 function labelFor(field) {
   return field === "additionalInfo" ? "Additional Info" : field[0].toUpperCase() + field.slice(1);
+}
+
+const BIO_MAX = 500;
+const BIO_WARN_THRESHOLD = 20;
+
+function BioField({ value, onChange, disabled }) {
+  const len = (value || "").length;
+  const remaining = BIO_MAX - len;
+  const counterClass = remaining <= 0
+    ? "bio-char-counter bio-char-counter-error"
+    : remaining <= BIO_WARN_THRESHOLD
+      ? "bio-char-counter bio-char-counter-warn"
+      : "bio-char-counter";
+
+  return (
+    <div>
+      <label className="field-label" style={{ display: "block" }}>
+        Agent Bio
+        <span className="field-label" style={{ display: "block", fontSize: 12, fontWeight: 400, marginTop: 2, marginBottom: 4, opacity: 0.7 }}>
+          A short description shown on the agent's profile. Used to give the agent personality context.
+        </span>
+        <div className="bio-field-wrap">
+          <textarea
+            className="mt-1"
+            style={{ minHeight: 96, resize: "vertical", paddingBottom: 24 }}
+            value={value}
+            maxLength={BIO_MAX}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="e.g. A professional and friendly sales agent for real estate inquiries…"
+          />
+          <span className={counterClass}>{len}/{BIO_MAX}</span>
+        </div>
+      </label>
+    </div>
+  );
 }

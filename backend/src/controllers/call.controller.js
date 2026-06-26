@@ -5,7 +5,8 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import FollowUp from "../models/FollowUp.js";
-import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../services/callOutcome.service.js";
+import { runPipelinePass } from "../services/pipelineScheduler.js";
+import { applyCallOutcomeToLog, isTerminalCallStatus, scheduleRetryFollowUpForCall } from "../services/callOutcome.service.js";
 import { hasUsefulLeadData, normalizeDograhRunDetails } from "../services/callLogMapper.js";
 import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { runFollowUp } from "../services/followUp.service.js";
@@ -18,6 +19,13 @@ function filter(req) {
 export const listCalls = asyncHandler(async (req, res) => {
   const calls = await CallLog.find(filter(req)).populate("agentId", "agentName").sort({ createdAt: -1 });
   res.json(calls);
+  // Fire-and-forget: catch up any unsynced calls visible on this page load
+  const scopedCallIds = calls
+    .filter((c) => !isTerminalCallStatus(c.normalizedStatus))
+    .map((c) => c._id);
+  if (scopedCallIds.length) {
+    runPipelinePass({ scopedCallIds }).catch(() => {});
+  }
 });
 
 export const getCall = asyncHandler(async (req, res) => {
@@ -122,6 +130,11 @@ export const syncCall = asyncHandler(async (req, res) => {
     runId: callLog.dograhRunId
   });
 
+  // Manual sync success resets auto-pipeline failure tracking
+  await CallLog.findByIdAndUpdate(updatedCallLog._id, {
+    $set: { autoSyncFailureCount: 0, autoSyncedAt: new Date(), pipelineStatus: "synced", lastPipelineError: null }
+  });
+
   res.json({ success: true, callLog: updatedCallLog });
 });
 
@@ -130,6 +143,18 @@ export const extractLeadForCall = asyncHandler(async (req, res) => {
   if (!callLog) throw new ApiError(404, "Call log not found");
 
   const result = await extractLeadForCallLog(callLog, { failOnGeminiError: true });
+
+  // Manual extract success resets auto-pipeline failure tracking
+  if (result.lead) {
+    await CallLog.findByIdAndUpdate(callLog._id, {
+      $set: {
+        autoExtractFailureCount: 0,
+        autoExtractedAt: new Date(),
+        pipelineStatus: "completed",
+        lastPipelineError: null
+      }
+    });
+  }
 
   res.json({
     success: true,

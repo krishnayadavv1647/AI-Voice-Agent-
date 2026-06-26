@@ -1,12 +1,11 @@
 import CallLog from "../models/CallLog.js";
 import Agent from "../models/Agent.js";
-import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "./callOutcome.service.js";
+import { applyCallOutcomeToLog, isTerminalCallStatus, scheduleRetryFollowUpForCall } from "./callOutcome.service.js";
 import { normalizeDograhRunDetails } from "./callLogMapper.js";
 import { getDograhCallRunDetails } from "./dograh.service.js";
 import { autoGenerateLeadFromCall } from "./leadGeneration.service.js";
 import { settleVoiceCallBilling } from "./billing/voiceCallBilling.service.js";
 
-const FINAL_STATUSES = new Set(["completed", "answered", "declined", "no_answer", "busy", "failed", "cancelled", "pipeline_error"]);
 const SYNC_DELAYS_MS = [30 * 1000, 90 * 1000, 180 * 1000];
 
 function compactUpdate(update) {
@@ -17,7 +16,7 @@ export async function syncDograhCallStatus(callLogId) {
   const callLog = await CallLog.findById(callLogId);
   if (!callLog) return null;
   if (!callLog.dograhWorkflowId || !callLog.dograhRunId) return callLog;
-  if (FINAL_STATUSES.has(callLog.normalizedStatus)) return callLog;
+  if (isTerminalCallStatus(callLog.normalizedStatus)) return callLog;
 
   console.log("[Dograh Status Sync] fetching run status", {
     callLogId: callLog._id.toString(),

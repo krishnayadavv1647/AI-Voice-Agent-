@@ -37,7 +37,9 @@ import {
   uploadBioPageCover,
   uploadBioPageAgentImage,
   uploadBioPageLogo,
-  uploadBioPageTopicIcon
+  uploadBioPageTopicIcon,
+  uploadAgentAvatar,
+  deleteAgentAvatar
 } from "../controllers/agent.controller.js";
 import { adminOnly, protect } from "../middleware/auth.middleware.js";
 
@@ -55,6 +57,8 @@ router.put("/:id/bio-page", updateBioPage);
 router.post("/:id/bio-page/reset", resetBioPage);
 router.post("/:id/bio-page/publish", publishBioPage);
 router.post("/:id/bio-page/unpublish", unpublishBioPage);
+router.post("/:id/avatar", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "2mb" }), uploadAgentAvatar);
+router.delete("/:id/avatar", deleteAgentAvatar);
 router.post("/:id/bio-page/logo", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "2mb" }), uploadBioPageLogo);
 router.post("/:id/bio-page/cover", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "5mb" }), uploadBioPageCover);
 router.post("/:id/bio-page/agent-image", express.raw({ type: ["image/png", "image/jpeg", "image/webp"], limit: "5mb" }), uploadBioPageAgentImage);

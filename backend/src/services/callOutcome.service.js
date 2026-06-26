@@ -5,6 +5,7 @@ import Lead from "../models/Lead.js";
 
 const RETRY_OUTCOMES = new Set(["declined", "no_answer", "busy", "failed"]);
 const SUCCESS_OUTCOMES = new Set(["completed", "answered", "cancelled"]);
+export const TERMINAL_CALL_STATUSES = new Set([...RETRY_OUTCOMES, ...SUCCESS_OUTCOMES]);
 const MAX_RETRY_ATTEMPTS = 3;
 
 export function normalizeCallOutcome(rawStatus) {
@@ -43,6 +44,10 @@ export function isRetryEligible(normalizedStatus) {
   if (RETRY_OUTCOMES.has(normalizedStatus)) return true;
   if (SUCCESS_OUTCOMES.has(normalizedStatus)) return false;
   return false;
+}
+
+export function isTerminalCallStatus(normalizedStatus) {
+  return TERMINAL_CALL_STATUSES.has(normalizedStatus);
 }
 
 export const normalizeDograhStatus = normalizeCallOutcome;

@@ -1011,6 +1011,137 @@ button {
   transform: translateY(0);
 }
 
+/* Hover: text fades out, icon/image scales up */
+.agent-card:hover .agent-card-content,
+.agent-card:focus-visible .agent-card-content {
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.agent-card:active .agent-card-fallback,
+.agent-card:active .agent-card-avatar-img {
+  transform: scale(0.96);
+}
+
+.agent-card-fallback,
+.agent-card-avatar-img {
+  transition: transform 150ms ease-out, opacity 150ms ease-out;
+}
+
+.agent-card:hover .agent-card-fallback,
+.agent-card:focus-visible .agent-card-fallback,
+.agent-card:hover .agent-card-avatar-img,
+.agent-card:focus-visible .agent-card-avatar-img {
+  transform: scale(1.08);
+}
+
+/* Custom avatar image (replaces default icon when set) */
+.agent-card-avatar-img {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  opacity: 0.82;
+}
+
+/* Upload badge — visible on hover in bottom-right of icon area */
+.agent-card-upload-badge {
+  position: absolute;
+  z-index: 4;
+  right: 10px;
+  bottom: 52px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+  pointer-events: none;
+}
+
+.agent-card:hover .agent-card-upload-badge,
+.agent-card:focus-within .agent-card-upload-badge {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.agent-card-upload-badge:disabled {
+  cursor: wait;
+  opacity: 0.5 !important;
+}
+
+/* Pipeline status dot indicator */
+.pipeline-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+
+.pipeline-dot-pending { background: var(--text-lo, #8D9A85); }
+.pipeline-dot-syncing,
+.pipeline-dot-extracting { background: #60a5fa; animation: pipeline-pulse 1.2s ease-in-out infinite; }
+.pipeline-dot-synced { background: #a3e635; }
+.pipeline-dot-completed { background: #4ade80; }
+.pipeline-dot-failed { background: #f87171; }
+
+@keyframes pipeline-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pipeline-status-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pipeline-retry-link {
+  color: #f87171;
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Bio field char counter */
+.bio-field-wrap {
+  position: relative;
+}
+
+.bio-char-counter {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  font-size: 11px;
+  color: var(--text-lo, #8D9A85);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.bio-char-counter-warn { color: #f59e0b; }
+.bio-char-counter-error { color: #f87171; }
+
 .agent-card:focus-within,
 .agents-library-create:focus-visible {
   outline: 2px solid #b9ff2b;

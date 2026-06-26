@@ -7,6 +7,7 @@ import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
 import { startEmailSyncWorker } from "./workers/emailSyncWorker.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
+import { startPipelineScheduler } from "./services/pipelineScheduler.js";
 import { refreshPlanConfig } from "./config/plans.js";
 import { refreshCreditPricing } from "./config/creditPricing.js";
 
@@ -35,6 +36,7 @@ connectDB()
     startFollowUpWorker();
     startEmailSyncWorker();
     startTelegramBot();
+    startPipelineScheduler();
   })
   .catch((error) => {
     console.error("Database connection failed", error.message);
