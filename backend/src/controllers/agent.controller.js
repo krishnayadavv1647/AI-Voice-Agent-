@@ -979,6 +979,49 @@ export const uploadBioPageTopicIcon = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, iconImageUrl });
 });
 
+export const uploadAgentAvatar = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+
+  const contentType = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
+  const allowed = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+  const ext = allowed[contentType];
+  if (!ext) throw new ApiError(400, "Avatar must be png, jpg, or webp.");
+  if (!Buffer.isBuffer(req.body) || !req.body.length) throw new ApiError(400, "Avatar file is required.");
+  if (req.body.length > 2 * 1024 * 1024) throw new ApiError(400, "Avatar file must be under 2 MB.");
+
+  const uploadDir = path.resolve("uploads", "agents", String(agent._id));
+  await fs.mkdir(uploadDir, { recursive: true });
+
+  // Delete old avatar file if present
+  if (agent.avatarImagePath) {
+    const rel = agent.avatarImagePath.replace(/^\//, "");
+    fs.unlink(path.resolve(rel)).catch(() => {});
+  }
+
+  const fileName = `avatar-${Date.now()}.${ext}`;
+  const filePath = path.join(uploadDir, fileName);
+  await fs.writeFile(filePath, req.body);
+
+  const avatarImagePath = `/uploads/agents/${agent._id}/${fileName}`;
+  agent.avatarImagePath = avatarImagePath;
+  await agent.save();
+
+  res.status(201).json({ success: true, avatarImagePath });
+});
+
+export const deleteAgentAvatar = asyncHandler(async (req, res) => {
+  const agent = await getOwnedAgent(req);
+
+  if (agent.avatarImagePath) {
+    const rel = agent.avatarImagePath.replace(/^\//, "");
+    fs.unlink(path.resolve(rel)).catch(() => {});
+    agent.avatarImagePath = null;
+    await agent.save();
+  }
+
+  res.json({ success: true });
+});
+
 export const getAgent = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
 
@@ -1066,11 +1109,17 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "mainGoal",
     "secondaryGoal",
     "avoidInstructions",
-    "confusedInstructions"
+    "confusedInstructions",
+    "bio"
   ];
 
   for (const field of allowedFields) {
     if (body[field] !== undefined) agent[field] = body[field];
+  }
+
+  // Enforce bio max-length server-side even if client skips it
+  if (agent.bio && agent.bio.length > 500) {
+    throw new ApiError(400, "Bio must be 500 characters or fewer.");
   }
 
   agent.agentName = agent.agentName || agent.name;

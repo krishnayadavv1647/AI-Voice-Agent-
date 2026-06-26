@@ -1,4 +1,4 @@
-﻿import { CalendarClock, Edit, Eye, Globe2, MoreVertical, PhoneCall, Play, Radio, RefreshCw, Trash2, X } from "lucide-react";
+﻿import { CalendarClock, Edit, Eye, Globe2, Loader2, MoreVertical, PhoneCall, Play, Radio, RefreshCw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -444,6 +444,9 @@ export default function AgentDetails() {
                       <Info label="Lead" value={call.leadCaptured ? "Yes" : "No"} />
                       <Info label="Date" value={new Date(call.createdAt).toLocaleString()} />
                     </div>
+                    <div className="mt-2">
+                      <PipelineStatus call={call} onSync={syncSelectedCall} onExtract={extractLead} />
+                    </div>
                     <div className="mt-4">
                       <ThreeDotMenu actions={[
                         { label: "View", onClick: () => openCall(call) },
@@ -458,7 +461,7 @@ export default function AgentDetails() {
               <div className="desktop-table table-wrap">
                 <table className="table w-full min-w-[1120px]">
                   <thead>
-                    <tr><th>Date</th><th>Caller Number</th><th>Calling Number</th><th>Status</th><th>Duration</th><th>Lead Captured</th><th>Actions</th></tr>
+                    <tr><th>Date</th><th>Caller Number</th><th>Calling Number</th><th>Status</th><th>Duration</th><th>Lead</th><th>Pipeline</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {calls.map((call) => (
@@ -469,6 +472,7 @@ export default function AgentDetails() {
                         <td><StatusBadge status={call.normalizedStatus || call.status || "pending"} /></td>
                         <td>{formatDuration(call)}</td>
                         <td>{call.leadCaptured ? "Yes" : "No"}</td>
+                        <td><PipelineStatus call={call} onSync={syncSelectedCall} onExtract={extractLead} /></td>
                         <td>
                           <ThreeDotMenu actions={[
                             { label: "View", onClick: () => openCall(call) },
@@ -478,7 +482,7 @@ export default function AgentDetails() {
                         </td>
                       </tr>
                     ))}
-                    {!calls.length && <tr><td colSpan="7" className="text-center text-neutral-500">No calls yet.</td></tr>}
+                    {!calls.length && <tr><td colSpan="8" className="text-center text-neutral-500">No calls yet.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -555,6 +559,41 @@ function Info({ label, value }) {
       <p className="break-words text-sm text-neutral-700">{value || "Not provided"}</p>
     </div>
   );
+}
+
+function PipelineStatus({ call, onSync, onExtract }) {
+  const status = call.pipelineStatus;
+  if (!status || status === "pending") {
+    return <span className="pipeline-status-cell"><span className="pipeline-dot pipeline-dot-pending" title="Waiting" />Pending</span>;
+  }
+  if (status === "syncing") {
+    return <span className="pipeline-status-cell"><Loader2 size={10} className="animate-spin" style={{ flexShrink: 0 }} /><span>Syncing…</span></span>;
+  }
+  if (status === "extracting") {
+    return <span className="pipeline-status-cell"><Loader2 size={10} className="animate-spin" style={{ flexShrink: 0 }} /><span>Extracting…</span></span>;
+  }
+  if (status === "synced") {
+    return <span className="pipeline-status-cell"><span className="pipeline-dot pipeline-dot-synced" />Synced</span>;
+  }
+  if (status === "completed") {
+    return <span className="pipeline-status-cell"><span className="pipeline-dot pipeline-dot-completed" />Done</span>;
+  }
+  if (status === "failed") {
+    const isExtractFailed = call.autoExtractFailureCount >= 5;
+    const label = isExtractFailed ? "Extract failed" : "Sync failed";
+    return (
+      <span className="pipeline-status-cell" title={call.lastPipelineError || ""}>
+        <span className="pipeline-dot pipeline-dot-failed" />
+        {label}&nbsp;
+        <button
+          type="button"
+          className="pipeline-retry-link"
+          onClick={() => isExtractFailed ? onExtract(call._id) : onSync(call._id)}
+        >Retry</button>
+      </span>
+    );
+  }
+  return null;
 }
 
 function DetailBlock({ title, value, pre = false }) {

@@ -1,5 +1,5 @@
-import { Edit, Eye, Link2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Camera, Edit, Eye, Link2, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
 import EmptyState from "../components/EmptyState.jsx";
@@ -16,6 +16,9 @@ export default function Agents() {
   const [toast, setToast] = useState("");
   const [generatingId, setGeneratingId] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+  const [uploadingId, setUploadingId] = useState("");
+  const fileInputRef = useRef(null);
+  const uploadTargetRef = useRef(null);
 
   const filteredAgents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,6 +60,53 @@ export default function Agents() {
     window.setTimeout(() => setCopiedId(null), 1500);
   }
 
+  function openAvatarPicker(agentId) {
+    uploadTargetRef.current = agentId;
+    fileInputRef.current?.click();
+  }
+
+  async function handleAvatarFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const agentId = uploadTargetRef.current;
+    if (!agentId) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setToast("Image must be under 2 MB.");
+      window.setTimeout(() => setToast(""), 4000);
+      return;
+    }
+
+    setUploadingId(agentId);
+    try {
+      await api(`/agents/${agentId}/avatar`, {
+        method: "POST",
+        body: file,
+        headers: { "Content-Type": file.type }
+      });
+      await load();
+    } catch (err) {
+      setToast(requestMessage(err, "Avatar upload failed."));
+      window.setTimeout(() => setToast(""), 4000);
+    } finally {
+      setUploadingId("");
+    }
+  }
+
+  async function removeAvatar(agentId) {
+    setUploadingId(agentId);
+    try {
+      await api(`/agents/${agentId}/avatar`, { method: "DELETE" });
+      await load();
+    } catch (err) {
+      setToast(requestMessage(err, "Failed to remove avatar."));
+      window.setTimeout(() => setToast(""), 4000);
+    } finally {
+      setUploadingId("");
+    }
+  }
+
   async function regenerateImage(id) {
     setError("");
     setToast("");
@@ -88,6 +138,7 @@ export default function Agents() {
   }
 
   function cardImage(agent, index) {
+    if (agent.avatarImagePath) return assetUrl(agent.avatarImagePath);
     if (agent.imageUrl) return assetUrl(agent.imageUrl);
     return index === 0 ? dashboardCallingAgent : "";
   }
@@ -107,6 +158,14 @@ export default function Agents() {
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {toast && <div className="agent-toast" role="status">{toast}</div>}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="sr-only"
+        onChange={handleAvatarFile}
+        aria-hidden="true"
+      />
 
       <div className="relative mb-2">
         <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
@@ -131,14 +190,39 @@ export default function Agents() {
       <div className="agent-card-grid">
         {filteredAgents.map((agent, index) => (
           <article
-            className={`agent-card ${agent.imageUrl || index === 0 ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
+            className={`agent-card ${cardImage(agent, index) ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
             key={agent._id}
             style={{ "--agent-card-image": `url("${cardImage(agent, index)}")` }}
           >
-            {!agent.imageUrl && index !== 0 && <div className="agent-card-fallback" aria-hidden="true">{initials(agent)}</div>}
+            {agent.avatarImagePath && (
+              <img className="agent-card-avatar-img" src={assetUrl(agent.avatarImagePath)} alt="" aria-hidden="true" />
+            )}
+            {!cardImage(agent, index) && <div className="agent-card-fallback" aria-hidden="true">{initials(agent)}</div>}
             <button title="Delete" className="agent-card-delete" onClick={() => action(agent._id, "delete")} type="button">
               <Trash2 size={14} />
             </button>
+            <button
+              type="button"
+              className="agent-card-upload-badge"
+              title={agent.avatarImagePath ? "Change or remove avatar" : "Upload custom avatar"}
+              disabled={uploadingId === agent._id}
+              onClick={(e) => { e.preventDefault(); openAvatarPicker(agent._id); }}
+            >
+              <Camera size={11} />
+              {uploadingId === agent._id ? "Uploading…" : agent.avatarImagePath ? "Change" : "Upload"}
+            </button>
+            {agent.avatarImagePath && (
+              <button
+                type="button"
+                className="agent-card-upload-badge"
+                style={{ right: 10, bottom: 86 }}
+                title="Remove custom avatar"
+                disabled={uploadingId === agent._id}
+                onClick={(e) => { e.preventDefault(); removeAvatar(agent._id); }}
+              >
+                <X size={11} />Remove
+              </button>
+            )}
             <Link className="agent-card-edit" title="Edit" to={`/agents/${agent._id}/edit`}>
               <Edit size={13} />
               <span>Edit</span>
