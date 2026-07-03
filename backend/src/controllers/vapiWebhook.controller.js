@@ -12,19 +12,26 @@ import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js"
 import { settleVoiceCallBilling } from "../services/billing/voiceCallBilling.service.js";
 
 // Real wiring. Tests pass fakes for the same keys so the side-effect chain runs without a DB.
-const defaultDeps = {
-  Agent,
-  CallLog,
-  Lead,
-  User,
-  WebhookEvent,
-  applyCallOutcomeToLog,
-  scheduleRetryFollowUpForCall,
-  syncCampaignRecipientFromCall,
-  settleVoiceCallBilling,
-  autoGenerateLeadFromCall,
-  normalizeLeadToEnglish
-};
+// Built lazily (at call time, NOT module-load time): this controller sits in a circular-import web
+// (campaign.service -> outboundCall.service -> providers -> ...), and on some entry orders the model
+// bindings are still `undefined` while this module initializes. Snapshotting them into an object at
+// load time would capture `undefined` permanently. Referencing them at request time is safe because
+// ESM live bindings are fully resolved by then.
+function getDefaultDeps() {
+  return {
+    Agent,
+    CallLog,
+    Lead,
+    User,
+    WebhookEvent,
+    applyCallOutcomeToLog,
+    scheduleRetryFollowUpForCall,
+    syncCampaignRecipientFromCall,
+    settleVoiceCallBilling,
+    autoGenerateLeadFromCall,
+    normalizeLeadToEnglish
+  };
+}
 
 async function findAgent(fields, deps) {
   const { Agent: AgentModel } = deps;
@@ -78,7 +85,7 @@ function compactUpdate(update) {
 
 // Mirrors dograhWebhook steps 3-9 for a Vapi end-of-call-report. Returns a small result object
 // describing what happened (used by tests and logging).
-export async function processVapiEndOfCall(message, deps = defaultDeps) {
+export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
   const fields = extractVapiCallFields(message);
   const agent = await findAgent(fields, deps);
 
@@ -189,7 +196,7 @@ async function applyVapiStatusUpdate(message, deps) {
 }
 
 // POST /api/vapi/webhook
-export async function vapiWebhook(req, res, deps = defaultDeps) {
+export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
   const message = req.body?.message || req.body || {};
 
   // Optional signature verification: Vapi echoes server.secret as the x-vapi-secret header.
