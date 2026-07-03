@@ -17,6 +17,9 @@ const DEFAULT_INCOMING_MESSAGE = "Hello, how can I help you?";
 const MISSING_AGENT_MESSAGE = "Sorry, agent is not configured.";
 const INCOMING_LOOKUP_TIMEOUT_MS = 1500;
 const INBOUND_MODES = ["dograh_ai", "static_greeting", "disabled"];
+const LEGACY_INBOUND_MODE_MAP = {
+  agent_runtime: "dograh_ai"
+};
 
 function userFilter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -192,7 +195,7 @@ function maskWebhookForDisplay(value) {
 
 function cleanInboundMode(value, inboundEnabled = true) {
   if (inboundEnabled === false) return "disabled";
-  const mode = value || "dograh_ai";
+  const mode = LEGACY_INBOUND_MODE_MAP[value] || value || "dograh_ai";
   if (!INBOUND_MODES.includes(mode)) {
     throw new ApiError(400, "Inbound call mode is not valid");
   }

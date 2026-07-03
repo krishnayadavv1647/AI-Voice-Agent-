@@ -23,6 +23,10 @@ export function normalizeCallOutcome(rawStatus) {
   return "unknown";
 }
 
+export function isPipelineErrorStatus(rawStatus) {
+  return String(rawStatus || "").trim().toLowerCase().replace(/[\s-]+/g, "_") === "pipeline_error";
+}
+
 export function retryTriggerForOutcome(normalizedStatus) {
   if (normalizedStatus === "declined") return "call_declined";
   if (normalizedStatus === "no_answer") return "call_not_picked";
@@ -157,7 +161,7 @@ export async function scheduleRetryFollowUpForCall(callLog) {
 
   // pipeline_error means Dograh's voice/LLM pipeline couldn't start — a configuration
   // issue, not a call outcome. Retrying would loop forever until the agent is re-synced.
-  if (callLog.rawProviderStatus === "pipeline_error") {
+  if (isPipelineErrorStatus(callLog.rawProviderStatus)) {
     console.log("[Call Outcome] retry skipped: pipeline_error requires agent re-sync, not retry", callLog._id?.toString());
     return null;
   }

@@ -88,6 +88,9 @@ const agentSchema = new mongoose.Schema(
     provider: { type: String, enum: ["custom", "dograh", "vapi", "retell"], default: "custom" },
     providerWorkflowId: { type: String, default: null },
     providerAgentId: { type: String, default: null },
+    // Vapi phone-number UUID (from the Vapi dashboard after importing your BYO Twilio number).
+    // Configured per-agent so no global env var is required for outbound calls.
+    vapiPhoneNumberId: { type: String, default: null },
     summaryFormat: String,
     systemPrompt: String,
     dograhWorkflowId: { type: String, default: null },

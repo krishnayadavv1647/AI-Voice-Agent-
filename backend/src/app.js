@@ -34,6 +34,7 @@ import scheduledCallRoutes from "./routes/scheduledCall.routes.js";
 import telephonyConfigRoutes from "./routes/telephonyConfig.routes.js";
 import telephonyRoutes from "./routes/telephony.routes.js";
 import telegramIntegrationRoutes from "./routes/telegramIntegration.routes.js";
+import vapiRoutes from "./routes/vapi.routes.js";
 import voiceIntegrationRoutes from "./routes/voiceIntegration.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 
@@ -112,6 +113,11 @@ app.use("/api/connections", connectionsRoutes);
 app.use("/api/credits", creditsRoutes);
 app.use("/api/integrations/dograh", dograhIntegrationRoutes);
 app.use("/api/integrations/telegram", telegramIntegrationRoutes);
+// Vapi custom-LLM + webhook. The /chat/completions route streams its own SSE response and must not
+// be wrapped in any middleware that buffers the body. Both routes consume plain JSON (fine under the
+// global json parser above). If signature verification over the raw body is later required, mount an
+// express.raw handler before the global json parser like /api/billing/webhook does.
+app.use("/api/vapi", vapiRoutes);
 app.use("/api", voiceIntegrationRoutes);
 app.use("/api", llmIntegrationRoutes);
 app.use("/api/webhooks", webhookRoutes);

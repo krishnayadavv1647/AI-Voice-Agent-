@@ -225,15 +225,28 @@ function missingRuntimeMessage(expected, effective, type) {
   return "";
 }
 
-export async function verifyDograhWorkflowRuntime({ agent, userId, workflowPayload, fetchWorkflow, callType = "normal_phone_call" }) {
+export async function verifyDograhWorkflowRuntime({
+  agent,
+  userId,
+  workflowPayload,
+  fetchWorkflow,
+  callType = "normal_phone_call",
+  allowStoredRuntimeFallback = true
+}) {
   const payload = workflowPayload || await fetchWorkflow();
   const fields = extractDograhWorkflowFieldsFromPayload(payload);
   const expected = await expectedRuntime(agent, userId);
   const payloadEffective = extractEffectiveRuntime(payload);
+  const fallbackTts = allowStoredRuntimeFallback ? expected.effectiveFallback?.tts : null;
+  const fallbackStt = allowStoredRuntimeFallback ? expected.effectiveFallback?.stt : null;
   const effective = {
     llm: payloadEffective.llm,
-    tts: payloadEffective.tts || expected.effectiveFallback?.tts || null,
-    stt: payloadEffective.stt || expected.effectiveFallback?.stt || null
+    tts: payloadEffective.tts || fallbackTts || null,
+    stt: payloadEffective.stt || fallbackStt || null
+  };
+  const usedStoredRuntimeFallback = {
+    tts: Boolean(!payloadEffective.tts && fallbackTts),
+    stt: Boolean(!payloadEffective.stt && fallbackStt)
   };
   const startPromptOk = startCallPromptExists(payload);
   const workflowUuidMatches = !fields.dograhWorkflowUuid || !agent.dograhWorkflowUuid || sameValue(fields.dograhWorkflowUuid, agent.dograhWorkflowUuid);
@@ -264,6 +277,8 @@ export async function verifyDograhWorkflowRuntime({ agent, userId, workflowPaylo
     effectiveSttProvider: effective.stt?.provider || (expected.stt.provider === "dograh_default" ? "dograh_default" : ""),
     effectiveSttModel: effective.stt?.model || (expected.stt.provider === "dograh_default" ? "dograh_default" : ""),
     startCallPromptExists: startPromptOk,
+    usedStoredTtsFallback: usedStoredRuntimeFallback.tts,
+    usedStoredSttFallback: usedStoredRuntimeFallback.stt,
     verificationResult: errors.length === 0
   });
 
@@ -273,6 +288,7 @@ export async function verifyDograhWorkflowRuntime({ agent, userId, workflowPaylo
     diagnostics,
     effective,
     expected,
+    usedStoredRuntimeFallback,
     workflowPayload: payload
   };
 }

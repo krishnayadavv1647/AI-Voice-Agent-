@@ -6,11 +6,10 @@ import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import FollowUp from "../models/FollowUp.js";
 import { runPipelinePass } from "../services/pipelineScheduler.js";
-import { applyCallOutcomeToLog, isTerminalCallStatus, scheduleRetryFollowUpForCall } from "../services/callOutcome.service.js";
-import { hasUsefulLeadData, normalizeDograhRunDetails } from "../services/callLogMapper.js";
 import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { runFollowUp } from "../services/followUp.service.js";
-import { autoCreateAppointmentFromCall, autoGenerateLeadFromCall, extractLeadForCallLog, upsertLeadFromCallData } from "../services/leadGeneration.service.js";
+import { extractLeadForCallLog } from "../services/leadGeneration.service.js";
+import { applyRunDetailsToCallLog, syncCallLogWithDograhRun } from "../services/callLogSync.service.js";
 
 function filter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -19,9 +18,10 @@ function filter(req) {
 export const listCalls = asyncHandler(async (req, res) => {
   const calls = await CallLog.find(filter(req)).populate("agentId", "agentName").sort({ createdAt: -1 });
   res.json(calls);
-  // Fire-and-forget: catch up any unsynced calls visible on this page load
+  // Fire-and-forget: catch up any incomplete calls visible on this page load (no lead yet),
+  // including terminal-status calls whose transcript/lead never got generated automatically.
   const scopedCallIds = calls
-    .filter((c) => !isTerminalCallStatus(c.normalizedStatus))
+    .filter((c) => !c.leadCaptured && c.dograhRunId)
     .map((c) => c._id);
   if (scopedCallIds.length) {
     runPipelinePass({ scopedCallIds }).catch(() => {});
@@ -97,10 +97,6 @@ export const retryCall = asyncHandler(async (req, res) => {
   const result = await runFollowUp(followUp);
   res.status(202).json({ success: true, followUp: result || followUp });
 });
-
-function compactUpdate(update) {
-  return Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined));
-}
 
 export const syncCall = asyncHandler(async (req, res) => {
   const callLog = await CallLog.findOne({ _id: req.params.id, ...filter(req) });
@@ -210,70 +206,3 @@ export const syncCallByRun = asyncHandler(async (req, res) => {
   res.json({ success: true, callLog: updatedCallLog, runDetails });
 });
 
-async function syncCallLogWithDograhRun({ callLog, workflowId, runId }) {
-  try {
-    const agent = callLog.agentId ? await Agent.findById(callLog.agentId) : null;
-    const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog.userId, agent });
-    return applyRunDetailsToCallLog(callLog, runDetails);
-  } catch (error) {
-    console.log("Dograh run sync failed:", { status: error.response?.status, message: error.message });
-    throw error;
-  }
-}
-
-async function applyRunDetailsToCallLog(callLog, runDetails) {
-  const mapped = normalizeDograhRunDetails(runDetails);
-  console.log("Mapped Dograh run details:", mapped);
-  console.log("Dograh gathered_context:", runDetails?.gathered_context || runDetails?.data?.gathered_context || runDetails?.data?.run?.gathered_context);
-  console.log("Dograh analysis:", runDetails?.analysis || runDetails?.data?.analysis || runDetails?.data?.run?.analysis);
-  console.log("Dograh extracted leadData:", mapped.leadData);
-  console.log("Dograh realtime events:", (runDetails?.logs?.realtime_feedback_events || runDetails?.data?.logs?.realtime_feedback_events || runDetails?.data?.run?.logs?.realtime_feedback_events)?.map((event) => event.type));
-
-  const leadData = mapped.leadData || null;
-  const leadCaptured = hasUsefulLeadData(leadData);
-
-  const rawProviderStatus = mapped.status || callLog.status;
-  Object.assign(callLog, compactUpdate({
-    status: rawProviderStatus,
-    rawProviderStatus,
-    providerPayload: runDetails,
-    durationSeconds: mapped.durationSeconds ?? callLog.durationSeconds,
-    duration: mapped.duration || callLog.duration,
-    startedAt: mapped.startedAt ? new Date(mapped.startedAt) : callLog.startedAt,
-    endedAt: mapped.endedAt ? new Date(mapped.endedAt) : callLog.endedAt,
-    callEndedAt: mapped.endedAt ? new Date(mapped.endedAt) : callLog.callEndedAt,
-    transcript: mapped.transcript
-      ? typeof mapped.transcript === "object" ? JSON.stringify(mapped.transcript, null, 2) : mapped.transcript
-      : callLog.transcript,
-    transcriptUrl: mapped.transcriptUrl || callLog.transcriptUrl,
-    recordingUrl: mapped.recordingUrl || callLog.recordingUrl,
-    summary: mapped.summary || callLog.summary,
-    rawRunDetails: runDetails
-  }));
-
-  await applyCallOutcomeToLog(callLog, rawProviderStatus, { endedAt: callLog.endedAt });
-  await callLog.save();
-  console.log("Updated CallLog:", callLog._id);
-
-  const leadResult = await upsertLeadFromCallData(callLog, leadData);
-
-  if (leadResult) {
-    callLog.leadCaptured = true;
-    callLog.leadData = leadData;
-    callLog.leadId = leadResult.lead._id;
-    await callLog.save();
-    await autoCreateAppointmentFromCall(callLog, leadResult.lead);
-  }
-
-  if (leadResult?.created && callLog.agentId) {
-    await Agent.findByIdAndUpdate(callLog.agentId, { $inc: { totalLeads: 1 } });
-  }
-
-  if (!leadResult) {
-    await autoGenerateLeadFromCall(callLog);
-  }
-
-  await scheduleRetryFollowUpForCall(callLog);
-
-  return callLog;
-}

@@ -70,4 +70,45 @@ test("verifyDograhWorkflowRuntime can use previously synced voice runtime when D
   assert.equal(verification.ok, true);
   assert.equal(verification.effective.tts.provider, "cartesia");
   assert.equal(verification.effective.stt.provider, "deepgram");
+  assert.equal(verification.usedStoredRuntimeFallback.tts, true);
+  assert.equal(verification.usedStoredRuntimeFallback.stt, true);
+});
+
+test("strict runtime verification fails when Dograh read-back omits custom voice blocks", async () => {
+  mock.method(AgentLLMConfiguration, "findOne", async () => ({
+    provider: "dograh_default",
+    model: ""
+  }));
+  mock.method(AgentVoiceConfiguration, "findOne", async () => ({
+    ttsProvider: "cartesia",
+    ttsModel: "sonic-3.5",
+    ttsVoiceId: "voice_123",
+    sttProvider: "deepgram",
+    sttModel: "nova-3-general",
+    dograhSyncStatus: "synced",
+    dograhEffectiveTtsProvider: "cartesia",
+    dograhEffectiveTtsModel: "sonic-3.5",
+    dograhEffectiveTtsVoiceId: "voice_123",
+    dograhEffectiveSttProvider: "deepgram",
+    dograhEffectiveSttModel: "nova-3-general"
+  }));
+
+  const verification = await verifyDograhWorkflowRuntime({
+    agent: { _id: "agent_1", dograhWorkflowId: "workflow_1", dograhWorkflowUuid: "uuid_1" },
+    userId: "user_1",
+    allowStoredRuntimeFallback: false,
+    workflowPayload: {
+      workflow_uuid: "uuid_1",
+      workflow_definition: {
+        nodes: [{ type: "startCall", data: { prompt: "Hello" } }]
+      },
+      workflow_configurations: {}
+    }
+  });
+
+  assert.equal(verification.ok, false);
+  assert.match(verification.errors.join(" "), /TTS configuration missing/i);
+  assert.match(verification.errors.join(" "), /STT configuration missing/i);
+  assert.equal(verification.usedStoredRuntimeFallback.tts, false);
+  assert.equal(verification.usedStoredRuntimeFallback.stt, false);
 });

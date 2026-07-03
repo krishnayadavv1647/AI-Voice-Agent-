@@ -1,10 +1,11 @@
 import cron from "node-cron";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
-import { isTerminalCallStatus, TERMINAL_CALL_STATUSES } from "./callOutcome.service.js";
-import { syncDograhCallStatus } from "./dograhCallStatusSync.service.js";
+import { isPipelineErrorStatus, TERMINAL_CALL_STATUSES } from "./callOutcome.service.js";
+import { syncCallLogFromDograh } from "./callLogSync.service.js";
 import { extractLeadForCallLog } from "./leadGeneration.service.js";
 
+const FINAL_STATUSES = Array.from(TERMINAL_CALL_STATUSES);
 const MAX_FAILURES = 5;
 // Calls stuck in syncing/extracting longer than this are considered stale-locked and retried
 const STALE_LOCK_MS = 5 * 60 * 1000;
@@ -12,69 +13,87 @@ const STALE_LOCK_MS = 5 * 60 * 1000;
 let isRunning = false;
 
 export async function runPipelinePass(options = {}) {
-  // Global guard: if a full pass is already running, skip (prevents overlap on slow runs)
+  // Global guard: if a full pass is already running, skip (prevents overlap on slow runs).
+  // Scoped (on-demand) passes are allowed to run alongside the cron pass.
   if (isRunning && !options.scopedCallIds) return;
   if (!options.scopedCallIds) isRunning = true;
 
   try {
     const now = new Date();
     const staleCutoff = new Date(now - STALE_LOCK_MS);
+    const scopeFilter = options.scopedCallIds?.length ? { _id: { $in: options.scopedCallIds } } : {};
 
-    // --- Step 1: Find non-final calls to sync ---
-    const syncQuery = {
-      normalizedStatus: { $nin: Array.from(TERMINAL_CALL_STATUSES) },
-      autoSyncFailureCount: { $lt: MAX_FAILURES }
-    };
-
-    if (options.scopedCallIds?.length) {
-      syncQuery._id = { $in: options.scopedCallIds };
-    }
-
-    // Reset stale locks: calls stuck in syncing/extracting > STALE_LOCK_MS
+    // Reset stale locks: calls stuck in syncing/extracting > STALE_LOCK_MS (e.g. after a crash)
     await CallLog.updateMany(
-      {
-        pipelineStatus: { $in: ["syncing", "extracting"] },
-        updatedAt: { $lt: staleCutoff }
-      },
+      { pipelineStatus: { $in: ["syncing", "extracting"] }, updatedAt: { $lt: staleCutoff } },
       { $set: { pipelineStatus: "pending" } }
     );
 
+    // --- Step 1: Sync calls that still need their transcript pulled from Dograh ---
+    // A call needs syncing if it has a Dograh run, no lead yet, and EITHER has no transcript
+    // OR is still in a non-final status. Crucially this includes terminal-status calls whose
+    // transcript hasn't arrived yet — the exact case the old guarded sync never recovered.
     const syncCandidates = await CallLog.find({
-      ...syncQuery,
-      pipelineStatus: { $nin: ["syncing", "extracting"] }
+      ...scopeFilter,
+      dograhRunId: { $nin: [null, ""] },
+      leadCaptured: { $ne: true },
+      autoSyncFailureCount: { $lt: MAX_FAILURES },
+      pipelineStatus: { $nin: ["syncing", "extracting"] },
+      $or: [
+        { transcript: { $in: [null, ""] } },
+        { normalizedStatus: { $nin: FINAL_STATUSES } }
+      ]
     }).limit(50);
 
     for (const callLog of syncCandidates) {
-      // Skip if not yet old enough (< 30s) to avoid competing with scheduleDograhStatusSync
-      if (now - callLog.createdAt < 30 * 1000) continue;
+      // Brief warm-up: let the existing post-call setTimeout sync take the first pass
+      if (now - callLog.createdAt < 20 * 1000) continue;
 
-      // Skip if Dograh IDs are missing — sync can't do anything without them
-      if (!callLog.dograhWorkflowId || !callLog.dograhRunId) continue;
+      if (isPipelineErrorStatus(callLog.rawProviderStatus || callLog.status)) {
+        await CallLog.findByIdAndUpdate(callLog._id, {
+          $set: {
+            pipelineStatus: "failed",
+            lastPipelineError: "Dograh pipeline error. Re-sync the agent runtime, then retry the outbound call.",
+            autoSyncFailureCount: MAX_FAILURES
+          }
+        });
+        continue;
+      }
 
       try {
         await CallLog.findByIdAndUpdate(callLog._id, { $set: { pipelineStatus: "syncing" } });
 
-        const updated = await syncDograhCallStatus(callLog._id);
+        // syncCallLogFromDograh runs the SAME logic as the manual Sync button, including
+        // its built-in lead auto-generation — so a successful sync may already create the lead.
+        const updated = await syncCallLogFromDograh(callLog);
 
-        if (!updated) {
-          await CallLog.findByIdAndUpdate(callLog._id, {
-            $set: { pipelineStatus: "failed", lastPipelineError: "Sync returned null" },
-            $inc: { autoSyncFailureCount: 1 }
+        if (isPipelineErrorStatus(updated.rawProviderStatus || updated.status)) {
+          await CallLog.findByIdAndUpdate(updated._id, {
+            $set: {
+              pipelineStatus: "failed",
+              lastPipelineError: "Dograh pipeline error. Re-sync the agent runtime, then retry the outbound call.",
+              autoSyncFailureCount: MAX_FAILURES
+            }
           });
-          continue;
-        }
-
-        const hasFinalStatus = isTerminalCallStatus(updated.normalizedStatus);
-
-        if (hasFinalStatus) {
-          // Sync completed (with or without transcript yet)
+        } else if (updated.leadCaptured) {
+          await CallLog.findByIdAndUpdate(updated._id, {
+            $set: {
+              pipelineStatus: "completed",
+              autoSyncedAt: now,
+              autoExtractedAt: now,
+              autoSyncFailureCount: 0,
+              lastPipelineError: null
+            }
+          });
+        } else if (updated.transcript) {
+          // Transcript arrived but no lead yet — hand off to the extract step below.
           await CallLog.findByIdAndUpdate(updated._id, {
             $set: { pipelineStatus: "synced", autoSyncedAt: now, autoSyncFailureCount: 0, lastPipelineError: null }
           });
         } else {
-          // Still in non-final status — reset to pending for next tick
+          // Still waiting on the transcript — retry on the next tick.
           await CallLog.findByIdAndUpdate(updated._id, {
-            $set: { pipelineStatus: "pending", autoSyncedAt: now, lastPipelineError: null }
+            $set: { pipelineStatus: "pending", autoSyncedAt: now, autoSyncFailureCount: 0, lastPipelineError: null }
           });
         }
       } catch (error) {
@@ -86,24 +105,18 @@ export async function runPipelinePass(options = {}) {
       }
     }
 
-    // --- Step 2: Find final-status calls with transcript but no lead yet ---
-    const extractQuery = {
-      normalizedStatus: { $in: Array.from(TERMINAL_CALL_STATUSES) },
+    // --- Step 2: Extract leads from synced calls that have a transcript but no lead ---
+    const extractCandidates = await CallLog.find({
+      ...scopeFilter,
       leadCaptured: { $ne: true },
       $or: [{ transcript: { $nin: [null, ""] } }, { transcriptUrl: { $nin: [null, ""] } }],
       autoExtractFailureCount: { $lt: MAX_FAILURES },
-      // Skip calls already in progress or completed (completed = pipeline done, even if no lead found)
-      pipelineStatus: { $nin: ["extracting", "completed"] }
-    };
-
-    if (options.scopedCallIds?.length) {
-      extractQuery._id = { $in: options.scopedCallIds };
-    }
-
-    const extractCandidates = await CallLog.find(extractQuery).limit(50);
+      // "completed" = pipeline done (even if no lead was extractable), so don't retry it.
+      pipelineStatus: { $nin: ["syncing", "extracting", "completed"] }
+    }).limit(50);
 
     for (const callLog of extractCandidates) {
-      // Skip if a lead already exists in the Lead collection (prevents duplicates)
+      // Never create a duplicate lead — if one already exists for this call, mark done.
       const existingLead = await Lead.exists({ callLogId: callLog._id });
       if (existingLead) {
         await CallLog.findByIdAndUpdate(callLog._id, {
@@ -115,20 +128,15 @@ export async function runPipelinePass(options = {}) {
       try {
         await CallLog.findByIdAndUpdate(callLog._id, { $set: { pipelineStatus: "extracting" } });
 
-        // Re-fetch to get the most current transcript before extraction
+        // Re-fetch for the freshest transcript, then run the SAME logic as the Extract Lead button.
         const freshCallLog = await CallLog.findById(callLog._id);
         if (!freshCallLog) continue;
 
         await extractLeadForCallLog(freshCallLog, { failOnGeminiError: false });
 
-        // Mark completed whether or not a lead was found (no useful data = stop retrying)
+        // Mark completed whether or not a lead was found (no useful data = stop retrying).
         await CallLog.findByIdAndUpdate(freshCallLog._id, {
-          $set: {
-            pipelineStatus: "completed",
-            autoExtractedAt: now,
-            autoExtractFailureCount: 0,
-            lastPipelineError: null
-          }
+          $set: { pipelineStatus: "completed", autoExtractedAt: now, autoExtractFailureCount: 0, lastPipelineError: null }
         });
       } catch (error) {
         console.error("[Pipeline] Auto-extract failed", { callLogId: callLog._id.toString(), error: error.message });

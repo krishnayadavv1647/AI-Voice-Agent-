@@ -1,6 +1,6 @@
 ﻿import { CalendarClock, Edit, Eye, Globe2, Loader2, MoreVertical, PhoneCall, Play, Radio, RefreshCw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
@@ -319,11 +319,11 @@ export default function AgentDetails() {
             <div className="card">
               <div id="test-call" className="mb-4 action-row">
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
-                <button className="btn-primary" onClick={() => navigate(`/agents/${id}/bio-page`)}><Globe2 size={16} />Customize Bio Page</button>
-                <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
-                <button className="btn-secondary" disabled={callLoading || !connected} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
-                <button className="btn-secondary" disabled={!connected} onClick={() => document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" })}><CalendarClock size={16} />Schedule Call</button>
-                <button className="btn-secondary" disabled={!connected} onClick={() => action("publish")}><Play size={16} />Publish</button>
+                <Link className="btn-primary" to={`/agents/${id}/bio-page`}><Globe2 size={16} />Customize Bio Page</Link>
+                <button className="btn-secondary" disabled={callLoading} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
+                <button className="btn-secondary" disabled={callLoading} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
+                <button className="btn-secondary" onClick={() => document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" })}><CalendarClock size={16} />Schedule Call</button>
+                <button className="btn-secondary" onClick={() => action("publish")}><Play size={16} />Publish</button>
                 <button className="btn-secondary text-rose-600" onClick={removeAgent}><Trash2 size={16} />Delete</button>
               </div>
 
