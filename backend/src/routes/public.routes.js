@@ -5,6 +5,7 @@ import {
   getPublicAgent,
   getPublicAgentBioPage,
   getPublicWebCallToken,
+  getWebCallConfig,
   requestCallbackCall
 } from "../controllers/public.controller.js";
 
@@ -15,6 +16,7 @@ router.get("/agents/:idOrSlug/bio-page", getPublicAgentBioPage);
 router.get("/age/:publicSlug", getPublicAgent);
 router.post("/agents/:publicSlug/chat", chatWithPublicAgent);
 router.post("/agents/:publicSlug/web-call-token", getPublicWebCallToken);
+router.get("/agents/:publicSlug/web-call-config", getWebCallConfig);
 router.post("/agents/:agentId/appointments", createPublicAppointment);
 router.post("/agents/:agentId/request-call", requestCallbackCall);
 

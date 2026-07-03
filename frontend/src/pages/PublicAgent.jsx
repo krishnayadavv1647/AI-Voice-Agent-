@@ -32,7 +32,7 @@ import { useParams } from "react-router-dom";
 import robotHead from "../assets/voiceflow-theme/robot-head.png";
 import robotImage from "../assets/voiceflow-theme/robot.png";
 import { API_URL, api } from "../lib/api.js";
-import { loadDograhWidget } from "../utils/loadDograhWidget.js";
+import { startVapiWebCall } from "../utils/startVapiWebCall.js";
 import { requestMicrophoneAccess } from "../utils/microphone.js";
 
 const defaultQuickTopics = [
@@ -127,6 +127,7 @@ export default function PublicAgent() {
   const [loading, setLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [callStatus, setCallStatus] = useState("idle");
+  const vapiRef = useRef(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const sessionId = useMemo(makeSessionId, []);
@@ -254,19 +255,21 @@ export default function PublicAgent() {
 
     try {
       await requestMicrophoneAccess();
-      const { embedToken } = await api(`/public/agents/${publicSlug}/web-call-token`, { method: "POST", auth: false });
-      const widget = await loadDograhWidget(embedToken);
+      const cfg = await api(`/public/agents/${publicSlug}/web-call-config`, { method: "GET", auth: false });
 
-      widget.onCallConnected?.(() => setCallStatus("connected"));
-      widget.onCallDisconnected?.(() => setCallStatus("ended"));
-      widget.onCallEnd?.(() => setCallStatus("ended"));
-      widget.onError?.((err) => {
-        setError(err?.message || "Web call failed.");
-        setCallStatus("error");
+      vapiRef.current = startVapiWebCall({
+        publicKey: cfg.publicKey,
+        assistantId: cfg.assistantId,
+        metadata: { publicSlug, channel: "web" },
+        handlers: {
+          onCallStart: () => setCallStatus("connected"),
+          onCallEnd: () => setCallStatus("ended"),
+          onError: (err) => {
+            setError(err?.message || "Web call failed.");
+            setCallStatus("error");
+          }
+        }
       });
-
-      await widget.start();
-      setCallStatus((current) => (current === "connecting" ? "connected" : current));
     } catch (err) {
       setError(err.message || "Web call failed.");
       setCallStatus("error");
@@ -274,8 +277,12 @@ export default function PublicAgent() {
   }
 
   async function endWebCall() {
-    await window.DograhWidget?.end?.();
-    setCallStatus("ended");
+    try {
+      vapiRef.current?.stop();
+    } finally {
+      vapiRef.current = null;
+      setCallStatus("ended");
+    }
   }
 
   if (loading) return <main className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#64748b]">Loading...</main>;

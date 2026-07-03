@@ -10,6 +10,8 @@ import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { runFollowUp } from "../services/followUp.service.js";
 import { extractLeadForCallLog } from "../services/leadGeneration.service.js";
 import { applyRunDetailsToCallLog, syncCallLogWithDograhRun } from "../services/callLogSync.service.js";
+import { getVapiCall, buildEndOfCallMessageFromVapiCall } from "../services/vapi.service.js";
+import { processVapiEndOfCall } from "./vapiWebhook.controller.js";
 
 function filter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
@@ -101,6 +103,22 @@ export const retryCall = asyncHandler(async (req, res) => {
 export const syncCall = asyncHandler(async (req, res) => {
   const callLog = await CallLog.findOne({ _id: req.params.id, ...filter(req) });
   if (!callLog) throw new ApiError(404, "Call log not found");
+
+  // Vapi calls sync from the Vapi API (by providerCallId), not from a Dograh run. Pull the call and
+  // run it through the same finalization the webhook uses.
+  if (callLog.source === "vapi" || (callLog.providerCallId && !callLog.dograhWorkflowId && !callLog.dograhRunId)) {
+    if (!callLog.providerCallId) {
+      throw new ApiError(400, "Vapi call id is missing for this call log, so it cannot be synced yet.");
+    }
+    const call = await getVapiCall(callLog.providerCallId);
+    const message = buildEndOfCallMessageFromVapiCall(call);
+    const result = await processVapiEndOfCall(message);
+    const updatedCallLog = result?.callLog || (await CallLog.findById(callLog._id));
+    await CallLog.findByIdAndUpdate(callLog._id, {
+      $set: { autoSyncFailureCount: 0, autoSyncedAt: new Date(), pipelineStatus: "synced", lastPipelineError: null }
+    });
+    return res.json({ success: true, callLog: updatedCallLog });
+  }
 
   let workflowId = callLog.dograhWorkflowId;
   if (!workflowId && callLog.agentId) {

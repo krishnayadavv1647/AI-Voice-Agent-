@@ -225,7 +225,21 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
       }
 
       case "assistant-request": {
-        // TODO Layer C: inbound dynamic assistant routing. Out of scope for Layer B.
+        // Inbound dynamic routing. One-time setup: import the Twilio number into Vapi (SID/token),
+        // set VAPI_PHONE_NUMBER_ID, and either attach an assistant statically OR rely on this handler.
+        // Here we map the dialed Vapi number -> the owning agent's assistant. Falls back to {} so Vapi
+        // uses whatever assistant is statically attached if we can't resolve one.
+        try {
+          const phoneNumberId = message.phoneNumberId || message.phoneNumber?.id || message.call?.phoneNumberId;
+          if (phoneNumberId) {
+            const agent = await deps.Agent.findOne({ vapiPhoneNumberId: phoneNumberId });
+            if (agent?.providerAgentId) {
+              return res.status(200).json({ assistantId: agent.providerAgentId });
+            }
+          }
+        } catch (error) {
+          console.error("[Vapi webhook] assistant-request routing failed:", error.message);
+        }
         return res.status(200).json({});
       }
 

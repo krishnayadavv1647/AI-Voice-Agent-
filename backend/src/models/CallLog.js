@@ -8,6 +8,8 @@ const callLogSchema = new mongoose.Schema(
     dograhWorkflowId: String,
     dograhWorkflowUuid: String,
     dograhRunId: String,
+    // Provider that produced this call log (vapi/dograh/custom). Additive; defaults to vapi.
+    provider: { type: String, default: "vapi", index: true },
     // Vapi-friendly equivalent of dograhRunId: the stable provider call id (message.call.id).
     // Additive; the outbound path writes this at call start once Layer C rewires it.
     providerCallId: { type: String, index: true },
