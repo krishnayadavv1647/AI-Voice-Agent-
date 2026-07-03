@@ -233,7 +233,12 @@ export async function vapiWebhook(req, res, deps = defaultDeps) {
     }
   } catch (error) {
     console.error("[Vapi webhook] processing failed:", error);
-    // Always 200 so Vapi does not hammer retries (matches the Dograh handler).
-    return res.status(200).json({ success: true, warning: "Webhook received but processing failed" });
+    // Always 200 so Vapi does not hammer retries (matches the Dograh handler). The error detail is
+    // included for diagnostics; it is safe (no secrets) and does not affect Vapi's handling.
+    return res.status(200).json({
+      success: true,
+      warning: "Webhook received but processing failed",
+      error: String(error?.message || error).slice(0, 300)
+    });
   }
 }
