@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 
+function normalizeInboundMode(value) {
+  return value === "agent_runtime" ? "dograh_ai" : value;
+}
+
 const telephonyConfigSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -19,7 +23,8 @@ const telephonyConfigSchema = new mongoose.Schema(
       type: String,
       enum: ["dograh_ai", "static_greeting", "disabled"],
       default: "dograh_ai",
-      index: true
+      index: true,
+      set: normalizeInboundMode
     },
     outboundEnabled: { type: Boolean, default: true },
     dograhTelephonyConfigId: String,
@@ -49,6 +54,11 @@ const telephonyConfigSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+telephonyConfigSchema.pre("validate", function normalizeLegacyInboundMode(next) {
+  this.inboundMode = normalizeInboundMode(this.inboundMode);
+  next();
+});
 
 telephonyConfigSchema.index(
   { provider: 1, phoneNumber: 1 },

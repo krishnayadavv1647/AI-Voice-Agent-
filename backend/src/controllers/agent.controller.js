@@ -442,6 +442,17 @@ function sanitizeAgentBody(body = {}) {
     sanitized.telephonyConfigId = telephonyConfigId;
   }
 
+  // dograhIntegrationId is an ObjectId path; the frontend sends "" for the platform/app-engine
+  // case. Coerce blanks to null so a non-Dograh save does not fail the ObjectId cast. The Dograh
+  // binding path reads req.body directly and overwrites this later, so it is unaffected.
+  const dograhIntegrationId = cleanOptionalObjectId(sanitized.dograhIntegrationId, "dograhIntegrationId");
+
+  if (dograhIntegrationId === undefined) {
+    delete sanitized.dograhIntegrationId;
+  } else {
+    sanitized.dograhIntegrationId = dograhIntegrationId;
+  }
+
   return sanitized;
 }
 
@@ -836,6 +847,50 @@ export const createAgent = asyncHandler(async (req, res) => {
     });
   }
 
+  if (agent.provider === "vapi") {
+    await agent.save();
+    if (voiceConfigurationInput) {
+      voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
+      await agent.save();
+    }
+    if (llmConfigurationInput) {
+      llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
+      await agent.save();
+    }
+    if (agent.telephonyConfigId) {
+      await syncTelephonyConfigForAgent(agent, agent.telephonyConfigId);
+      await agent.save();
+    }
+
+    // Auto-create the Vapi assistant so the agent can place calls immediately (VapiProvider.startCall
+    // requires providerAgentId). syncProvider persists providerAgentId/providerWorkflowId. Mirrors
+    // how the Dograh branch above creates its workflow on agent creation.
+    let providerResult = null;
+    let vapiWarning = null;
+    try {
+      providerResult = await syncProvider(agent, "create");
+    } catch (error) {
+      console.error("Vapi assistant creation failed:", error.message);
+      agent.status = "draft";
+      await agent.save();
+      vapiWarning = `Agent created locally, but Vapi assistant creation failed (${error.message}). Set VAPI_PRIVATE_KEY, then re-sync the agent.`;
+    }
+
+    const imageResult = await tryGenerateImageForAgent(agent, "create");
+    if (imageResult?.error) imageWarning = imageGenerationWarning(imageResult.error);
+    if (imageResult?.agent) agent.set(imageResult.agent.toObject());
+
+    return res.status(201).json({
+      agent,
+      voiceConfiguration,
+      llmConfiguration,
+      providerResult: providerResult ? publicProviderResult(providerResult) : null,
+      dograhCreated: false,
+      dograhResponse: null,
+      warning: [vapiWarning, imageWarning].filter(Boolean).join(" ") || null
+    });
+  }
+
   await agent.save();
   if (voiceConfigurationInput) {
     voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
@@ -1101,6 +1156,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "knowledgeBaseIds",
     "telephonyConfigId",
     "provider",
+    "vapiPhoneNumberId",
     "imageMode",
     "imageUrl",
     "tone",

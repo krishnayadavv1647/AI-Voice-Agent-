@@ -152,6 +152,7 @@ export async function syncAgentDograhRuntime(agent) {
     const verification = await verifyDograhWorkflowRuntime({
       agent: refreshedAgent,
       userId: refreshedAgent.userId,
+      allowStoredRuntimeFallback: false,
       callType: "runtime_sync",
       fetchWorkflow: async () => {
         const response = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);

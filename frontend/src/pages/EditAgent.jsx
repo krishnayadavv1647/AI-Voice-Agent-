@@ -18,7 +18,7 @@ const editableFields = [
   "language", "responseStyle", "callMode", "allowInterruption", "fastReplyMode", "leadCaptureEnabled",
   "voiceGender", "voiceStyle", "voiceProvider", "voiceId", "sttProvider", "sttModel", "sttLanguage", "sttSettings", "ttsProvider", "ttsModel", "ttsLanguage", "ttsSettings", "firstMessage", "telephonyConfigId",
   "voiceSpeed", "tone", "speakingSpeed", "personality",
-  "provider", "bio"
+  "provider", "vapiPhoneNumberId", "bio"
 ];
 
 function formatApiError(error) {
@@ -377,6 +377,20 @@ export default function EditAgent() {
                 value: config._id
               }))
             ]} />
+            {form.provider === "vapi" && (
+              <div className="md:col-span-2">
+                <Field
+                  label="Vapi Phone Number ID"
+                  name="vapiPhoneNumberId"
+                  value={form.vapiPhoneNumberId}
+                  setField={setField}
+                  placeholder="e.g. 95d51f79-c397-46f9-b49a-23763d3eaa2d"
+                />
+                <p className="mt-1 text-xs text-neutral-500">
+                  The phone number's UUID from the Vapi dashboard (Phone Numbers) after importing your Twilio number — not the phone number itself.
+                </p>
+              </div>
+            )}
             <Field label="Agent Name" name="agentName" value={form.agentName} setField={setField} />
             <Field label="Agent Type" name="agentType" value={form.agentType} setField={setField} options={agentTypes} />
             <Field label="Business Name" name="businessName" value={form.businessName} setField={setField} />
@@ -474,7 +488,7 @@ export default function EditAgent() {
   );
 }
 
-function Field({ label, name, value, setField, textarea = false, tall = false, options }) {
+function Field({ label, name, value, setField, textarea = false, tall = false, options, placeholder }) {
   return (
     <label className="field-label">
       {label}
@@ -486,9 +500,9 @@ function Field({ label, name, value, setField, textarea = false, tall = false, o
           })}
         </select>
       ) : textarea ? (
-        <textarea className={`mt-1 ${tall ? "min-h-[440px] font-mono text-xs" : ""}`} value={value} onChange={(event) => setField(name, event.target.value)} />
+        <textarea className={`mt-1 ${tall ? "min-h-[440px] font-mono text-xs" : ""}`} value={value} placeholder={placeholder} onChange={(event) => setField(name, event.target.value)} />
       ) : (
-        <input className="mt-1" value={value} onChange={(event) => setField(name, event.target.value)} />
+        <input className="mt-1" value={value} placeholder={placeholder} onChange={(event) => setField(name, event.target.value)} />
       )}
     </label>
   );

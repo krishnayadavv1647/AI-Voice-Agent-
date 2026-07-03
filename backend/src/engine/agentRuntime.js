@@ -4,7 +4,7 @@ import { buildAgentMessages } from "./promptBuilder.js";
 import { runWorkflowNode } from "./workflowRunner.js";
 
 export async function runCustomAgent({ agent, userMessage, conversationId }) {
-  const history = getConversationHistory(conversationId);
+  const history = await getConversationHistory(conversationId);
   const workflowState = runWorkflowNode({ agent, userMessage });
   const messages = buildAgentMessages({ agent, userMessage, history });
 
@@ -15,8 +15,8 @@ export async function runCustomAgent({ agent, userMessage, conversationId }) {
     settings: agent.settings || {}
   });
 
-  saveConversationMessage(conversationId, { role: "user", content: userMessage });
-  saveConversationMessage(conversationId, { role: "assistant", content: reply });
+  await saveConversationMessage(conversationId, { role: "user", content: userMessage });
+  await saveConversationMessage(conversationId, { role: "assistant", content: reply });
 
   return {
     reply,
