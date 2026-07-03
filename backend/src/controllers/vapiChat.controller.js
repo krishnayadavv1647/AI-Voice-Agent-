@@ -84,21 +84,27 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   const userText = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
 
   let reply = FALLBACK_REPLY;
+  // Diagnostic only: the reason the engine could not produce a reply. Surfaced in a response header
+  // (never in the spoken SSE content) so the failure is visible via curl without hunting logs.
+  let engineError = null;
   try {
     const agent = await loadAgent(agentId);
     if (!agent) {
+      engineError = `agent not found: ${agentId}`;
       console.error("[Vapi chat] agent not found", { agentId, conversationId });
     } else {
       const result = await runAgent({ agent, userMessage: userText, conversationId });
       reply = result?.reply || FALLBACK_REPLY;
     }
   } catch (error) {
+    engineError = error.message;
     console.error("[Vapi chat] runCustomAgent failed:", error.message);
     reply = FALLBACK_REPLY;
   }
 
   const id = `chatcmpl-${conversationId}`;
   const created = Math.floor(Date.now() / 1000);
+  if (engineError) res.setHeader("X-Vapi-Engine-Error", String(engineError).slice(0, 300));
 
   // Non-streamed mode (Vapi uses streaming; this makes local curl testing trivial).
   if (body.stream === false) {
