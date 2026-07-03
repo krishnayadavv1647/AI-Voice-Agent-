@@ -35,7 +35,10 @@ function bioPageAllowsWebCall(bioPage = {}) {
 }
 
 function agentWebCallReady(agent) {
-  return Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken);
+  if (agent.provider === "vapi") {
+    return Boolean(agent.publicWebCallEnabled && agent.providerAgentId);
+  }
+  return Boolean(agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken);
 }
 
 async function enforceCallbackLimits({ phoneNumber, ip }) {
@@ -95,8 +98,11 @@ export const getPublicAgent = asyncHandler(async (req, res) => {
 // browser. Only the PUBLIC key is exposed here; VAPI_PRIVATE_KEY never reaches the client.
 export const getWebCallConfig = asyncHandler(async (req, res) => {
   const agent = await Agent.findOne({ publicSlug: req.params.publicSlug });
-  if (!agent || !agent.providerAgentId) {
+  if (!agent || agent.provider !== "vapi" || !agent.publicWebCallEnabled || !agent.providerAgentId) {
     return res.status(404).json({ success: false, error: "Agent is not available for web calls yet." });
+  }
+  if (!process.env.VAPI_PUBLIC_KEY?.trim()) {
+    throw new ApiError(500, "Vapi web calling is not configured: VAPI_PUBLIC_KEY is missing.");
   }
   return res.status(200).json({
     success: true,

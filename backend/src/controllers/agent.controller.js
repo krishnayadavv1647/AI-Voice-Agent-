@@ -350,6 +350,7 @@ async function getOwnedAgentById(req, agentId) {
 function getAgentDograhWorkflowId(agent) {
   return (
     agent.dograhWorkflowId ||
+    agent.providerWorkflowId ||
     agent.dograhWorkflowUuid ||
     null
   );
@@ -1581,16 +1582,68 @@ export const connectDograhWorkflow = asyncHandler(async (req, res) => {
 
 export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgentById(req, req.params.agentId);
+
+  if (agent.provider === "vapi") {
+    if (!process.env.VAPI_PUBLIC_KEY?.trim()) {
+      throw new ApiError(500, "Vapi web calling is not configured: VAPI_PUBLIC_KEY is missing.", {
+        code: "VAPI_PUBLIC_KEY_MISSING",
+        userMessage: "Vapi web calling is not configured yet. Add VAPI_PUBLIC_KEY, then try again."
+      });
+    }
+
+    let providerResult = null;
+    if (!agent.providerAgentId) {
+      try {
+        providerResult = await syncProvider(agent, "update", { createIfMissing: true });
+      } catch (error) {
+        throw new ApiError(error.statusCode || 502, error.safeMessage || error.message || "Vapi assistant could not be created.", {
+          code: "VAPI_ASSISTANT_NOT_READY",
+          userMessage: error.safeMessage || error.message || "Vapi assistant could not be created. Check Vapi settings, then try again."
+        });
+      }
+    }
+
+    agent.publicWebCallEnabled = true;
+    agent.dograhWidgetEnabled = false;
+    agent.dograhEmbedToken = undefined;
+    await agent.save();
+
+    return res.json({
+      success: true,
+      webCallProvider: "vapi",
+      publicWebCallEnabled: true,
+      dograhWidgetEnabled: false,
+      providerResult: publicProviderResult(providerResult),
+      agent
+    });
+  }
+
   const workflowId = getAgentDograhWorkflowId(agent);
 
   if (!workflowId) {
-    throw new ApiError(400, "dograhWorkflowId is required before enabling Dograh web calling.");
+    throw new ApiError(400, "Dograh workflow sync must finish before enabling web calling. Save or re-sync the agent, then try again.", {
+      code: "DOGRAH_WORKFLOW_REQUIRED",
+      userMessage: "Dograh workflow sync must finish before enabling web calling. Save or re-sync the agent, then try again."
+    });
   }
 
-  const voiceRuntime = await assertDograhVoiceReadyForWebCall({ agent, userId: agent.userId });
+  let voiceRuntime;
+  try {
+    voiceRuntime = await assertDograhVoiceReadyForWebCall({ agent, userId: agent.userId });
+  } catch (error) {
+    throw new ApiError(400, error.safeMessage || error.message || "Dograh voice settings are not verified yet.", {
+      code: "DOGRAH_VOICE_NOT_VERIFIED",
+      userMessage: error.safeMessage || error.message || "Dograh voice settings are not verified yet.",
+      voiceRuntime: error.runtime || null
+    });
+  }
   const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: agent.userId });
   if (llmRuntime.requiresSync && llmRuntime.dograhSyncStatus !== "synced") {
-    throw new ApiError(400, llmRuntime.dograhSyncError || "Web calling is waiting for Dograh LLM synchronization.");
+    throw new ApiError(400, llmRuntime.dograhSyncError || "Web calling is waiting for Dograh LLM synchronization.", {
+      code: "DOGRAH_LLM_NOT_VERIFIED",
+      userMessage: llmRuntime.dograhSyncError || "Web calling is waiting for Dograh LLM synchronization.",
+      llmRuntime
+    });
   }
   const { embedToken } = await createDograhEmbedToken(workflowId, { userId: agent.userId, agent });
   agent.dograhEmbedToken = embedToken;
@@ -1600,6 +1653,8 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
+    webCallProvider: "dograh",
+    publicWebCallEnabled: true,
     embedToken,
     voiceRuntime,
     llmRuntime,
@@ -1609,11 +1664,23 @@ export const createDograhAgentEmbedToken = asyncHandler(async (req, res) => {
 
 export const getDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgentById(req, req.params.agentId);
+  if (agent.provider === "vapi") {
+    return res.json({
+      success: true,
+      webCallProvider: "vapi",
+      publicWebCallEnabled: Boolean(agent.publicWebCallEnabled && agent.providerAgentId),
+      dograhWidgetEnabled: false,
+      providerAgentId: agent.providerAgentId || null,
+      embedToken: null
+    });
+  }
   const voiceRuntime = await getDograhVoiceRuntimeSummary({ agent, userId: agent.userId });
   const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: agent.userId });
 
   res.json({
     success: true,
+    webCallProvider: "dograh",
+    publicWebCallEnabled: Boolean(agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken),
     embedToken: agent.dograhEmbedToken || null,
     dograhWidgetEnabled: Boolean(agent.dograhWidgetEnabled && agent.dograhEmbedToken),
     voiceRuntime,
@@ -1623,6 +1690,19 @@ export const getDograhAgentEmbedToken = asyncHandler(async (req, res) => {
 
 export const deleteDograhAgentEmbedToken = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgentById(req, req.params.agentId);
+  if (agent.provider === "vapi") {
+    agent.publicWebCallEnabled = false;
+    await agent.save();
+
+    return res.json({
+      success: true,
+      webCallProvider: "vapi",
+      publicWebCallEnabled: false,
+      dograhWidgetEnabled: false,
+      embedToken: null,
+      agent
+    });
+  }
   const workflowId = getAgentDograhWorkflowId(agent);
 
   if (!workflowId) {

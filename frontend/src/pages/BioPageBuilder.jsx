@@ -120,7 +120,7 @@ const defaults = {
 };
 
 function errorText(err) {
-  return err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message;
+  return err.response?.userMessage || err.response?.message || err.message || "Something went wrong.";
 }
 
 function assetUrl(value) {
@@ -170,6 +170,8 @@ export default function BioPageBuilder() {
   const [error, setError] = useState("");
 
   const publicUrl = agent?.publicSlug ? `${window.location.origin}/a/${agent.publicSlug}` : "";
+  const webCallEnabled = Boolean(webCallStatus?.publicWebCallEnabled ?? webCallStatus?.dograhWidgetEnabled);
+  const webCallProvider = webCallStatus?.webCallProvider === "dograh" ? "Dograh" : "Vapi";
 
   async function load() {
     setError("");
@@ -360,7 +362,7 @@ export default function BioPageBuilder() {
       const result = await api(`/agents/${id}/dograh/embed-token`, { method: enabled ? "POST" : "DELETE" });
       if (result.agent) setAgent(result.agent);
       await loadWebCallStatus();
-      setNotice(enabled ? "Web calling enabled for the public page." : "Web calling disabled for the public page.");
+      setNotice(enabled ? `${webCallProvider} web calling enabled for the public page.` : "Web calling disabled for the public page.");
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -485,19 +487,19 @@ export default function BioPageBuilder() {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-hairline bg-white p-4">
               <div>
                 <p className="font-semibold text-ink">
-                  {webCallStatus?.dograhWidgetEnabled ? "Public web calling is enabled" : "Public web calling is not enabled"}
+                  {webCallEnabled ? `${webCallProvider} public web calling is enabled` : "Public web calling is not enabled"}
                 </p>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Enable this once your agent has finished syncing to the calling provider.
+                  Vapi agents use the Vapi Web SDK. Dograh agents use the Dograh web widget.
                 </p>
               </div>
               <button
-                className={webCallStatus?.dograhWidgetEnabled ? "btn-secondary" : "btn-primary"}
+                className={webCallEnabled ? "btn-secondary" : "btn-primary"}
                 disabled={webCallBusy}
-                onClick={() => setWebCalling(!webCallStatus?.dograhWidgetEnabled)}
+                onClick={() => setWebCalling(!webCallEnabled)}
               >
                 <Phone size={16} />
-                {webCallBusy ? "Updating..." : webCallStatus?.dograhWidgetEnabled ? "Disable Web Call" : "Enable Web Call"}
+                {webCallBusy ? "Updating..." : webCallEnabled ? "Disable Web Call" : `Enable ${webCallProvider} Web Call`}
               </button>
             </div>
           </Panel>
