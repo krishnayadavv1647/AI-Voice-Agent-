@@ -540,7 +540,7 @@ export default function AgentDetails() {
                 const canSync = Boolean(selectedCall.dograhRunId || selectedCall.providerCallId);
                 const syncTitle = canSync ? "" : "This call has no provider run/call id to sync from yet.";
                 return (
-                  <button className="btn-secondary" disabled={extracting || !canSync} title={syncTitle} onClick={() => syncSelectedCall(selectedCall._id)}>
+                  <button className="btn-secondary" disabled={extracting} title={syncTitle} onClick={() => syncSelectedCall(selectedCall._id)}>
                     <RefreshCw size={16} />Sync Transcript
                   </button>
                 );
