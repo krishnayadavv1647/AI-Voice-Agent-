@@ -536,9 +536,15 @@ export default function AgentDetails() {
             <DetailBlock title="Lead Data" value={selectedCall.leadData ? JSON.stringify(selectedCall.leadData, null, 2) : "No extracted lead data available."} pre />
 
             <div className="mt-6 action-row sm:justify-end">
-              <button className="btn-secondary" disabled={extracting || !selectedCall.dograhRunId} title={!selectedCall.dograhRunId ? "Dograh run ID is missing for this call." : ""} onClick={() => syncSelectedCall(selectedCall._id)}>
-                <RefreshCw size={16} />Sync Transcript
-              </button>
+              {(() => {
+                const canSync = Boolean(selectedCall.dograhRunId || selectedCall.providerCallId);
+                const syncTitle = canSync ? "" : "This call has no provider run/call id to sync from yet.";
+                return (
+                  <button className="btn-secondary" disabled={extracting || !canSync} title={syncTitle} onClick={() => syncSelectedCall(selectedCall._id)}>
+                    <RefreshCw size={16} />Sync Transcript
+                  </button>
+                );
+              })()}
               <button className="btn-secondary" disabled={extracting} onClick={() => extractLead(selectedCall._id)}>
                 {extracting ? "Extracting…" : selectedCall.leadData ? "Re-extract Lead" : "Extract Lead"}
               </button>

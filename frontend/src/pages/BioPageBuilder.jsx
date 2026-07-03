@@ -488,7 +488,7 @@ export default function BioPageBuilder() {
                   {webCallStatus?.dograhWidgetEnabled ? "Public web calling is enabled" : "Public web calling is not enabled"}
                 </p>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Enable this after your Dograh workflow, voice, and LLM sync are ready.
+                  Enable this once your agent has finished syncing to the calling provider.
                 </p>
               </div>
               <button

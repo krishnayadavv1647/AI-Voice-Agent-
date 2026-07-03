@@ -703,7 +703,7 @@ export const createAgent = asyncHandler(async (req, res) => {
   const agent = new Agent({
     ...body,
     userId: req.user._id,
-    provider: body.provider || "dograh",
+    provider: body.provider || "vapi",
     agentName: body.agentName || body.name,
     name: body.name || body.agentName,
     description: body.description || body.businessDescription,

@@ -91,6 +91,22 @@ export const getPublicAgent = asyncHandler(async (req, res) => {
   res.json(publicAgentResponse(agent));
 });
 
+// GET /public/agents/:publicSlug/web-call-config — returns what the Vapi Web SDK needs in the
+// browser. Only the PUBLIC key is exposed here; VAPI_PRIVATE_KEY never reaches the client.
+export const getWebCallConfig = asyncHandler(async (req, res) => {
+  const agent = await Agent.findOne({ publicSlug: req.params.publicSlug });
+  if (!agent || !agent.providerAgentId) {
+    return res.status(404).json({ success: false, error: "Agent is not available for web calls yet." });
+  }
+  return res.status(200).json({
+    success: true,
+    publicKey: process.env.VAPI_PUBLIC_KEY,
+    assistantId: agent.providerAgentId,
+    agentName: agent.agentName,
+    businessName: agent.businessName
+  });
+});
+
 export const getPublicAgentBioPage = asyncHandler(async (req, res) => {
   const value = req.params.idOrSlug;
   const query = Agent.db.base.Types.ObjectId.isValid(value)

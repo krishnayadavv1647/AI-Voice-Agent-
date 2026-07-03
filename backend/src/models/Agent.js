@@ -54,20 +54,20 @@ const agentSchema = new mongoose.Schema(
     allowInterruption: { type: Boolean, default: true },
     fastReplyMode: { type: Boolean, default: true },
     leadCaptureEnabled: { type: Boolean, default: true },
-    voiceProvider: { type: String, default: "Dograh Default" },
+    voiceProvider: { type: String, default: "elevenlabs" },
     voiceId: String,
     llmProvider: {
       type: String,
       enum: CANONICAL_LLM_PROVIDERS,
-      default: "dograh_default",
+      default: "google_gemini",
       set: (value) => normalizeLLMProvider(value)
     },
     llmModel: { type: String, default: "" },
-    sttProvider: { type: String, default: "dograh_default" },
+    sttProvider: { type: String, default: "deepgram" },
     sttModel: { type: String, default: "" },
     sttLanguage: { type: String, default: "en" },
     sttSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
-    ttsProvider: { type: String, default: "dograh_default" },
+    ttsProvider: { type: String, default: "elevenlabs" },
     ttsModel: { type: String, default: "" },
     ttsLanguage: { type: String, default: "en" },
     ttsSettings: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -85,7 +85,7 @@ const agentSchema = new mongoose.Schema(
       default: null,
       set: (value) => value === "" ? null : value
     },
-    provider: { type: String, enum: ["custom", "dograh", "vapi", "retell"], default: "custom" },
+    provider: { type: String, enum: ["custom", "dograh", "vapi", "retell"], default: "vapi" },
     providerWorkflowId: { type: String, default: null },
     providerAgentId: { type: String, default: null },
     // Vapi phone-number UUID (from the Vapi dashboard after importing your BYO Twilio number).

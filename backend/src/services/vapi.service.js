@@ -244,6 +244,47 @@ export async function ensureVapiPhoneNumber({ number, twilioAccountSid, twilioAu
   return id;
 }
 
+// Fetch a Vapi call by id (used to manually pull/backfill a call's transcript + outcome).
+export async function getVapiCall(callId) {
+  try {
+    const client = getVapiClient();
+    const response = await client.get(`/call/${callId}`);
+    return response.data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    handleVapiError(error, "get call");
+  }
+}
+
+// Shape a Vapi call object into the end-of-call-report `message` the webhook chain consumes, so a
+// manual sync reuses the exact same finalization path as the live webhook.
+export function buildEndOfCallMessageFromVapiCall(call = {}) {
+  return {
+    type: "end-of-call-report",
+    endedReason: call.endedReason,
+    startedAt: call.startedAt,
+    endedAt: call.endedAt,
+    durationSeconds: call.durationSeconds,
+    call: {
+      id: call.id,
+      type: call.type,
+      assistantId: call.assistantId,
+      metadata: call.metadata,
+      customer: call.customer,
+      phoneNumber: call.phoneNumber
+    },
+    artifact: {
+      transcript: call.artifact?.transcript,
+      recordingUrl: call.artifact?.recordingUrl,
+      transcriptUrl: call.artifact?.transcriptUrl
+    },
+    analysis: {
+      summary: call.analysis?.summary,
+      structuredData: call.analysis?.structuredData
+    }
+  };
+}
+
 export async function endCall(callId) {
   try {
     const client = getVapiClient();
