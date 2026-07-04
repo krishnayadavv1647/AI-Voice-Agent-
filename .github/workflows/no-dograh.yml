@@ -1,0 +1,13 @@
+name: No Dograh References
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  check-no-dograh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check removed provider references
+        run: bash backend/scripts/check-no-dograh.sh

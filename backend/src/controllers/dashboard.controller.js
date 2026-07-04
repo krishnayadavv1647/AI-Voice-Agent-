@@ -32,7 +32,7 @@ export async function getDashboard(user) {
     createdAt: { $gte: start, $lte: end },
     $or: [
       { callDirection: "outbound" },
-      { source: { $in: ["dograh", "campaign", "import", "lead_call_again", "callback_form"] } }
+      { source: { $in: ["vapi", "campaign", "import", "lead_call_again", "callback_form"] } }
     ]
   };
 

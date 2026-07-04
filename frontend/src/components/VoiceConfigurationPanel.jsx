@@ -1,10 +1,10 @@
-﻿import { AlertTriangle, Loader2, Play, RefreshCw, Search, Volume2 } from "lucide-react";
+import { AlertTriangle, Loader2, Play, Search, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, apiBlob } from "../lib/api.js";
 
 export const defaultVoiceConfiguration = {
   sttIntegrationId: null,
-  sttProvider: "dograh_default",
+  sttProvider: "deepgram",
   sttModel: "",
   sttLanguage: "en",
   sttSettings: {
@@ -15,7 +15,7 @@ export const defaultVoiceConfiguration = {
     silenceTimeout: 1000
   },
   ttsIntegrationId: null,
-  ttsProvider: "dograh_default",
+  ttsProvider: "elevenlabs",
   ttsModel: "",
   ttsVoiceId: "",
   ttsLanguage: "en",
@@ -27,13 +27,7 @@ export const defaultVoiceConfiguration = {
     emotion: "",
     outputEncoding: "",
     sampleRate: null
-  },
-  dograhSyncStatus: "not_configured",
-  dograhLastSyncedAt: null,
-  dograhSyncError: "",
-  dograhEffectiveTtsProvider: "",
-  dograhEffectiveTtsModel: "",
-  dograhEffectiveTtsVoiceId: ""
+  }
 };
 
 function integrationFor(integrations, provider) {
@@ -62,35 +56,13 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
-function formatStatus(value) {
-  return String(value || "not_configured").replaceAll("_", " ");
-}
-
-// Maps raw backend/Dograh technical sync messages to a clean, actionable message.
-function friendlyVoiceError(raw) {
-  const text = String(raw || "").replace(/^TTS\/STT initialization failed:\s*/i, "");
-  if (!text) return "";
-  if (/no recognizable .*configuration|Model Configuration V2|read-back|could not initialize/i.test(text)) {
-    return "We couldn't initialize this voice provider on the Dograh workflow automatically. Re-check the selected provider, model, and voice, then click “Verify with Dograh”.";
-  }
-  if (/credential is required|api key/i.test(text)) {
-    return "Connect and select an API key for this voice provider, then verify with Dograh.";
-  }
-  if (/voice id|voice must be selected|aura model/i.test(text)) {
-    return "Select a voice for the chosen TTS provider before verifying with Dograh.";
-  }
-  return text;
-}
-
-function runtimeStatusClass(status) {
-  if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "syncing" || status === "pending") return "border-sky-200 bg-sky-50 text-sky-800";
-  if (status === "failed" || status === "configuration_required") return "border-amber-200 bg-amber-50 text-amber-800";
-  return "border-hairline bg-white text-neutral-700";
-}
-
-export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime, syncingRuntime = false }) {
-  const config = { ...defaultVoiceConfiguration, ...(value || {}), sttSettings: { ...defaultVoiceConfiguration.sttSettings, ...(value?.sttSettings || {}) }, ttsSettings: { ...defaultVoiceConfiguration.ttsSettings, ...(value?.ttsSettings || {}) } };
+export default function VoiceConfigurationPanel({ value, onChange }) {
+  const config = {
+    ...defaultVoiceConfiguration,
+    ...(value || {}),
+    sttSettings: { ...defaultVoiceConfiguration.sttSettings, ...(value?.sttSettings || {}) },
+    ttsSettings: { ...defaultVoiceConfiguration.ttsSettings, ...(value?.ttsSettings || {}) }
+  };
   const [integrations, setIntegrations] = useState([]);
   const [sttModels, setSttModels] = useState([]);
   const [ttsModels, setTtsModels] = useState([]);
@@ -108,7 +80,6 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   }, []);
 
   useEffect(() => {
-    if (config.sttProvider === "dograh_default") return setSttModels([]);
     const connected = integrationFor(integrations, config.sttProvider);
     if (!connected) return setSttModels([]);
     setLoadingStt(true);
@@ -119,13 +90,12 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   }, [config.sttProvider, integrations]);
 
   useEffect(() => {
-    if (config.ttsProvider === "dograh_default") {
+    const connected = integrationFor(integrations, config.ttsProvider);
+    if (!connected) {
       setTtsModels([]);
       setVoices([]);
       return;
     }
-    const connected = integrationFor(integrations, config.ttsProvider);
-    if (!connected) return;
     setLoadingTts(true);
     setError("");
     Promise.all([
@@ -150,23 +120,22 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   }, [voices, config.ttsVoiceId]);
 
   const sttOptions = useMemo(() => {
-    const options = [{ value: "dograh_default", label: "Dograh Default" }];
+    const options = [{ value: "deepgram", label: "Deepgram" }];
     for (const integration of integrations) {
       if (integration.credentialStatus !== "connected" || !integration.capabilities?.stt) continue;
-      if (integration.provider === "cartesia" && integration.capabilities.stt.dograhRuntimeSupport !== true) continue;
       options.push({ value: integration.provider, label: integration.provider === "deepgram" ? "Deepgram" : "Cartesia" });
     }
-    return options;
+    return [...new Map(options.map((item) => [item.value, item])).values()];
   }, [integrations]);
 
   const ttsOptions = useMemo(() => {
-    const options = [{ value: "dograh_default", label: "Dograh Default" }];
+    const options = [{ value: "elevenlabs", label: "ElevenLabs" }];
     for (const integration of integrations) {
       if (integration.credentialStatus !== "connected" || !integration.capabilities?.tts) continue;
       const name = integration.provider === "elevenlabs" ? "ElevenLabs" : integration.provider[0].toUpperCase() + integration.provider.slice(1);
       options.push({ value: integration.provider, label: name });
     }
-    return options;
+    return [...new Map(options.map((item) => [item.value, item])).values()];
   }, [integrations]);
 
   const languages = useMemo(() => [...new Set(voices.map((voice) => voice.language).filter(Boolean))].sort(), [voices]);
@@ -195,20 +164,19 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   function changeTtsProvider(provider) {
     const integration = integrationFor(integrations, provider);
     setAudioUrl("");
-    patch({ ttsProvider: provider, ttsIntegrationId: integration?.id || null, ttsModel: "", ttsVoiceId: "", dograhSyncStatus: provider === "dograh_default" ? "not_configured" : "pending" });
+    patch({ ttsProvider: provider, ttsIntegrationId: integration?.id || null, ttsModel: "", ttsVoiceId: "" });
   }
 
   function changeTtsVoice(voiceId) {
     const selectedVoice = voices.find((voice) => voice.id === voiceId);
     patch({
       ttsVoiceId: voiceId,
-      ...(selectedVoice?.language ? { ttsLanguage: selectedVoice.language } : {}),
-      dograhSyncStatus: "pending"
+      ...(selectedVoice?.language ? { ttsLanguage: selectedVoice.language } : {})
     });
   }
 
   async function preview() {
-    if (!config.ttsVoiceId || config.ttsProvider === "dograh_default") return setError("Select a connected provider and voice before previewing.");
+    if (!config.ttsVoiceId) return setError("Select a connected provider and voice before previewing.");
     setPreviewing(true);
     setError("");
     try {
@@ -234,8 +202,6 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
   }
 
   const ttsCapabilities = integrationFor(integrations, config.ttsProvider)?.capabilities?.tts || {};
-  const dograhVoiceStatus = config.dograhSyncStatus || "not_configured";
-  const dograhRuntimeSynced = dograhVoiceStatus === "synced";
 
   return (
     <div className="space-y-6 md:col-span-2">
@@ -243,18 +209,18 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
       {!integrations.some((item) => item.credentialStatus === "connected") && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 shrink-0" size={18} />
-          <p>No BYOK voice provider is connected. Dograh Default remains available. Connect providers from Integrations → Voice Providers.</p>
+          <p>No BYOK voice provider is connected. Connect providers from Integrations - Voice Providers.</p>
         </div>
       )}
 
       <section className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
         <div className="mb-4">
           <h3 className="font-bold text-ink">Transcriber / Speech-to-Text</h3>
-          <p className="mt-1 text-sm text-neutral-500">Choose the provider that converts caller audio into text. Connected Deepgram and Cartesia integrations are synchronized as selective Dograh agent overrides.</p>
+          <p className="mt-1 text-sm text-neutral-500">Choose the provider that converts caller audio into text.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="block text-sm font-semibold text-neutral-700">Provider<select className="mt-1" value={config.sttProvider} onChange={(event) => changeSttProvider(event.target.value)}>{sttOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-          <label className="block text-sm font-semibold text-neutral-700">Model<select className="mt-1" disabled={config.sttProvider === "dograh_default" || loadingStt} value={config.sttModel} onChange={(event) => patch({ sttModel: event.target.value })}><option value="">{loadingStt ? "Loading models..." : "Select model"}</option>{sttModels.map((item) => <option key={item.id} value={item.id}>{optionName(item)}</option>)}</select></label>
+          <label className="block text-sm font-semibold text-neutral-700">Model<select className="mt-1" disabled={loadingStt} value={config.sttModel} onChange={(event) => patch({ sttModel: event.target.value })}><option value="">{loadingStt ? "Loading models..." : "Select model"}</option>{sttModels.map((item) => <option key={item.id} value={item.id}>{optionName(item)}</option>)}</select></label>
           <label className="block text-sm font-semibold text-neutral-700">Language<input className="mt-1" value={config.sttLanguage} onChange={(event) => patch({ sttLanguage: event.target.value })} placeholder="en or en-IN" /></label>
           <NumberField label="Endpointing (ms)" min={50} max={5000} step={50} value={config.sttSettings.endpointing} onChange={(value) => patchSttSettings({ endpointing: value })} />
           <NumberField label="Silence timeout (ms)" min={100} max={10000} step={100} value={config.sttSettings.silenceTimeout} onChange={(value) => patchSttSettings({ silenceTimeout: value })} />
@@ -264,9 +230,7 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
             <Toggle label="Punctuation" checked={config.sttSettings.punctuation} onChange={(value) => patchSttSettings({ punctuation: value })} />
           </div>
         </div>
-        {config.sttProvider !== "dograh_default" && (
-          <p className="mt-3 text-xs leading-5 text-neutral-500">Endpointing, silence timeout, interim results, smart formatting, and punctuation are stored with the agent. The current Dograh selective override consumes the provider, model, and language fields; unsupported advanced fields are not falsely reported as synchronized.</p>
-        )}
+        <p className="mt-3 text-xs leading-5 text-neutral-500">Endpointing, silence timeout, interim results, smart formatting, and punctuation are stored with the agent.</p>
       </section>
 
       <section className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
@@ -275,54 +239,29 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
             <h3 className="font-bold text-ink">Voice / Text-to-Speech</h3>
             <p className="mt-1 text-sm text-neutral-500">Voice and model options are fetched from the connected user's real provider account.</p>
           </div>
-          <button type="button" className="btn-secondary" disabled={previewing || config.ttsProvider === "dograh_default"} onClick={preview}>{previewing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Play Preview</button>
+          <button type="button" className="btn-secondary" disabled={previewing} onClick={preview}>{previewing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Play Preview</button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="block text-sm font-semibold text-neutral-700">Provider<select className="mt-1" value={config.ttsProvider} onChange={(event) => changeTtsProvider(event.target.value)}>{ttsOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-          <label className="block text-sm font-semibold text-neutral-700">Model<select className="mt-1" disabled={config.ttsProvider === "dograh_default" || loadingTts} value={config.ttsModel} onChange={(event) => patch({ ttsModel: event.target.value })}><option value="">{loadingTts ? "Loading models..." : "Select model"}</option>{ttsModels.map((item) => <option key={item.id} value={item.id}>{optionName(item)}</option>)}</select></label>
+          <label className="block text-sm font-semibold text-neutral-700">Model<select className="mt-1" disabled={loadingTts} value={config.ttsModel} onChange={(event) => patch({ ttsModel: event.target.value })}><option value="">{loadingTts ? "Loading models..." : "Select model"}</option>{ttsModels.map((item) => <option key={item.id} value={item.id}>{optionName(item)}</option>)}</select></label>
           <label className="block text-sm font-semibold text-neutral-700">Language<input className="mt-1" value={config.ttsLanguage} onChange={(event) => patch({ ttsLanguage: event.target.value })} placeholder="en or hi" /></label>
         </div>
 
-        {config.ttsProvider !== "dograh_default" && (
-          <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
-            <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
-              <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} /><input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voices by name, gender, language, or style" /></label>
-              <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)}><option value="">All languages</option>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select>
-            </div>
-            <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => changeTtsVoice(event.target.value)}><option value="">Select voice</option>{filteredVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` · ${voice.language}` : ""}{voice.gender ? ` · ${voice.gender}` : ""}</option>)}</select></label>
-            <label className="mt-3 block text-sm font-semibold text-neutral-700">Manual Voice ID / Aura model<input className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })} placeholder="Paste voice ID when it is not listed" /></label>
+        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+          <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+            <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} /><input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voices by name, gender, language, or style" /></label>
+            <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)}><option value="">All languages</option>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select>
           </div>
-        )}
-
-        {config.ttsProvider !== "dograh_default" && (ttsCapabilities.previewOnlySettings || []).length > 0 && (
-          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
-            Preview-only controls for the current Dograh adapter: {(ttsCapabilities.previewOnlySettings || []).map((item) => item.replace(/([A-Z])/g, " $1").toLowerCase()).join(", ")}. Provider, model, voice, speed, and supported runtime fields are synchronized to Dograh.
-          </div>
-        )}
-
-        <div className={`mt-4 rounded-xl border px-3 py-3 text-sm ${runtimeStatusClass(dograhVoiceStatus)}`}>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="font-bold">Dograh runtime voice: {formatStatus(dograhVoiceStatus)}</p>
-              <p className="mt-1 text-xs leading-5">
-                API key: {config.ttsProvider === "dograh_default" ? "Dograh default" : "connected provider selected"} ·
-                Agent: {config.ttsProvider === "dograh_default" ? "Dograh default" : `${config.ttsProvider} / ${config.ttsModel || "provider default"} / ${config.ttsVoiceId || "no voice selected"}`} ·
-                Runtime: {dograhRuntimeSynced ? `${config.dograhEffectiveTtsProvider} / ${config.dograhEffectiveTtsModel || "provider default"} / ${config.dograhEffectiveTtsVoiceId || "default voice"}` : "not verified"}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {dograhRuntimeSynced && <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-bold">Synced with Dograh</span>}
-              {onSyncRuntime && !dograhRuntimeSynced && (
-                <button type="button" className="btn-secondary bg-white/80" disabled={syncingRuntime} onClick={onSyncRuntime}>
-                  {syncingRuntime ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-                  {syncingRuntime ? "Verifying..." : "Verify with Dograh"}
-                </button>
-              )}
-            </div>
-          </div>
-          {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{friendlyVoiceError(config.dograhSyncError)}</p>}
+          <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => changeTtsVoice(event.target.value)}><option value="">Select voice</option>{filteredVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` - ${voice.language}` : ""}{voice.gender ? ` - ${voice.gender}` : ""}</option>)}</select></label>
+          <label className="mt-3 block text-sm font-semibold text-neutral-700">Manual Voice ID / Aura model<input className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })} placeholder="Paste voice ID when it is not listed" /></label>
         </div>
+
+        {(ttsCapabilities.previewOnlySettings || []).length > 0 && (
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
+            Preview-only controls for the current adapter: {(ttsCapabilities.previewOnlySettings || []).map((item) => item.replace(/([A-Z])/g, " $1").toLowerCase()).join(", ")}.
+          </div>
+        )}
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {ttsCapabilities.supportsSpeed !== false && <NumberField label="Speed" min={0.5} max={2} step={0.05} value={config.ttsSettings.speed} onChange={(value) => patchTtsSettings({ speed: value })} />}
@@ -338,8 +277,8 @@ export default function VoiceConfigurationPanel({ value, onChange, onSyncRuntime
       </section>
 
       <div className="flex items-start gap-3 rounded-xl border border-hairline bg-white p-4 text-sm text-neutral-600">
-        <RefreshCw className="mt-0.5 shrink-0" size={18} />
-        <p>Saving updates the existing local agent. It never creates a second Dograh agent. Voice settings are synchronized separately from workflow content.</p>
+        <Volume2 className="mt-0.5 shrink-0" size={18} />
+        <p>Saving updates the existing local agent and refreshes the provider configuration used for calls.</p>
       </div>
     </div>
   );

@@ -4,14 +4,7 @@ const callLogSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     agentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent", index: true },
-    dograhAgentId: String,
-    dograhWorkflowId: String,
-    dograhWorkflowUuid: String,
-    dograhRunId: String,
-    // Provider that produced this call log (vapi/dograh/custom). Additive; defaults to vapi.
     provider: { type: String, default: "vapi", index: true },
-    // Vapi-friendly equivalent of dograhRunId: the stable provider call id (message.call.id).
-    // Additive; the outbound path writes this at call start once Layer C rewires it.
     providerCallId: { type: String, index: true },
     callerNumber: String,
     callingNumber: String,
@@ -41,7 +34,6 @@ const callLogSchema = new mongoose.Schema(
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign", index: true },
     campaignRecipientId: { type: mongoose.Schema.Types.ObjectId, ref: "CampaignRecipient", index: true },
     leadData: { type: mongoose.Schema.Types.Mixed },
-    rawDograhPayload: { type: mongoose.Schema.Types.Mixed },
     rawWebhookPayload: { type: mongoose.Schema.Types.Mixed },
     rawRunDetails: { type: mongoose.Schema.Types.Mixed },
     startedAt: Date,

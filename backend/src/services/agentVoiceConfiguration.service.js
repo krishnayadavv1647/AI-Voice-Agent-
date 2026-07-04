@@ -2,8 +2,10 @@ import AgentVoiceConfiguration from "../models/AgentVoiceConfiguration.js";
 import VoiceIntegration from "../models/VoiceIntegration.js";
 import { ApiError } from "../utils/apiError.js";
 
-const PROVIDERS = ["dograh_default", "cartesia", "elevenlabs", "deepgram"];
-const STT_PROVIDERS = ["dograh_default", "cartesia", "deepgram"];
+// "platform_default" is the platform-provided voice (no BYOK integration required); Vapi resolves
+// it to ElevenLabs (TTS) / Deepgram (STT) at assistant-build time.
+const PROVIDERS = ["platform_default", "cartesia", "elevenlabs", "deepgram"];
+const STT_PROVIDERS = ["platform_default", "cartesia", "deepgram"];
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -21,8 +23,8 @@ function nullableObjectId(value) {
 export function defaultVoiceConfigurationForAgent(agent) {
   const legacyStt = String(agent?.sttProvider || "").toLowerCase();
   const legacyTts = String(agent?.ttsProvider || agent?.voiceProvider || "").toLowerCase();
-  const sttProvider = STT_PROVIDERS.includes(legacyStt) ? legacyStt : "dograh_default";
-  const ttsProvider = PROVIDERS.includes(legacyTts) ? legacyTts : "dograh_default";
+  const sttProvider = STT_PROVIDERS.includes(legacyStt) ? legacyStt : "platform_default";
+  const ttsProvider = PROVIDERS.includes(legacyTts) ? legacyTts : "platform_default";
 
   return {
     sttIntegrationId: null,
@@ -38,10 +40,7 @@ export function defaultVoiceConfigurationForAgent(agent) {
     ttsSettings: {
       speed: agent?.speakingSpeed === "Fast" ? 1.15 : agent?.speakingSpeed === "Slow" ? 0.85 : 1,
       ...asObject(agent?.ttsSettings)
-    },
-    dograhSyncStatus: "not_configured",
-    dograhLastSyncedAt: null,
-    dograhSyncError: ""
+    }
   };
 }
 
@@ -83,7 +82,7 @@ export function sanitizeVoiceConfiguration(input = {}, agent) {
 }
 
 async function validateIntegration({ integrationId, provider, userId, type }) {
-  if (provider === "dograh_default") return null;
+  if (provider === "platform_default") return null;
   if (!integrationId) throw new ApiError(400, `Connect ${provider} before selecting it as the ${type.toUpperCase()} provider.`);
 
   const integration = await VoiceIntegration.findOne({
@@ -112,11 +111,7 @@ export async function validateVoiceConfigurationOwnership({ userId, config }) {
     })
   ]);
 
-  if (config.sttProvider === "cartesia" && process.env.DOGRAH_CARTESIA_STT_SUPPORTED === "false") {
-    throw new ApiError(400, "Cartesia STT is disabled for this Dograh deployment. Remove DOGRAH_CARTESIA_STT_SUPPORTED=false after verifying that the installed runtime supports Cartesia STT.");
-  }
-
-  if (config.ttsProvider !== "dograh_default" && !config.ttsVoiceId) {
+  if (config.ttsProvider !== "platform_default" && !config.ttsVoiceId) {
     throw new ApiError(400, "A voice ID or Deepgram Aura model is required for the selected TTS provider.");
   }
 
@@ -132,8 +127,8 @@ export function applyVoiceConfigurationToAgent(agent, config) {
   agent.ttsModel = config.ttsModel;
   agent.ttsLanguage = config.ttsLanguage;
   agent.ttsSettings = config.ttsSettings;
-  agent.voiceProvider = config.ttsProvider === "dograh_default"
-    ? "Dograh Default"
+  agent.voiceProvider = config.ttsProvider === "platform_default"
+    ? "Platform Default"
     : config.ttsProvider === "elevenlabs"
       ? "ElevenLabs"
       : config.ttsProvider[0].toUpperCase() + config.ttsProvider.slice(1);
@@ -152,8 +147,7 @@ export async function upsertAgentVoiceConfiguration({ userId, agent, input, mark
       $set: {
         ...config,
         userId,
-        agentId: agent._id,
-        ...(markPending ? { dograhSyncStatus: agent.provider === "dograh" ? "pending" : "not_configured", dograhSyncError: "" } : {})
+        agentId: agent._id
       }
     },
     { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }

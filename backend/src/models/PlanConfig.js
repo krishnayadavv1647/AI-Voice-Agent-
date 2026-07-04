@@ -38,7 +38,6 @@ const planConfigSchema = new mongoose.Schema({
   },
   creditPricing: {
     voice_call: actionPricingSchema,
-    dograh_call: actionPricingSchema,
     email_send: actionPricingSchema,
     lead_search: actionPricingSchema,
     appointment_book: actionPricingSchema,

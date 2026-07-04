@@ -41,7 +41,7 @@ async function findAgent(fields, deps) {
     if (agent) return agent;
   }
 
-  // Vapi has no dograhWorkflowUuid; correlate by the stored assistant id instead.
+  // Correlate Vapi webhook calls by the stored assistant id.
   if (fields.providerAgentId) {
     const agent = await AgentModel.findOne({ providerAgentId: fields.providerAgentId });
     if (agent) return agent;
@@ -50,7 +50,6 @@ async function findAgent(fields, deps) {
   return null;
 }
 
-// duplicated from webhook.controller.js (kept local to avoid editing the Dograh file in Layer B).
 async function upsertLead({ agent, callLog, leadData }, deps) {
   if (!hasUsefulLeadData(leadData)) return false;
 
@@ -78,12 +77,11 @@ async function upsertLead({ agent, callLog, leadData }, deps) {
   return true;
 }
 
-// duplicated from webhook.controller.js.
 function compactUpdate(update) {
   return Object.fromEntries(Object.entries(update).filter(([, value]) => value !== undefined));
 }
 
-// Mirrors dograhWebhook steps 3-9 for a Vapi end-of-call-report. Returns a small result object
+// Handles a Vapi end-of-call-report and returns a small result object
 // describing what happened (used by tests and logging).
 export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
   const fields = extractVapiCallFields(message);
@@ -127,8 +125,7 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
     callEndedAt: fields.endedAt
   });
 
-  // Match ladder: providerCallId first (stable Vapi id), then caller-number fallbacks. Mirrors the
-  // Dograh ladder with providerCallId swapped in for dograhRunId.
+  // Match ladder: providerCallId first (stable Vapi id), then caller-number fallbacks.
   const matchQueries = [
     fields.providerCallId ? { agentId: agent._id, providerCallId: fields.providerCallId } : null,
     fields.providerCallId ? { providerCallId: fields.providerCallId } : null,
@@ -254,7 +251,7 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
     }
   } catch (error) {
     console.error("[Vapi webhook] processing failed:", error);
-    // Always 200 so Vapi does not hammer retries (matches the Dograh handler). The error detail is
+    // Always 200 so Vapi does not hammer retries. The error detail is
     // included for diagnostics; it is safe (no secrets) and does not affect Vapi's handling.
     return res.status(200).json({
       success: true,

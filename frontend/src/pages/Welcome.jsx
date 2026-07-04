@@ -45,7 +45,7 @@ const features = [
   { title: "Telephony Configuration", text: "Connect Twilio, Exotel, or Vonage directly from your app and link numbers to agents.", icon: PhoneCall },
   { title: "Workflow Automation", text: "Build call flows with nodes for questions, conditions, lead capture, API calls, transfers, and call endings.", icon: Workflow },
   { title: "Lead Management", text: "Automatically capture customer details, interests, phone numbers, appointment requests, and call summaries.", icon: ClipboardList },
-  { title: "Provider Flexibility", text: "Use your own custom agent engine, or optionally sync with Dograh or Vapi when needed.", icon: Cable },
+  { title: "Provider Flexibility", text: "Use your own custom agent engine or Vapi when needed.", icon: Cable },
   { title: "Test Chat & Agent Preview", text: "Test agent conversations before connecting them to real phone calls.", icon: MessageSquare },
   { title: "Call Analytics", text: "Track call status, lead quality, appointment intent, call outcomes, and agent performance.", icon: BarChart3 },
   { title: "Human Handoff", text: "Transfer calls to a real person when the AI detects urgent or complex cases.", icon: Users }
@@ -60,17 +60,17 @@ const useCases = [
   { title: "Customer Support Agent", text: "Handles FAQs, collects issue details, and transfers complex queries.", icon: Headphones }
 ];
 
-const integrations = ["Twilio", "Exotel", "Vonage", "Dograh", "Vapi", "OpenAI", "Gemini", "WhatsApp", "Google Sheets / CRM"];
+const integrations = ["Twilio", "Exotel", "Vonage", "Vapi", "OpenAI", "Gemini", "WhatsApp", "Google Sheets / CRM"];
 
 const platformCards = [
   "Your database is the source of truth",
-  "Dograh/Vapi are optional providers",
+  "Vapi is the managed voice provider",
   "Telephony is configured inside your app",
   "Agents can run from your own custom engine"
 ];
 
 const faqs = [
-  ["Does this app need Dograh?", "No. Dograh is optional. You can run agents using the custom engine."],
+  ["Does this app require a managed voice provider?", "No. You can run agents using the custom engine."],
   ["Can I connect my own phone provider?", "Yes. You can configure Twilio, Exotel, or Vonage."],
   ["Can AI answer real phone calls?", "Yes, once telephony webhook and phone provider are connected."],
   ["Can I use this for hospitals or real estate?", "Yes. You can create custom agents for different industries."],
@@ -115,7 +115,7 @@ export default function Welcome() {
       <section className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)] lg:px-8 lg:py-20 lg:items-center">
         <div className="min-w-0">
           <div className="mb-5 flex flex-wrap gap-2">
-            {["No-code agent builder", "Telephony ready", "Dograh & Vapi optional", "Built for real business calls"].map((badge) => (
+            {["No-code agent builder", "Telephony ready", "Vapi ready", "Built for real business calls"].map((badge) => (
               <span key={badge} className="rounded-full border border-brand-100 bg-white px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm">
                 {badge}
               </span>
@@ -198,7 +198,7 @@ export default function Welcome() {
 
       <section id="integrations" className="px-4 py-14 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-7xl">
-          <SectionHeader eyebrow="Integrations" title="Connect With the Tools You Already Use" text="Dograh and Vapi are optional providers. Your app remains the source of truth." />
+          <SectionHeader eyebrow="Integrations" title="Connect With the Tools You Already Use" text="Vapi and your app work together while your database remains the source of truth." />
           <div className="mt-8 grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
             {integrations.map((integration) => (
               <div key={integration} className="rounded-2xl border border-hairline bg-white px-4 py-4 text-center text-sm font-semibold text-neutral-700 shadow-sm">

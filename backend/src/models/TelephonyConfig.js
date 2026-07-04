@@ -1,9 +1,5 @@
 import mongoose from "mongoose";
 
-function normalizeInboundMode(value) {
-  return value === "agent_runtime" ? "dograh_ai" : value;
-}
-
 const telephonyConfigSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
@@ -21,29 +17,20 @@ const telephonyConfigSchema = new mongoose.Schema(
     inboundEnabled: { type: Boolean, default: true },
     inboundMode: {
       type: String,
-      enum: ["dograh_ai", "static_greeting", "disabled"],
-      default: "dograh_ai",
-      index: true,
-      set: normalizeInboundMode
+      enum: ["agent_runtime", "static_greeting", "disabled"],
+      default: "agent_runtime",
+      index: true
     },
     outboundEnabled: { type: Boolean, default: true },
-    dograhTelephonyConfigId: String,
-    dograhPhoneNumberId: String,
-    dograhIntegrationId: String,
-    dograhWorkflowId: String,
-    dograhWorkflowUuid: String,
-    dograhInboundWebhookUrl: String,
     inboundRoutingStatus: {
       type: String,
-      enum: ["not_configured", "pending", "verified", "failed", "dograh_managed"],
+      enum: ["not_configured", "pending", "verified", "failed", "provider_managed"],
       default: "not_configured"
     },
     inboundRoutingError: String,
     inboundRoutingVerifiedAt: Date,
     twilioVoiceUrl: String,
     twilioVoiceMethod: String,
-    dograhProviderSync: { type: mongoose.Schema.Types.Mixed },
-    dograhRawResponse: { type: mongoose.Schema.Types.Mixed },
     linkedAgentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Agent",
@@ -54,11 +41,6 @@ const telephonyConfigSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-telephonyConfigSchema.pre("validate", function normalizeLegacyInboundMode(next) {
-  this.inboundMode = normalizeInboundMode(this.inboundMode);
-  next();
-});
 
 telephonyConfigSchema.index(
   { provider: 1, phoneNumber: 1 },

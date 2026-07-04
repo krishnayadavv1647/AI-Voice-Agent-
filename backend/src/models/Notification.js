@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 // Lightweight in-app notification feed. Used by the billing/BYOK layer to surface events the
-// user must act on (e.g. their Dograh key was auto-deactivated after repeated failures).
+// user must act on, such as a voice key being auto-deactivated after repeated failures.
 const notificationSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },

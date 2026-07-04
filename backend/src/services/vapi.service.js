@@ -60,7 +60,7 @@ function handleVapiError(error, action) {
 /**
  * Map an Agent document's TTS configuration onto a Vapi voice object.
  * The platform supports `elevenlabs` and `deepgram` TTS providers; anything
- * else (including the legacy `dograh_default`) falls back to a safe default.
+ * else (including the platform default) falls back to a safe default.
  */
 export function mapVoice(agent) {
   const provider = (agent.ttsProvider || "").toLowerCase();

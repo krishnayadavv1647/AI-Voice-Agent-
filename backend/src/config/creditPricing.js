@@ -7,7 +7,6 @@
 const DEFAULT_PRICING = {
   // voice_call is metered PER MINUTE of call duration (platform credits / minute, BYOK fee / minute).
   voice_call: { platform: 10, byok: 1 },
-  dograh_call: { platform: 10, byok: 1 },
   // The remaining meters are charged once per action.
   email_send: { platform: 1, byok: 0 },
   lead_search: { platform: 25, byok: 5 },
@@ -40,9 +39,9 @@ function loadEnvOverrides() {
   }
 }
 
-export function getActionPricing(action = "dograh_call") {
+export function getActionPricing(action = "voice_call") {
   const envOverrides = loadEnvOverrides();
-  const base = DEFAULT_PRICING[action] || DEFAULT_PRICING.dograh_call;
+  const base = DEFAULT_PRICING[action] || DEFAULT_PRICING.voice_call;
   const dbOverride = _dbPricingOverrides[action] || {};
   // DB wins over env, env wins over defaults
   const merged = { ...base, ...(envOverrides[action] || {}), ...dbOverride };

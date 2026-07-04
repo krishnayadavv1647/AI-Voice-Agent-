@@ -36,17 +36,17 @@ export async function queueNotification({ userId, type, title, body = "", dedupe
   return notification;
 }
 
-// Specialized notice for an auto-deactivated Dograh key after repeated BYOK failures.
-export async function notifyDograhKeyDeactivated({ userId, integrationId, lastFailureReason }) {
+// Specialized notice for an auto-deactivated BYOK key after repeated failures.
+export async function notifyByokKeyDeactivated({ userId, integrationId, lastFailureReason }) {
   return queueNotification({
     userId,
-    type: "dograh_key_deactivated",
-    title: "Your Dograh key was disabled",
-    body: `Your Dograh API key failed repeatedly and has been disabled to avoid failed calls. Last error: ${lastFailureReason || "unknown"}. Reconnect or fix your key in Settings to resume bring-your-own-key calls.`,
-    dedupeKey: `dograh_key_deactivated:${integrationId}`,
+    type: "byok_key_deactivated",
+    title: "Your API key was disabled",
+    body: `Your API key failed repeatedly and has been disabled to avoid failed calls. Last error: ${lastFailureReason || "unknown"}. Reconnect or fix your key in Settings to resume bring-your-own-key calls.`,
+    dedupeKey: `byok_key_deactivated:${integrationId}`,
     metadata: { integrationId: String(integrationId), lastFailureReason },
     email: true
   });
 }
 
-export default { queueNotification, notifyDograhKeyDeactivated };
+export default { queueNotification, notifyByokKeyDeactivated };

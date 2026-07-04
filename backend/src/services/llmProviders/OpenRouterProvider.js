@@ -130,18 +130,5 @@ export const OpenRouterProvider = {
 
   async getCapabilities() {
     return { supportsStreaming: true, supportsTools: true, supportsJsonMode: true };
-  },
-
-  async buildDograhOverride({ credentials, agentConfiguration }) {
-    return {
-      provider: "openrouter",
-      api_key: credentials.apiKey,
-      model: agentConfiguration.model,
-      base_url: BASE_URL,
-      app_name: credentials.applicationName,
-      app_url: credentials.applicationUrl,
-      temperature: agentConfiguration.settings?.temperature,
-      max_tokens: agentConfiguration.settings?.maxTokens
-    };
   }
 };

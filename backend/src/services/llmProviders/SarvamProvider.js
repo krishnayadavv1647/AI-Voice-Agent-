@@ -147,17 +147,5 @@ export const SarvamProvider = {
 
   async getCapabilities() {
     return { supportsStreaming: null, supportsTools: null, supportsJsonMode: null };
-  },
-
-  async buildDograhOverride({ credentials, agentConfiguration }) {
-    const chatModel = assertSarvamChatModel(agentConfiguration.model);
-    return {
-      provider: "sarvam",
-      api_subscription_key: credentials.apiKey,
-      api_key: credentials.apiKey,
-      model: chatModel,
-      temperature: agentConfiguration.settings?.temperature,
-      max_tokens: agentConfiguration.settings?.maxTokens
-    };
   }
 };

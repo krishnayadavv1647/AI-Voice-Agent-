@@ -7,7 +7,7 @@ import mongoose from "mongoose";
 const creditTransactionSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    action: { type: String, default: "dograh_call" },
+    action: { type: String, default: "voice_call" },
     mode: { type: String, enum: ["platform_credits", "byok", "system"], default: "platform_credits" },
     // reserve/confirm/release drive the two-phase platform-credit flow; charge is a single
     // immediate debit (e.g. the BYOK platform fee); topup/refund credit the wallet.

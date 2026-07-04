@@ -21,7 +21,6 @@
   Shield,
   Upload,
   Users,
-  Workflow,
   X
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -46,7 +45,6 @@ const links = [
   { to: "/voice-language", label: "Voice & Language", icon: Languages },
   { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/telephony-configuration", label: "Telephony Configuration", icon: PhoneCall },
-  { to: "/dograh-settings", label: "Dograh Settings", icon: Workflow },
   { to: "/credits", label: "Credits & Usage", icon: Coins },
   { to: "/billing", label: "Plans & Billing", icon: CreditCard },
   { to: "/settings", label: "Settings", icon: Settings }
@@ -71,7 +69,7 @@ const navSections = [
   },
   {
     label: "MANAGE",
-    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/dograh-settings", "/credits", "/billing", "/settings"]
+    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/credits", "/billing", "/settings"]
   }
 ];
 

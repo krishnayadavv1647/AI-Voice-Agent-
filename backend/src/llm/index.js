@@ -4,7 +4,7 @@ import { generateOpenAIResponse } from "./openai.llm.js";
 import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
 
 export async function generateLLMResponse({ provider = "google_gemini", model, messages, settings }) {
-  const canonicalProvider = normalizeLLMProvider(provider === "dograh_default" ? "google_gemini" : provider);
+  const canonicalProvider = normalizeLLMProvider(provider === "platform_default" ? "google_gemini" : provider);
   switch (canonicalProvider) {
     case "google_gemini":
       return generateGeminiResponse({ model, messages, settings });

@@ -11,7 +11,7 @@ import {
   upsertAgentVoiceConfiguration,
   validateVoiceConfigurationOwnership
 } from "../services/agentVoiceConfiguration.service.js";
-import { syncAgentVoiceConfigurationToDograh } from "../services/dograhVoiceConfigSync.service.js";
+import { getProvider } from "../providers/index.js";
 
 function assertProvider(value) {
   const provider = String(value || "").toLowerCase();
@@ -128,12 +128,10 @@ export const disconnectVoiceIntegration = asyncHandler(async (req, res) => {
       { userId: req.user._id, $or: [{ sttIntegrationId: integration._id }, { ttsIntegrationId: integration._id }] },
       {
         $set: {
-          sttProvider: "dograh_default",
+          sttProvider: "deepgram",
           sttIntegrationId: null,
-          ttsProvider: "dograh_default",
-          ttsIntegrationId: null,
-          dograhSyncStatus: "pending",
-          dograhSyncError: "Voice provider was disconnected; Dograh default must be synchronized."
+          ttsProvider: "elevenlabs",
+          ttsIntegrationId: null
         }
       }
     );
@@ -193,6 +191,13 @@ export const updateAgentVoiceConfig = asyncHandler(async (req, res) => {
   await validateVoiceConfigurationOwnership({ userId: agent.userId, config: configInput });
   const config = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: configInput });
   await agent.save();
-  const synced = await syncAgentVoiceConfigurationToDograh({ agent, userId: agent.userId });
-  res.json({ success: true, voiceConfiguration: synced || config });
+  // Voice choice is baked into the Vapi assistant, so refresh it (best-effort) after a config change.
+  if (agent.provider === "vapi" && agent.providerAgentId) {
+    try {
+      await getProvider("vapi").update(agent);
+    } catch (error) {
+      console.error("[Voice config] Vapi assistant refresh failed:", error.message);
+    }
+  }
+  res.json({ success: true, voiceConfiguration: config });
 });

@@ -54,8 +54,6 @@ export function isTerminalCallStatus(normalizedStatus) {
   return TERMINAL_CALL_STATUSES.has(normalizedStatus);
 }
 
-export const normalizeDograhStatus = normalizeCallOutcome;
-
 function noteText(status, scheduledAt) {
   return `Call ${status}. Retry scheduled for ${scheduledAt.toLocaleString()}.`;
 }
@@ -159,7 +157,7 @@ async function syncAppointmentCallOutcome(callLog, normalizedStatus) {
 export async function scheduleRetryFollowUpForCall(callLog) {
   if (!callLog?.retryEligible || !callLog.userId || !callLog.agentId) return null;
 
-  // pipeline_error means Dograh's voice/LLM pipeline couldn't start — a configuration
+  // pipeline_error means the voice/LLM pipeline couldn't start — a configuration
   // issue, not a call outcome. Retrying would loop forever until the agent is re-synced.
   if (isPipelineErrorStatus(callLog.rawProviderStatus)) {
     console.log("[Call Outcome] retry skipped: pipeline_error requires agent re-sync, not retry", callLog._id?.toString());

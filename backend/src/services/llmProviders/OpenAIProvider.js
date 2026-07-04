@@ -99,15 +99,5 @@ export const OpenAIProvider = {
 
   async getCapabilities() {
     return { supportsStreaming: true, supportsTools: true, supportsJsonMode: true };
-  },
-
-  async buildDograhOverride({ credentials, agentConfiguration }) {
-    return {
-      provider: "openai",
-      api_key: credentials.apiKey,
-      model: agentConfiguration.model,
-      temperature: agentConfiguration.settings?.temperature,
-      max_tokens: agentConfiguration.settings?.maxTokens
-    };
   }
 };

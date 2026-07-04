@@ -88,9 +88,9 @@ test("buildAssistantConfig points the model at the custom-llm URL and routes to 
 
 // ---- mapVoice fallback (checklist 2) ---------------------------------------
 
-test("mapVoice falls back to the default when ttsProvider is dograh_default", () => {
+test("mapVoice falls back to the default when ttsProvider is unsupported", () => {
   process.env.VAPI_DEFAULT_VOICE_ID = "burt";
-  const voice = mapVoice(fakeAgent({ ttsProvider: "dograh_default", voiceId: "ignored" }));
+  const voice = mapVoice(fakeAgent({ ttsProvider: "legacy_default", voiceId: "ignored" }));
 
   assert.equal(voice.provider, "11labs");
   assert.equal(voice.voiceId, "burt");

@@ -8,8 +8,7 @@ export const CartesiaSTTProvider = {
     supportsInterimResults: true,
     supportsSmartFormatting: true,
     supportsPunctuation: true,
-    // Current Dograh supports Cartesia STT. Set the flag to false only for an older/custom deployment.
-    dograhRuntimeSupport: process.env.DOGRAH_CARTESIA_STT_SUPPORTED !== "false"
+    runtimeSupport: process.env.CARTESIA_STT_SUPPORTED !== "false"
   },
   validateCredentials: CartesiaTTSProvider.validateCredentials,
   async listModels() {

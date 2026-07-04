@@ -1,14 +1,10 @@
 import express from "express";
 import {
-  connectDograhWorkflow,
-  createDograhWorkflowForAgent,
-  getDograhBindingForAgent,
-  getDograhMigrationStatus,
-  createDograhAgentEmbedToken,
-  deleteDograhAgentEmbedToken,
+  enableWebCall,
+  disableWebCall,
   createAgent,
   getBioPage,
-  getDograhAgentEmbedToken,
+  getWebCallStatus,
   getAgent,
   listBioPageTemplates,
   listAgentCalls,
@@ -21,17 +17,13 @@ import {
   publishBioPage,
   removeAgent,
   resetBioPage,
-  syncDograhRuntimeForAgent,
   syncProviderForAgent,
-  migrateDograhAgent,
   testChatAgent,
   testAgent,
   triggerOutboundCall,
   triggerTestCall,
   updateAgent,
-  updateDograhBindingForAgent,
   updateBioPage,
-  updateDograhWorkflowForAgent,
   updateShareSettings,
   unpublishBioPage,
   uploadBioPageCover,
@@ -41,12 +33,14 @@ import {
   uploadAgentAvatar,
   deleteAgentAvatar
 } from "../controllers/agent.controller.js";
+import { createAgentFromTemplate as createAgentFromTemplateController } from "../controllers/agentTemplate.controller.js";
 import { adminOnly, protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 router.use(protect);
 router.route("/").post(createAgent).get(listAgents);
+router.post("/from-template", createAgentFromTemplateController);
 router.post("/backfill-images", adminOnly, backfillAgentImages);
 router.get("/bio-page/templates", listBioPageTemplates);
 router.route("/:id").get(getAgent).put(updateAgent).delete(removeAgent);
@@ -69,19 +63,10 @@ router.post("/:id/test", testAgent);
 router.post("/:id/test-chat", testChatAgent);
 router.post("/:id/publish", publishAgent);
 router.post("/:id/pause", pauseAgent);
-router.post("/:id/connect-dograh", connectDograhWorkflow);
-router.get("/:agentId/dograh-binding", getDograhBindingForAgent);
-router.put("/:agentId/dograh-binding", updateDograhBindingForAgent);
-router.post("/:agentId/migrate-dograh", migrateDograhAgent);
-router.get("/:agentId/migrate-dograh/status", getDograhMigrationStatus);
-router.post("/:agentId/dograh/embed-token", createDograhAgentEmbedToken);
-router.get("/:agentId/dograh/embed-token", getDograhAgentEmbedToken);
-router.delete("/:agentId/dograh/embed-token", deleteDograhAgentEmbedToken);
-router.post("/:id/create-dograh-workflow", createDograhWorkflowForAgent);
-router.post("/:id/update-dograh-workflow", updateDograhWorkflowForAgent);
-router.patch("/:id/dograh-workflow", updateDograhWorkflowForAgent);
+router.post("/:agentId/web-call", enableWebCall);
+router.get("/:agentId/web-call", getWebCallStatus);
+router.delete("/:agentId/web-call", disableWebCall);
 router.patch("/:id/sync-provider", syncProviderForAgent);
-router.patch("/:id/sync-runtime", syncDograhRuntimeForAgent);
 router.post("/:id/test-call", triggerTestCall);
 router.post("/:id/outbound-call", triggerOutboundCall);
 router.get("/:id/calls", listAgentCalls);

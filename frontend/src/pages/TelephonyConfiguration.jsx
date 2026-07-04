@@ -30,7 +30,7 @@ const emptyConfigForm = {
   linkedAgentId: "",
   country: "US",
   inboundEnabled: true,
-  inboundMode: "dograh_ai",
+  inboundMode: "agent_runtime",
   outboundEnabled: true,
   status: "active"
 };
@@ -63,7 +63,7 @@ function titleCase(value) {
 }
 
 function configId(config) {
-  return config?.dograhTelephonyConfigId || config?._id || config?.id || "";
+  return config?._id || config?.id || "";
 }
 
 function lastUpdated(config) {
@@ -84,11 +84,11 @@ function maskSecret(value) {
 function phoneRows(config, agents) {
   if (!config?.phoneNumber) return [];
   const linkedAgent = agents.find((agent) => agent._id === config.linkedAgentId);
-  const workflowId = config.dograhWorkflowId || linkedAgent?.dograhWorkflowId || linkedAgent?.providerWorkflowId;
+  const workflowId = config.providerWorkflowId || linkedAgent?.providerWorkflowId;
   const workflowName = linkedAgent?.agentName || linkedAgent?.name;
   return [
     {
-      id: config.dograhPhoneNumberId || config.phoneNumber,
+      id: config.phoneNumber,
       address: config.phoneNumber,
       type: "pstn",
       label: config.name || "Primary phone number",
@@ -364,8 +364,7 @@ function ListView({ configs, loading, error, onRetry, onAdd, onEdit, onDelete, o
         title="Telephony configurations"
         description={
           <>
-            Connect one or more telephony provider accounts. Each campaign uses one configuration; inbound calls are routed to the right one by account ID.{" "}
-            <a href="https://docs.dograh.com" target="_blank" rel="noreferrer">Learn more <ExternalLink size={12} /></a>
+            Connect one or more telephony provider accounts. Each campaign uses one configuration; inbound calls are routed to the right one by account ID.
           </>
         }
         action={<button className="btn-primary" onClick={onAdd}><Plus size={16} /> Add configuration</button>}
@@ -421,7 +420,7 @@ function DetailView({ config, agents, loading, error, onRetry, onBack, onCopy, o
   const meta = providerMeta(config.provider);
   const id = configId(config);
   const rows = phoneRows(config, agents);
-  const webhookUrl = config.dograhInboundWebhookUrl || config.webhookUrl || config.twilioVoiceUrl || "Not configured";
+  const webhookUrl = config.webhookUrl || config.twilioVoiceUrl || "Not configured";
 
   return (
     <>
@@ -461,8 +460,7 @@ function DetailView({ config, agents, loading, error, onRetry, onBack, onCopy, o
           <div className="min-w-0">
             <h2>Phone numbers</h2>
             <p>
-              Numbers used as caller ID for outbound and accepted for inbound matching. SIP URIs and extensions are supported alongside PSTN numbers.{" "}
-              <a href="https://docs.dograh.com" target="_blank" rel="noreferrer">Inbound docs <ExternalLink size={12} /></a>
+              Numbers used as caller ID for outbound and accepted for inbound matching. SIP URIs and extensions are supported alongside PSTN numbers.
             </p>
           </div>
           <button className="btn-primary" onClick={() => onEditPhone(config)}><Plus size={16} /> Add phone number</button>

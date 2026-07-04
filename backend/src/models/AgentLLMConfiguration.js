@@ -10,7 +10,7 @@ const agentLLMConfigurationSchema = new mongoose.Schema(
     provider: {
       type: String,
       enum: CANONICAL_LLM_PROVIDERS,
-      default: "dograh_default",
+      default: "google_gemini",
       set: (value) => normalizeLLMProvider(value)
     },
     model: { type: String, default: "", set: (value) => normalizeModelId(value) },
@@ -22,18 +22,8 @@ const agentLLMConfigurationSchema = new mongoose.Schema(
       presencePenalty: { type: Number, default: 0 },
       timeoutMs: { type: Number, default: 30000 },
       streaming: { type: Boolean, default: true },
-      toolCalling: { type: Boolean, default: true },
-      fallbackToDograhDefault: { type: Boolean, default: false }
-    },
-    dograhSyncStatus: {
-      type: String,
-      enum: ["not_configured", "pending", "syncing", "synced", "configuration_required", "failed"],
-      default: "not_configured"
-    },
-    dograhLastSyncedAt: { type: Date, default: null },
-    dograhSyncError: { type: String, default: "" },
-    dograhEffectiveProvider: { type: String, default: "" },
-    dograhEffectiveModel: { type: String, default: "" }
+      toolCalling: { type: Boolean, default: true }
+    }
   },
   { timestamps: true }
 );

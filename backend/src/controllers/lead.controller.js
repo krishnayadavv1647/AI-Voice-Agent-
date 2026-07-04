@@ -9,7 +9,7 @@ function filter(req) {
 }
 
 export const listLeads = asyncHandler(async (req, res) => {
-  const leads = await Lead.find(filter(req)).populate("agentId", "agentName dograhWorkflowId dograhWorkflowUuid callerIdNumber").populate("callLogId").sort({ createdAt: -1 });
+  const leads = await Lead.find(filter(req)).populate("agentId", "agentName providerWorkflowId providerAgentId callerIdNumber").populate("callLogId").sort({ createdAt: -1 });
   res.json(leads);
 });
 
@@ -61,11 +61,10 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
   if (!lead) throw new ApiError(404, "Lead not found");
 
   const agent = lead.agentId;
-  if (!agent?.dograhWorkflowUuid) throw new ApiError(400, "Dograh workflow sync must finish before calling this lead.");
   if (!agent?.callerIdNumber) throw new ApiError(400, "Caller ID number is missing for this agent.");
   if (!lead.phone) throw new ApiError(400, "Lead phone number is missing.");
 
-  const { dograhResponse, callLog, publicCallLog } = await triggerOutboundCallForAgent({
+  const { providerResponse, callLog, publicCallLog } = await triggerOutboundCallForAgent({
     agent,
     userId: lead.userId,
     phoneNumber: lead.phone,
@@ -85,5 +84,5 @@ export const callLeadAgain = asyncHandler(async (req, res) => {
   lead.callLogId = callLog._id;
   await lead.save();
 
-  res.status(202).json({ success: true, lead, callLog: publicCallLog, dograhResponse });
+  res.status(202).json({ success: true, lead, callLog: publicCallLog, providerResponse });
 });

@@ -28,7 +28,7 @@ test("ended in-progress call is finalized as completed", async () => {
   assert.equal(callLog.callEndedAt, endedAt);
 });
 
-test("Dograh pipeline_error normalizes to terminal failed status", async () => {
+test("provider pipeline_error normalizes to terminal failed status", async () => {
   mock.method(FollowUp, "findOne", async () => null);
   const callLog = {
     _id: "call_2",
@@ -45,7 +45,7 @@ test("Dograh pipeline_error normalizes to terminal failed status", async () => {
   assert.equal(isTerminalCallStatus(callLog.normalizedStatus), true);
 });
 
-test("Dograh pipeline error variants do not schedule retry follow-ups", async () => {
+test("provider pipeline error variants do not schedule retry follow-ups", async () => {
   const findOne = mock.method(FollowUp, "findOne", async () => {
     throw new Error("retry lookup should not run for pipeline errors");
   });

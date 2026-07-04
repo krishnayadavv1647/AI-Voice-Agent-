@@ -2,9 +2,6 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
-import { addDograhTelephonyPhoneNumber, createDograhTelephonyConfiguration } from "../services/dograh.service.js";
-import { getDograhClientForAgent } from "../services/dograhClientResolver.js";
-import { assertRuntimeVerification, verifyDograhWorkflowRuntime } from "../services/dograhWorkflowConfig.service.js";
 import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js";
 import { getTelephonyProvider } from "../telephony/index.js";
 import { ApiError } from "../utils/apiError.js";
@@ -16,9 +13,11 @@ const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const DEFAULT_INCOMING_MESSAGE = "Hello, how can I help you?";
 const MISSING_AGENT_MESSAGE = "Sorry, agent is not configured.";
 const INCOMING_LOOKUP_TIMEOUT_MS = 1500;
-const INBOUND_MODES = ["dograh_ai", "static_greeting", "disabled"];
+// "ai_agent" runs the linked agent live for the incoming call; "static_greeting" plays a fixed
+// greeting; "disabled" turns inbound off. All modes route the number to this backend's webhook.
+const INBOUND_MODES = ["ai_agent", "static_greeting", "disabled"];
 const LEGACY_INBOUND_MODE_MAP = {
-  agent_runtime: "dograh_ai"
+  agent_runtime: "ai_agent"
 };
 
 function userFilter(req) {
@@ -68,89 +67,6 @@ function maskPhone(value) {
   return `${text.slice(0, 3)}****${text.slice(-2)}`;
 }
 
-function configuredDograhBaseHost() {
-  try {
-    return new URL(process.env.DOGRAH_BASE_URL || "").host.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-function isPrivateHostname(hostname) {
-  const host = String(hostname || "").toLowerCase();
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host === "169.254.169.254" ||
-    host.startsWith("10.") ||
-    host.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-  );
-}
-
-function validateDograhInboundWebhookUrl(value) {
-  if (!value) return "";
-  let url;
-  try {
-    url = new URL(String(value));
-  } catch {
-    throw new ApiError(400, "Dograh inbound webhook URL is invalid.", { code: "INBOUND_RUNTIME_NOT_READY" });
-  }
-
-  if (url.protocol !== "https:" || isPrivateHostname(url.hostname)) {
-    throw new ApiError(400, "Dograh inbound webhook URL is not allowed.", { code: "INBOUND_RUNTIME_NOT_READY" });
-  }
-
-  const allowedHosts = [
-    configuredDograhBaseHost(),
-    process.env.DOGRAH_INBOUND_WEBHOOK_HOST?.trim().toLowerCase()
-  ].filter(Boolean);
-  if (allowedHosts.length && !allowedHosts.includes(url.host.toLowerCase())) {
-    throw new ApiError(400, "Dograh inbound webhook URL host is not approved.", { code: "INBOUND_RUNTIME_NOT_READY" });
-  }
-
-  return url.toString();
-}
-
-function extractDograhInboundWebhookUrl(...payloads) {
-  const keys = new Set([
-    "dograh_inbound_webhook_url",
-    "dograhInboundWebhookUrl",
-    "inbound_webhook_url",
-    "inboundWebhookUrl",
-    "webhook_url",
-    "webhookUrl",
-    "voice_url",
-    "voiceUrl"
-  ]);
-  const seen = new Set();
-
-  function visit(value) {
-    if (!value || typeof value !== "object" || seen.has(value)) return "";
-    seen.add(value);
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        const result = visit(item);
-        if (result) return result;
-      }
-      return "";
-    }
-    for (const [key, child] of Object.entries(value)) {
-      if (keys.has(key) && typeof child === "string" && child.trim()) return child.trim();
-      const result = visit(child);
-      if (result) return result;
-    }
-    return "";
-  }
-
-  for (const payload of payloads) {
-    const result = visit(payload);
-    if (result) return result;
-  }
-  return "";
-}
-
 function mask(value) {
   const unsealed = decryptSecret(value);
   if (!unsealed) return "";
@@ -195,7 +111,7 @@ function maskWebhookForDisplay(value) {
 
 function cleanInboundMode(value, inboundEnabled = true) {
   if (inboundEnabled === false) return "disabled";
-  const mode = LEGACY_INBOUND_MODE_MAP[value] || value || "dograh_ai";
+  const mode = LEGACY_INBOUND_MODE_MAP[value] || value || "ai_agent";
   if (!INBOUND_MODES.includes(mode)) {
     throw new ApiError(400, "Inbound call mode is not valid");
   }
@@ -208,11 +124,8 @@ function sanitizeConfig(config) {
   for (const field of SECRET_FIELDS) {
     if (item[field]) item[field] = mask(item[field]);
   }
-  item.dograhInboundWebhookConfigured = Boolean(item.dograhInboundWebhookUrl);
-  if (item.dograhInboundWebhookUrl) item.dograhInboundWebhookUrl = maskWebhookForDisplay(item.dograhInboundWebhookUrl);
   if (item.webhookUrl) item.webhookUrl = maskWebhookForDisplay(item.webhookUrl);
   if (item.twilioVoiceUrl) item.twilioVoiceUrl = maskWebhookForDisplay(item.twilioVoiceUrl);
-  delete item.dograhRawResponse;
   return item;
 }
 
@@ -247,137 +160,8 @@ function applyBody(config, body, req) {
   }
 
   config.inboundMode = cleanInboundMode(config.inboundMode, config.inboundEnabled);
-  if (config.inboundMode !== "dograh_ai") {
-    config.webhookUrl = buildWebhookUrl(req, config.provider);
-  }
-}
-
-function buildDograhProviderConfig(body) {
-  const config = {
-    provider: body.provider
-  };
-
-  const mappings = [
-    ["accountSid", "account_sid"],
-    ["authToken", "auth_token"],
-    ["apiKey", "api_key"],
-    ["apiSecret", "api_secret"],
-    ["appId", "app_id"],
-    ["region", "region"],
-    ["country", "country"]
-  ];
-
-  for (const [source, target] of mappings) {
-    if (body[source]) config[target] = body[source];
-  }
-
-  if (body.phoneNumber) config.from_numbers = [body.phoneNumber];
-
-  return config;
-}
-
-function buildDograhTelephonyConfigPayload(body) {
-  return {
-    name: body.name,
-    config: buildDograhProviderConfig(body)
-  };
-}
-
-function dograhWorkflowIdForInbound(agent) {
-  const value = agent.providerWorkflowId || agent.dograhWorkflowId;
-  if (!value) return null;
-
-  const numeric = Number(value);
-  return Number.isInteger(numeric) ? numeric : null;
-}
-
-function buildDograhPhonePayload({ body, agent, inboundEnabled, outboundEnabled }) {
-  const inboundWorkflowId = inboundEnabled ? dograhWorkflowIdForInbound(agent) : null;
-
-  if (inboundEnabled && !inboundWorkflowId) {
-    throw new ApiError(400, "Inbound calling requires the linked agent to have a numeric Dograh workflow ID. Sync the agent with Dograh first, or disable inbound for this number.");
-  }
-
-  return {
-    address: body.phoneNumber,
-    country_code: body.country || null,
-    label: body.name || body.phoneNumber,
-    inbound_workflow_id: inboundWorkflowId,
-    is_active: true,
-    is_default_caller_id: outboundEnabled,
-    extra_metadata: {
-      localAgentId: agent._id.toString(),
-      inboundEnabled,
-      outboundEnabled
-    }
-  };
-}
-
-async function assertLinkedAgentRuntimeReady(agent, userId, callType) {
-  if (!agent.dograhWorkflowUuid) {
-    throw new ApiError(400, "Linked agent is missing Dograh workflow UUID. Sync the agent before attaching phone calls.");
-  }
-  if (agent.workflowSyncStatus && agent.workflowSyncStatus !== "synced") {
-    throw new ApiError(400, agent.workflowSyncError || "Linked agent Dograh runtime sync is not complete.");
-  }
-
-  const workflowId = agent.dograhWorkflowId || agent.providerWorkflowId;
-  if (!workflowId) {
-    throw new ApiError(400, "Linked agent is missing Dograh workflow ID. Sync the agent before attaching phone calls.");
-  }
-
-  const resolved = await getDograhClientForAgent(agent, userId);
-  const verification = await verifyDograhWorkflowRuntime({
-    agent,
-    userId,
-    callType,
-    fetchWorkflow: async () => {
-      const response = await resolved.client.get(`/workflow/fetch/${encodeURIComponent(workflowId)}`);
-      return response.data;
-    }
-  });
-  assertRuntimeVerification(verification);
-}
-
-async function verifyInboundRuntimeReady({ config, agent, userId }) {
-  if (!config || !agent) {
-    throw new ApiError(400, "The agent is not ready for inbound AI calls.", {
-      code: "INBOUND_RUNTIME_NOT_READY"
-    });
-  }
-
-  if (config.inboundMode !== "dograh_ai") {
-    return { mode: config.inboundMode, routingStatus: config.inboundRoutingStatus || "not_configured" };
-  }
-
-  try {
-    if (!config.inboundEnabled) {
-      throw new Error("Inbound calling is disabled.");
-    }
-    await assertLinkedAgentRuntimeReady(agent, userId, "inbound_phone_call");
-    if (!config.dograhTelephonyConfigId || !config.dograhPhoneNumberId) {
-      throw new Error("Dograh telephony configuration is missing.");
-    }
-    if (!config.dograhWorkflowId || !config.dograhWorkflowUuid) {
-      throw new Error("Dograh workflow mapping is missing.");
-    }
-    if (String(config.dograhWorkflowUuid) !== String(agent.dograhWorkflowUuid)) {
-      throw new Error("Phone number is mapped to another Dograh workflow.");
-    }
-    if (config.dograhInboundWebhookUrl) {
-      validateDograhInboundWebhookUrl(config.dograhInboundWebhookUrl);
-    }
-  } catch (error) {
-    throw new ApiError(400, "The agent is not ready for inbound AI calls.", {
-      code: "INBOUND_RUNTIME_NOT_READY",
-      reason: error.message
-    });
-  }
-
-  return {
-    mode: config.inboundMode,
-    routingStatus: config.dograhInboundWebhookUrl ? "verified" : "dograh_managed"
-  };
+  // All inbound modes route the number to this backend's own webhook.
+  config.webhookUrl = buildWebhookUrl(req, config.provider);
 }
 
 async function syncLinkedAgent(config) {
@@ -437,58 +221,13 @@ export const createTelephonyConfig = asyncHandler(async (req, res) => {
   const config = new TelephonyConfig({ userId: req.user._id });
   applyBody(config, { ...req.body, linkedAgentId, inboundEnabled, inboundMode, outboundEnabled, status: "active" }, req);
   provider.saveConfig(config);
-  if (inboundMode === "dograh_ai" || outboundEnabled) {
-    await assertLinkedAgentRuntimeReady(linkedAgent, req.user._id, inboundMode === "dograh_ai" ? "inbound_phone_call" : "outbound_phone_call");
-  }
 
-  const dograhConfigPayload = buildDograhTelephonyConfigPayload(req.body);
-  const dograhPhonePayload = buildDograhPhonePayload({ body: req.body, agent: linkedAgent, inboundEnabled, outboundEnabled });
-  const dograhConfig = await createDograhTelephonyConfiguration(dograhConfigPayload, { userId: req.user._id, agent: linkedAgent });
-  const dograhPhone = await addDograhTelephonyPhoneNumber(dograhConfig.dograhTelephonyConfigId, dograhPhonePayload, { userId: req.user._id, agent: linkedAgent });
-
-  config.dograhTelephonyConfigId = String(dograhConfig.dograhTelephonyConfigId);
-  config.dograhPhoneNumberId = dograhPhone.dograhPhoneNumberId ? String(dograhPhone.dograhPhoneNumberId) : "";
-  config.dograhWorkflowId = linkedAgent.dograhWorkflowId || linkedAgent.providerWorkflowId || "";
-  config.dograhWorkflowUuid = linkedAgent.dograhWorkflowUuid || "";
-  const dograhWebhookUrl = extractDograhInboundWebhookUrl(dograhPhone.raw, dograhPhone.providerSync, dograhConfig.raw);
-  config.dograhInboundWebhookUrl = dograhWebhookUrl ? validateDograhInboundWebhookUrl(dograhWebhookUrl) : "";
-  config.webhookUrl = inboundMode === "dograh_ai" && config.dograhInboundWebhookUrl
-    ? config.dograhInboundWebhookUrl
-    : buildWebhookUrl(req, config.provider);
-  config.inboundRoutingStatus = inboundMode === "dograh_ai"
-    ? (config.dograhInboundWebhookUrl ? "verified" : "dograh_managed")
-    : inboundMode === "static_greeting" ? "verified" : "not_configured";
+  config.inboundRoutingStatus = inboundMode === "disabled" ? "not_configured" : "verified";
   config.inboundRoutingError = "";
-  config.inboundRoutingVerifiedAt = inboundMode === "dograh_ai" ? new Date() : null;
-  config.dograhProviderSync = dograhPhone.providerSync;
-  config.dograhRawResponse = {
-    telephonyConfiguration: dograhConfig.raw,
-    phoneNumber: dograhPhone.raw
-  };
+  config.inboundRoutingVerifiedAt = inboundMode === "disabled" ? null : new Date();
 
-  try {
-    await config.save();
-  } catch (error) {
-    console.error("Dograh telephony configuration was created, but local TelephonyConfig save failed:", {
-      linkedAgentId: linkedAgentId?.toString(),
-      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
-      dograhPhoneNumberId: config.dograhPhoneNumberId,
-      error: error.message
-    });
-    throw error;
-  }
-
-  try {
-    await syncLinkedAgent(config);
-  } catch (error) {
-    console.error("Local TelephonyConfig saved after Dograh creation, but linked Agent update failed:", {
-      telephonyConfigId: config._id?.toString(),
-      linkedAgentId: linkedAgentId?.toString(),
-      dograhTelephonyConfigId: config.dograhTelephonyConfigId,
-      error: error.message
-    });
-    throw error;
-  }
+  await config.save();
+  await syncLinkedAgent(config);
 
   res.status(201).json(sanitizeConfig(config));
 });
@@ -501,17 +240,9 @@ export const updateTelephonyConfig = asyncHandler(async (req, res) => {
   if (config.linkedAgentId && (config.inboundEnabled || config.outboundEnabled)) {
     const linkedAgent = await Agent.findOne({ _id: config.linkedAgentId, userId: config.userId });
     if (!linkedAgent) throw new ApiError(400, "Linked agent was not found for this user");
-    if (config.inboundMode === "dograh_ai" || config.outboundEnabled) {
-      await assertLinkedAgentRuntimeReady(linkedAgent, config.userId, config.inboundMode === "dograh_ai" ? "inbound_phone_call" : "outbound_phone_call");
-    }
-    config.dograhWorkflowId = linkedAgent.dograhWorkflowId || linkedAgent.providerWorkflowId || config.dograhWorkflowId || "";
-    config.dograhWorkflowUuid = linkedAgent.dograhWorkflowUuid || config.dograhWorkflowUuid || "";
   }
-  if (config.inboundMode !== "dograh_ai") {
-    config.inboundRoutingStatus = config.inboundMode === "static_greeting" ? "verified" : "not_configured";
-    config.inboundRoutingError = "";
-    config.webhookUrl = buildWebhookUrl(req, config.provider);
-  }
+  config.inboundRoutingStatus = config.inboundMode === "disabled" ? "not_configured" : "verified";
+  config.inboundRoutingError = "";
   await config.save();
   await syncLinkedAgent(config);
 
@@ -535,24 +266,8 @@ export const testTelephonyConfig = asyncHandler(async (req, res) => {
 export const configureTelephonyWebhook = asyncHandler(async (req, res) => {
   const config = await getOwnedConfig(req);
   const provider = getTelephonyProvider(config.provider);
-  const linkedAgent = config.linkedAgentId
-    ? await Agent.findOne({ _id: config.linkedAgentId, userId: config.userId })
-    : null;
 
-  if (config.inboundMode === "dograh_ai") {
-    await verifyInboundRuntimeReady({ config, agent: linkedAgent, userId: config.userId });
-    if (!config.dograhInboundWebhookUrl) {
-      config.inboundRoutingStatus = "dograh_managed";
-      config.inboundRoutingError = "Dograh did not return a direct inbound webhook URL. The number must be managed by Dograh telephony assignment.";
-      await config.save();
-      throw new ApiError(400, "Dograh did not return a direct inbound webhook URL for this number. Verify the Dograh telephony phone-number assignment instead.", {
-        code: "INBOUND_RUNTIME_NOT_READY"
-      });
-    }
-    config.webhookUrl = validateDograhInboundWebhookUrl(config.dograhInboundWebhookUrl);
-  } else {
-    config.webhookUrl = buildWebhookUrl(req, config.provider);
-  }
+  config.webhookUrl = buildWebhookUrl(req, config.provider);
   config.webhookMethod = "POST";
   await config.save();
 
@@ -574,21 +289,22 @@ export const verifyInboundRouting = asyncHandler(async (req, res) => {
   const provider = getTelephonyProvider(config.provider);
 
   try {
-    const runtime = await verifyInboundRuntimeReady({ config, agent, userId: config.userId });
+    if (config.inboundMode === "ai_agent" && !agent) {
+      throw new Error("Link an agent to this number for AI inbound calls.");
+    }
+
     let providerWebhook = null;
+    const expected = buildWebhookUrl(req, config.provider);
     if (typeof provider.getWebhookConfig === "function") {
       providerWebhook = await provider.getWebhookConfig(config);
       config.twilioVoiceUrl = providerWebhook.voiceUrl || "";
       config.twilioVoiceMethod = providerWebhook.voiceMethod || "";
-      if (config.inboundMode === "dograh_ai" && config.dograhInboundWebhookUrl) {
-        const expected = validateDograhInboundWebhookUrl(config.dograhInboundWebhookUrl);
-        if (providerWebhook.voiceUrl !== expected) {
-          throw new Error("Twilio Voice URL is not routed to Dograh.");
-        }
+      if (config.inboundMode !== "disabled" && providerWebhook.voiceUrl && providerWebhook.voiceUrl !== expected) {
+        throw new Error("Twilio Voice URL is not routed to this backend.");
       }
     }
 
-    config.inboundRoutingStatus = runtime.routingStatus;
+    config.inboundRoutingStatus = config.inboundMode === "disabled" ? "not_configured" : "verified";
     config.inboundRoutingError = "";
     config.inboundRoutingVerifiedAt = new Date();
     await config.save();
@@ -597,12 +313,8 @@ export const verifyInboundRouting = asyncHandler(async (req, res) => {
       success: true,
       code: "INBOUND_ROUTING_VERIFIED",
       mode: config.inboundMode,
-      dograhWorkflowId: config.dograhWorkflowId,
-      dograhWorkflowUuid: config.dograhWorkflowUuid,
-      dograhInboundWebhookConfigured: Boolean(config.dograhInboundWebhookUrl),
       twilioVoiceUrlConfigured: Boolean(providerWebhook?.voiceUrl),
-      routingStatus: config.inboundRoutingStatus,
-      runtime
+      routingStatus: config.inboundRoutingStatus
     });
   } catch (error) {
     config.inboundRoutingStatus = "failed";
@@ -779,38 +491,19 @@ export const handleIncomingTelephony = asyncHandler(async (req, res) => {
     });
 
     const reply = agent?.firstMessage || agent?.greetingMessage || (config ? MISSING_AGENT_MESSAGE : DEFAULT_INCOMING_MESSAGE);
-    if (config?.inboundMode === "dograh_ai") {
-      await verifyInboundRuntimeReady({ config, agent, userId: config.userId });
-      await CallLog.create({
-        userId: agent.userId,
-        agentId: agent._id,
-        callerNumber,
-        callingNumber: phoneNumber || config.phoneNumber,
-        dograhWorkflowId: agent.dograhWorkflowId,
-        dograhWorkflowUuid: agent.dograhWorkflowUuid,
-        callDirection: "inbound",
-        source: providerName,
-        status: config.dograhInboundWebhookUrl ? "routing_to_dograh" : "routing_failed",
-        rawWebhookPayload: { body: req.body, query: req.query },
-        startedAt: new Date()
-      });
-    }
     const response = provider.handleIncomingCall({ req, config, agent, reply });
 
     logIncomingCallEvent("response returned", {
       provider: providerName,
       incomingNumberMasked: maskPhone(phoneNumber),
       agentId: agent?._id?.toString(),
-      dograhWorkflowId: agent?.dograhWorkflowId,
-      dograhWorkflowUuid: agent?.dograhWorkflowUuid,
       inboundMode: config?.inboundMode || "unknown",
-      routingStatus: config?.inboundMode === "dograh_ai" ? (config.dograhInboundWebhookUrl ? "routing_to_dograh" : "routing_failed") : "static_or_disabled",
       contentType: response.contentType,
       elapsedMs: Date.now() - startedAt
     });
 
     sendVoiceResponse(res, response);
-    if (config?.inboundMode !== "dograh_ai") {
+    if (config?.inboundMode !== "disabled") {
       recordInboundCallInBackground({ providerName, phoneNumber, callerNumber, config, agent, req });
     }
   } catch (error) {

@@ -24,8 +24,7 @@ export default function VoiceLanguage() {
             </select>
           </Setting>
           <Setting icon={Mic2} title="Voice Provider">
-            <select defaultValue="Dograh Default">
-              <option>Dograh Default</option>
+            <select defaultValue="ElevenLabs">
               <option>Sarvam</option>
               <option>Cartesia</option>
               <option>ElevenLabs</option>

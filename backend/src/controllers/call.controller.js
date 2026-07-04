@@ -1,15 +1,12 @@
 import axios from "axios";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import FollowUp from "../models/FollowUp.js";
 import { runPipelinePass } from "../services/pipelineScheduler.js";
-import { getDograhCallRunDetails } from "../services/dograh.service.js";
 import { runFollowUp } from "../services/followUp.service.js";
 import { extractLeadForCallLog } from "../services/leadGeneration.service.js";
-import { applyRunDetailsToCallLog, syncCallLogWithDograhRun } from "../services/callLogSync.service.js";
 import { getVapiCall, buildEndOfCallMessageFromVapiCall } from "../services/vapi.service.js";
 import { processVapiEndOfCall } from "./vapiWebhook.controller.js";
 
@@ -23,7 +20,7 @@ export const listCalls = asyncHandler(async (req, res) => {
   // Fire-and-forget: catch up any incomplete calls visible on this page load (no lead yet),
   // including terminal-status calls whose transcript/lead never got generated automatically.
   const scopedCallIds = calls
-    .filter((c) => !c.leadCaptured && c.dograhRunId)
+    .filter((c) => !c.leadCaptured && c.providerCallId)
     .map((c) => c._id);
   if (scopedCallIds.length) {
     runPipelinePass({ scopedCallIds }).catch(() => {});
@@ -104,51 +101,18 @@ export const syncCall = asyncHandler(async (req, res) => {
   const callLog = await CallLog.findOne({ _id: req.params.id, ...filter(req) });
   if (!callLog) throw new ApiError(404, "Call log not found");
 
-  // Vapi calls sync from the Vapi API (by providerCallId), not from a Dograh run. Pull the call and
-  // run it through the same finalization the webhook uses.
-  if (callLog.source === "vapi" || (callLog.providerCallId && !callLog.dograhWorkflowId && !callLog.dograhRunId)) {
-    if (!callLog.providerCallId) {
-      throw new ApiError(400, "Vapi call id is missing for this call log, so it cannot be synced yet.");
-    }
-    const call = await getVapiCall(callLog.providerCallId);
-    const message = buildEndOfCallMessageFromVapiCall(call);
-    const result = await processVapiEndOfCall(message);
-    const updatedCallLog = result?.callLog || (await CallLog.findById(callLog._id));
-    await CallLog.findByIdAndUpdate(callLog._id, {
-      $set: { autoSyncFailureCount: 0, autoSyncedAt: new Date(), pipelineStatus: "synced", lastPipelineError: null }
-    });
-    return res.json({ success: true, callLog: updatedCallLog });
+  // Calls sync from the Vapi API by providerCallId. Pull the call and run it through the same
+  // finalization the webhook uses.
+  if (!callLog.providerCallId) {
+    throw new ApiError(400, "Vapi call id is missing for this call log, so it cannot be synced yet.");
   }
-
-  let workflowId = callLog.dograhWorkflowId;
-  if (!workflowId && callLog.agentId) {
-    const agent = await Agent.findOne({ _id: callLog.agentId, ...filter(req) });
-    workflowId = agent?.dograhWorkflowId || agent?.providerWorkflowId || "";
-    if (workflowId) {
-      callLog.dograhWorkflowId = workflowId;
-      await callLog.save();
-    }
-  }
-
-  if (!workflowId) {
-    throw new ApiError(400, "Dograh workflow ID is missing for this call log.");
-  }
-
-  if (!callLog.dograhRunId) {
-    throw new ApiError(400, "Dograh run ID missing for this call log. Check trigger response mapping.", { success: false });
-  }
-
-  const updatedCallLog = await syncCallLogWithDograhRun({
-    callLog,
-    workflowId,
-    runId: callLog.dograhRunId
-  });
-
-  // Manual sync success resets auto-pipeline failure tracking
-  await CallLog.findByIdAndUpdate(updatedCallLog._id, {
+  const call = await getVapiCall(callLog.providerCallId);
+  const message = buildEndOfCallMessageFromVapiCall(call);
+  const result = await processVapiEndOfCall(message);
+  const updatedCallLog = result?.callLog || (await CallLog.findById(callLog._id));
+  await CallLog.findByIdAndUpdate(callLog._id, {
     $set: { autoSyncFailureCount: 0, autoSyncedAt: new Date(), pipelineStatus: "synced", lastPipelineError: null }
   });
-
   res.json({ success: true, callLog: updatedCallLog });
 });
 
@@ -176,51 +140,5 @@ export const extractLeadForCall = asyncHandler(async (req, res) => {
     lead: result.lead || null,
     extracted: result.extracted || null
   });
-});
-
-export const syncCallByRun = asyncHandler(async (req, res) => {
-  const { workflowId, runId, callLogId } = req.body;
-
-  if (!workflowId) throw new ApiError(400, "workflowId is required.");
-  if (!runId) throw new ApiError(400, "runId is required.");
-
-  let callLog = null;
-
-  if (callLogId) {
-    callLog = await CallLog.findOne({ _id: callLogId, ...filter(req) });
-    if (!callLog) throw new ApiError(404, "Call log not found");
-  } else {
-    callLog = await CallLog.findOne({
-      ...filter(req),
-      dograhWorkflowId: workflowId,
-      dograhRunId: runId
-    });
-  }
-
-  const existingAgent = callLog?.agentId ? await Agent.findById(callLog.agentId) : null;
-  const runDetails = await getDograhCallRunDetails(workflowId, runId, { userId: callLog?.userId || req.user._id, agent: existingAgent });
-
-  if (!callLog) {
-    const agent = await Agent.findOne({
-      ...filter(req),
-      dograhWorkflowId: workflowId
-    });
-
-    callLog = await CallLog.create({
-      userId: agent?.userId || req.user._id,
-      agentId: agent?._id,
-      dograhWorkflowId: workflowId,
-      dograhWorkflowUuid: agent?.dograhWorkflowUuid,
-      dograhRunId: runId,
-      source: "dograh",
-      callDirection: "outbound",
-      status: "initiated",
-      rawRunDetails: runDetails
-    });
-  }
-
-  const updatedCallLog = await applyRunDetailsToCallLog(callLog, runDetails);
-
-  res.json({ success: true, callLog: updatedCallLog, runDetails });
 });
 

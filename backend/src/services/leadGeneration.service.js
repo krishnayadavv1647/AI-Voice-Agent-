@@ -214,7 +214,7 @@ export async function extractLeadForCallLog(callLog, { failOnGeminiError }) {
     } catch (error) {
       console.error("Transcript fetch failed:", { status: error.response?.status, message: error.message });
       if (failOnGeminiError) {
-        throw new ApiError(502, "Transcript fetch failed. Please try again after Dograh transcript is ready.");
+        throw new ApiError(502, "Transcript fetch failed. Please try again once the call transcript is ready.");
       }
     }
   } else {
@@ -223,7 +223,7 @@ export async function extractLeadForCallLog(callLog, { failOnGeminiError }) {
   }
 
   if (!callLog.transcript) {
-    if (failOnGeminiError) throw new ApiError(400, "Transcript is missing. Sync the call first or wait for Dograh transcript.");
+    if (failOnGeminiError) throw new ApiError(400, "Transcript is missing. Sync the call first or wait for the call transcript.");
     return { callLog, lead: null, extracted: null };
   }
 

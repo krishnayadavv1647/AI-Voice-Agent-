@@ -456,7 +456,7 @@ function VoiceModal({ provider, integration, apiKey, setApiKey, showKey, setShow
         <div className="mb-4 space-y-2 rounded-xl border border-hairline bg-neutral-50 p-3 text-xs text-neutral-600">
           <div className="flex justify-between gap-3"><span>API key</span><strong className="break-all text-right text-neutral-800">{integration?.maskedApiKey || "Not saved"}</strong></div>
           <div className="flex justify-between gap-3"><span>Last validated</span><strong className="text-right text-neutral-800">{dateTime(integration?.lastValidatedAt)}</strong></div>
-          <div className="flex justify-between gap-3"><span>Dograh runtime</span><strong className="text-right capitalize text-neutral-800">{String(integration?.runtimeStatus || "configuration required").replaceAll("_", " ")}</strong></div>
+          <div className="flex justify-between gap-3"><span>Runtime status</span><strong className="text-right capitalize text-neutral-800">{String(integration?.runtimeStatus || "configuration required").replaceAll("_", " ")}</strong></div>
         </div>
       )}
 

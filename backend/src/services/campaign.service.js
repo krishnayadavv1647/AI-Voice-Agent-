@@ -27,11 +27,11 @@ function campaignCallErrorMessage(error) {
   }
 
   if (status === 404 || /status code 404|not found/i.test(text)) {
-    return "Dograh workflow was not found for this agent. Re-sync the agent workflow, then retry the failed campaign recipients.";
+    return "The calling provider could not find this agent. Re-sync the agent, then retry the failed campaign recipients.";
   }
 
   if (/telephony provider not configured/i.test(text)) {
-    return "Telephony provider is not configured in Dograh. Configure the caller/telephony provider, re-sync the agent, then retry.";
+    return "Telephony provider is not configured. Configure the caller/telephony provider, then retry.";
   }
 
   if (/callerIdNumber is required|calling_number|caller id/i.test(text)) {
@@ -94,7 +94,7 @@ export async function refreshCampaignStats(campaignId) {
 
 export async function getOwnedCampaign({ userId, campaignId, allowAdmin = false }) {
   const filter = allowAdmin ? { _id: campaignId } : { _id: campaignId, userId };
-  const campaign = await Campaign.findOne(filter).populate("agentId", "agentName businessName dograhWorkflowUuid callerIdNumber");
+  const campaign = await Campaign.findOne(filter).populate("agentId", "agentName businessName callerIdNumber");
   if (!campaign) throw new ApiError(404, "Campaign not found.");
   return campaign;
 }
@@ -236,7 +236,7 @@ export async function triggerCampaignRecipient(recipient) {
     return null;
   }
 
-  console.log("[Campaign Worker] triggering Dograh call", {
+  console.log("[Campaign Worker] triggering call", {
     campaignId: campaign._id.toString(),
     recipientId: claimed._id.toString(),
     phone: claimed.phone
@@ -261,7 +261,7 @@ export async function triggerCampaignRecipient(recipient) {
     });
 
     claimed.lastCallLogId = callLog._id;
-    claimed.dograhRunId = callLog.dograhRunId;
+    claimed.providerCallId = callLog.providerCallId;
     claimed.lastOutcome = callLog.normalizedStatus;
     await claimed.save();
 
@@ -278,7 +278,7 @@ export async function triggerCampaignRecipient(recipient) {
       campaignId: campaign._id.toString(),
       recipientId: claimed._id.toString(),
       callLogId: callLog._id.toString(),
-      dograhRunId: callLog.dograhRunId
+      providerCallId: callLog.providerCallId
     });
 
     return claimed;
@@ -307,7 +307,7 @@ export async function syncCampaignRecipientFromCall(callLog) {
 
   const outcome = normalizeCampaignStatus(callLog.normalizedStatus || callLog.status);
   recipient.lastCallLogId = callLog._id;
-  recipient.dograhRunId = callLog.dograhRunId || recipient.dograhRunId;
+  recipient.providerCallId = callLog.providerCallId || recipient.providerCallId;
   recipient.lastOutcome = outcome;
 
   if (outcome === "calling") {

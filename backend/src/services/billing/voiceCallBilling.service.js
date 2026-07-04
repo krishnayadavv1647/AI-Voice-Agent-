@@ -37,12 +37,10 @@ export function computeVoiceCharge({ durationSeconds, normalizedStatus, perMinut
   };
 }
 
-// Billing mode follows the account the call ACTUALLY runs on, not a preference — because Dograh
-// workflows are account-bound and cannot be re-keyed per call. An agent bound to the user's own
-// Dograh integration is billed the small BYOK per-minute fee; a platform-bound agent spends
-// platform credits.
-function billingModeForAgent(agent) {
-  return agent?.dograhConnectionType === "user_integration" ? "byok" : "platform_credits";
+// Voice calls run on the platform's Vapi account, so they always spend platform credits. (There is
+// no BYOK voice provider after the move to Vapi; the "byok" mode is retained for other meters.)
+function billingModeForAgent() {
+  return "platform_credits";
 }
 
 // Called just before a call is placed. For platform_credits it reserves an estimated cost and
@@ -67,7 +65,7 @@ export async function reserveVoiceCallBilling({ userId, agent }) {
       blocked: true,
       billingMode,
       billingCallId,
-      message: "You don't have enough platform credits to start this call. Add credits or use an agent connected to your own Dograh key."
+      message: "You don't have enough platform credits to start this call. Add credits to continue."
     };
   }
 

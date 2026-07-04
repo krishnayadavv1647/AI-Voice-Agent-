@@ -278,7 +278,7 @@ export default function Campaigns() {
                 <div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Campaign Recipients</h2></div>
                 <div className="table-wrap">
                   <table className="table w-full min-w-[1100px]">
-                    <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Scheduled At</th><th>Attempts</th><th>Last Outcome</th><th>Last Error</th><th>Dograh Run ID</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Scheduled At</th><th>Attempts</th><th>Last Outcome</th><th>Last Error</th><th>Provider Call ID</th></tr></thead>
                     <tbody>
                       {recipients.map((recipient) => (
                         <tr key={recipient._id}>
@@ -291,7 +291,7 @@ export default function Campaigns() {
                           <td className="max-w-[20rem]">
                             <span className="line-clamp-3 text-rose-700" title={recipient.lastError || ""}>{recipient.lastError || "-"}</span>
                           </td>
-                          <td className="break-anywhere">{recipient.dograhRunId || "-"}</td>
+                          <td className="break-anywhere">{recipient.providerCallId || "-"}</td>
                         </tr>
                       ))}
                       {!recipients.length && <tr><td colSpan="8" className="text-center text-neutral-500">No recipients yet.</td></tr>}

@@ -4,8 +4,6 @@ import TelephonyConfig from "../models/TelephonyConfig.js";
 import { decryptSecret } from "../utils/secretCrypto.js";
 import { ensureVapiPhoneNumber } from "./vapi.service.js";
 import { applyCallOutcomeToLog } from "./callOutcome.service.js";
-import { getDograhLLMRuntimeSummary } from "./dograhLLMConfigSync.service.js";
-import { assertDograhVoiceReadyForWebCall } from "./dograhVoiceConfigSync.service.js";
 import { reserveVoiceCallBilling, releaseVoiceReservation } from "./billing/voiceCallBilling.service.js";
 import { getProvider } from "../providers/index.js";
 import { ApiError } from "../utils/apiError.js";
@@ -29,41 +27,8 @@ function firstSpokenMessage(agent) {
 function publicCallLog(callLog) {
   const value = callLog?.toObject ? callLog.toObject() : { ...(callLog || {}) };
   delete value.providerPayload;
-  delete value.rawDograhPayload;
   delete value.rawWebhookPayload;
   return value;
-}
-
-// TODO Layer D: remove once Dograh is gone. Kept as a pass-through for non-dograh agents so the
-// seven callers and the publish path keep working; the Dograh body only runs for legacy dograh rows.
-export async function assertDograhAgentReadyForCalls({ agent, userId, requirePhone = false, phoneNumber }) {
-  if (agent?.provider !== "dograh") return; // vapi/custom agents: nothing to verify here
-
-  const workflowId = agent.dograhWorkflowId || agent.providerWorkflowId;
-  if (!workflowId || !agent.dograhWorkflowUuid) {
-    throw new ApiError(400, "Dograh workflow sync must finish before this agent can place calls. Save the agent and wait until the workflow is synced.");
-  }
-  if (agent.workflowSyncStatus && agent.workflowSyncStatus !== "synced") {
-    throw new ApiError(400, agent.workflowSyncError || "Dograh workflow runtime sync is not complete yet. Save the agent and wait until sync is marked synced.");
-  }
-
-  try {
-    await assertDograhVoiceReadyForWebCall({ agent, userId: userId || agent.userId });
-  } catch (error) {
-    throw new ApiError(400, error.safeMessage || error.message || "The selected voice provider is not verified with Dograh yet.", { configurationRequired: true });
-  }
-
-  const llmRuntime = await getDograhLLMRuntimeSummary({ agent, userId: userId || agent.userId });
-  if (llmRuntime.requiresSync && llmRuntime.dograhSyncStatus !== "synced") {
-    throw new ApiError(400, llmRuntime.dograhSyncError || "Dograh LLM settings are not verified yet. Save the agent and wait until the LLM status is synced.", { llmRuntime });
-  }
-
-  if (requirePhone) {
-    if (!phoneNumber) throw new ApiError(400, "phoneNumber is required before triggering a Dograh call.");
-    if (!agent.callerIdNumber) throw new ApiError(400, "callerIdNumber is required before triggering calls.");
-    assertE164(phoneNumber, "Phone number");
-    assertE164(agent.callerIdNumber, "Caller ID number");
-  }
 }
 
 // Lazily create the provider assistant if it is missing, so agents created before auto-wiring
@@ -71,7 +36,7 @@ export async function assertDograhAgentReadyForCalls({ agent, userId, requirePho
 // and future calls can correlate. Surfaces the real create error (e.g. missing VAPI_PRIVATE_KEY)
 // instead of the generic "assistant is not created yet" from startCall.
 async function ensureProviderAssistant(agent) {
-  if (agent.provider === "dograh" || agent.providerAgentId) return;
+  if (agent.providerAgentId) return;
 
   const created = await getProvider(agent.provider).create(agent);
   const providerAgentId = created?.providerAgentId;
@@ -119,9 +84,9 @@ async function ensureVapiPhoneNumberId(agent) {
   console.log("[Vapi phone number provisioned]", { localAgentId: agent._id.toString(), number, vapiPhoneNumberId: id });
 }
 
-// Layer C: outbound calls go through the provider abstraction (Vapi is the live path). Signature,
-// billing reserve/release, applyCallOutcomeToLog, and the { callLog, publicCallLog, dograhResponse }
-// return shape are preserved because seven callers depend on them.
+// Outbound calls go through the provider abstraction (Vapi is the live path). Signature,
+// billing reserve/release, applyCallOutcomeToLog, and the { callLog, publicCallLog, providerResponse }
+// return shape are preserved because the callers depend on them.
 export async function triggerOutboundCallForAgent({
   agent,
   userId,
@@ -213,10 +178,9 @@ export async function triggerOutboundCallForAgent({
     callerNumber: phoneNumber
   });
 
-  const backCompat = { status: rawProviderStatus, dograhRunId: null, providerCallId };
+  const providerResponse = { status: rawProviderStatus, providerCallId };
   return {
-    dograhResponse: backCompat,   // back-compat for existing destructuring
-    providerResponse: backCompat, // preferred going forward
+    providerResponse,
     callLog,
     publicCallLog: publicCallLog(callLog)
   };

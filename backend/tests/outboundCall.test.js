@@ -42,10 +42,8 @@ test("outbound call places via the provider and writes providerCallId + provider
     phoneNumber: "+17578297061"
   });
 
-  // Back-compat + preferred return fields both present.
-  assert.equal(result.dograhResponse.providerCallId, "vapi_call_xyz");
   assert.equal(result.providerResponse.providerCallId, "vapi_call_xyz");
-  assert.equal(result.dograhResponse.status, "initiated");
+  assert.equal(result.providerResponse.status, "initiated");
   assert.equal(createdDoc.providerCallId, "vapi_call_xyz");
   assert.equal(createdDoc.provider, "vapi");
   assert.equal(createdDoc.source, "vapi");
