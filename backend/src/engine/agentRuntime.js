@@ -9,7 +9,7 @@ import { decryptSecret } from "../utils/crypto.js";
 import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-const VOICE_HISTORY_LIMIT = 8;
+const VOICE_HISTORY_LIMIT = 6;
 
 function dbAvailable() {
   return mongoose.connection?.readyState === 1;
@@ -27,9 +27,9 @@ function numberSetting(...values) {
   return undefined;
 }
 
-export function clampVoiceMaxTokens(value, fallback = 96) {
+export function clampVoiceMaxTokens(value, fallback = 140) {
   const selected = numberSetting(value, fallback) ?? fallback;
-  return Math.min(Math.max(selected, 32), 160);
+  return Math.min(Math.max(selected, 80), 180);
 }
 
 function firstDefined(...values) {
@@ -49,6 +49,30 @@ function envModelForProvider(provider) {
 function normalizeRuntimeProvider(value) {
   const provider = normalizeLLMProvider(value === "platform_default" ? "google_gemini" : value);
   return provider === "platform_default" ? "google_gemini" : provider;
+}
+
+function agentHasExecutableTools(agent) {
+  return [
+    agent?.tools,
+    agent?.workflowNodes,
+    agent?.nodes,
+    agent?.actions,
+    agent?.bookingApis,
+    agent?.settings?.tools,
+    agent?.settings?.actions
+  ].some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value && typeof value === "object" && Object.keys(value).length));
+}
+
+function resolveToolCalling({ agent, agentLLMSettings, savedSettings, voiceMode }) {
+  const requested = firstDefined(agentLLMSettings.toolCalling, savedSettings.toolCalling, voiceMode ? false : true) === true;
+  if (!voiceMode) return requested;
+
+  const enabled = requested && agentHasExecutableTools(agent);
+  console.log("[Vapi LLM config] toolCalling=" + String(enabled), {
+    agentId: agent?._id?.toString?.() || agent?._id
+  });
+  if (enabled) console.warn("[Vapi warning] Tool calling may increase call latency.");
+  return enabled;
 }
 
 async function loadSavedLLMConfiguration(agent) {
@@ -136,16 +160,17 @@ export async function resolveAgentLLMRuntimeConfig({
     agentLLMSettings.temperature,
     savedSettings.temperature,
     process.env.GEMINI_TEMPERATURE,
-    0.3
-  ) ?? 0.3;
+    voiceMode ? 0.35 : 0.3
+  ) ?? (voiceMode ? 0.35 : 0.3);
 
   const rawMaxTokens = firstDefined(
     agentLLMSettings.maxTokens,
     savedSettings.maxTokens,
     process.env.GEMINI_MAX_TOKENS,
-    96
+    140
   );
-  const maxTokens = voiceMode ? clampVoiceMaxTokens(rawMaxTokens, 96) : (numberSetting(rawMaxTokens, 512) ?? 512);
+  const maxTokens = voiceMode ? clampVoiceMaxTokens(rawMaxTokens, 140) : (numberSetting(rawMaxTokens, 512) ?? 512);
+  const toolCalling = resolveToolCalling({ agent, agentLLMSettings, savedSettings, voiceMode });
 
   return {
     provider,
@@ -160,7 +185,7 @@ export async function resolveAgentLLMRuntimeConfig({
       topP: numberSetting(agentLLMSettings.topP, savedSettings.topP),
       timeoutMs: numberSetting(agentLLMSettings.timeoutMs, savedSettings.timeoutMs, 30000),
       streaming: firstDefined(agentLLMSettings.streaming, savedSettings.streaming, true) !== false,
-      toolCalling: firstDefined(agentLLMSettings.toolCalling, savedSettings.toolCalling, true) !== false,
+      toolCalling,
       voiceMode
     }
   };

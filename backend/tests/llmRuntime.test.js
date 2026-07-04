@@ -67,10 +67,10 @@ test("env fallback API key is used when connected account is missing", async () 
   });
 });
 
-test("voice max tokens are clamped between 32 and 160", () => {
-  assert.equal(clampVoiceMaxTokens(1), 32);
-  assert.equal(clampVoiceMaxTokens(96), 96);
-  assert.equal(clampVoiceMaxTokens(1000), 160);
+test("voice max tokens are clamped between 80 and 180", () => {
+  assert.equal(clampVoiceMaxTokens(1), 80);
+  assert.equal(clampVoiceMaxTokens(140), 140);
+  assert.equal(clampVoiceMaxTokens(1000), 180);
 });
 
 test("temperature defaults to 0.3", async () => {
@@ -78,6 +78,36 @@ test("temperature defaults to 0.3", async () => {
     const config = await resolveAgentLLMRuntimeConfig({ agent: { settings: {} }, skipDb: true });
     assert.equal(config.settings.temperature, 0.3);
   });
+});
+
+test("voice temperature defaults to 0.35", async () => {
+  await withEnv({ GEMINI_TEMPERATURE: undefined }, async () => {
+    const config = await resolveAgentLLMRuntimeConfig({ agent: { settings: {} }, voiceMode: true, skipDb: true });
+    assert.equal(config.settings.temperature, 0.35);
+  });
+});
+
+test("toolCalling defaults to false for voice when no tools are configured", async () => {
+  const config = await resolveAgentLLMRuntimeConfig({
+    agent: { settings: {} },
+    voiceMode: true,
+    skipDb: true
+  });
+
+  assert.equal(config.settings.toolCalling, false);
+});
+
+test("toolCalling can be enabled for voice when tools are configured", async () => {
+  const config = await resolveAgentLLMRuntimeConfig({
+    agent: {
+      settings: { llm: { toolCalling: true } },
+      tools: [{ name: "booking" }]
+    },
+    voiceMode: true,
+    skipDb: true
+  });
+
+  assert.equal(config.settings.toolCalling, true);
 });
 
 test("resolver logs do not include API keys", async () => {

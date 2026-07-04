@@ -12,7 +12,7 @@ function numberSetting(value, fallback) {
 
 function maxTokens(settings = {}) {
   const raw = settings.max_tokens ?? settings.maxOutputTokens ?? settings.maxTokens;
-  if (settings.voiceMode) return Math.min(Math.max(numberSetting(raw, 96), 32), 160);
+  if (settings.voiceMode) return Math.min(Math.max(numberSetting(raw, 140), 80), 180);
   return numberSetting(raw, 512);
 }
 
@@ -20,7 +20,7 @@ function requestPayload({ model, messages, settings = {}, stream = false }) {
   return {
     model: model || process.env.OPENAI_MODEL || "gpt-4o-mini",
     messages,
-    temperature: numberSetting(settings.temperature, 0.3),
+    temperature: numberSetting(settings.temperature, settings.voiceMode ? 0.35 : 0.3),
     max_tokens: maxTokens(settings),
     stream
   };

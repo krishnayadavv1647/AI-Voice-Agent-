@@ -50,7 +50,7 @@ function voiceBuffer(flushes, options = {}) {
 
 test("voice chunk buffer combines token fragments into complete phrase chunks", async () => {
   const flushes = [];
-  const buffer = voiceBuffer(flushes);
+  const buffer = voiceBuffer(flushes, { firstFlushChars: 80 });
   for (const delta of ["Yes", ",", " we", " can", " help", " you", " with", " that", ".", " What", " service", " do", " you", " need", "?"]) {
     buffer.push(delta);
   }
@@ -72,9 +72,53 @@ test("voice chunk buffer does not split words in the middle on length flush", ()
   assert.equal(flushes[0].includes("continu"), false);
 });
 
+test("voice chunk buffer first flush happens within timer threshold", () => {
+  const flushes = [];
+  const timers = [];
+  let currentTime = 0;
+  const buffer = voiceBuffer(flushes, {
+    now: () => currentTime,
+    setTimer: (fn, ms) => {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    firstMaxWaitMs: 120
+  });
+
+  buffer.push("We can help");
+  assert.equal(timers.at(-1).ms, 120);
+  currentTime = 120;
+  timers.at(-1).fn();
+
+  assert.deepEqual(flushes, ["We can help"]);
+});
+
+test("voice chunk buffer max-gap watchdog flushes buffered complete words", () => {
+  const flushes = [];
+  const timers = [];
+  let currentTime = 0;
+  const buffer = voiceBuffer(flushes, {
+    now: () => currentTime,
+    setTimer: (fn, ms) => {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    firstFlushChars: 80,
+    firstMaxWaitMs: 300,
+    maxWaitMs: 300,
+    maxGapMs: 700
+  });
+
+  buffer.push("This first phrase is ready.");
+  currentTime = 700;
+  buffer.push(" Another phrase");
+
+  assert.deepEqual(flushes, ["This first phrase is ready.", "Another phrase"]);
+});
+
 test("voice chunk buffer flushes on punctuation once a spoken phrase is ready", () => {
   const flushes = [];
-  const buffer = voiceBuffer(flushes);
+  const buffer = voiceBuffer(flushes, { firstFlushChars: 80 });
   buffer.push("Please hold on while I check");
   buffer.push(".");
 
@@ -98,6 +142,14 @@ test("voice chunk buffer ignores empty chunks", async () => {
   await buffer.flushFinal();
 
   assert.deepEqual(flushes, []);
+});
+
+test("voice chunk buffer can flush quickly without splitting tiny raw tokens", () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes);
+  for (const delta of ["we", " can", " help", " you", " today"]) buffer.push(delta);
+
+  assert.deepEqual(flushes, ["we can help you today"]);
 });
 
 // ---- streaming path --------------------------------------------------------
@@ -153,6 +205,51 @@ test("streaming path writes the first chunk before the full runtime stream compl
   assert.equal(firstChunkWasWrittenBeforeSecond, true);
   assert.ok(res.chunks.join("").includes("First phrase arrives quickly."));
   assert.ok(res.chunks.join("").includes("Second chunk."));
+});
+
+test("latency logs include first_llm_token, first_sse_flush, and breakdown", async () => {
+  const res = fakeRes();
+  const req = {
+    body: { stream: true, model: "agent_1", messages: [{ role: "user", content: "hi" }], call: { id: "latency_1" } }
+  };
+  const originalLog = console.log;
+  const logs = [];
+  console.log = (...args) => logs.push(args);
+  try {
+    async function* runCustomAgentStream() {
+      yield "Helpful answer with punctuation.";
+    }
+    await vapiChatCompletions(req, res, {
+      loadAgent: async () => ({ _id: "agent_1" }),
+      runCustomAgentStream
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  const text = logs.map((entry) => String(entry[0])).join("\n");
+  assert.match(text, /\[Vapi latency\] first_llm_token/);
+  assert.match(text, /\[Vapi latency\] first_sse_flush/);
+  assert.match(text, /\[Vapi latency breakdown\]/);
+});
+
+test("filler text is not sent when first token is delayed unless explicitly enabled", async () => {
+  const res = fakeRes();
+  const req = {
+    body: { stream: true, model: "agent_1", messages: [{ role: "user", content: "hi" }], call: { id: "no_filler" } }
+  };
+
+  async function* runCustomAgentStream() {
+    yield "Actual answer.";
+  }
+
+  await vapiChatCompletions(req, res, {
+    loadAgent: async () => ({ _id: "agent_1", settings: { llm: { enableFirstTokenFiller: false } } }),
+    runCustomAgentStream
+  });
+
+  assert.equal(res.chunks.join("").includes("One moment, let me check that."), false);
+  assert.ok(res.chunks.join("").includes("Actual answer."));
 });
 
 test("agent-not-found streams the fallback and still returns 200", async () => {
