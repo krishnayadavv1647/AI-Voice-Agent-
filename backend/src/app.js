@@ -19,8 +19,6 @@ import campaignRoutes from "./routes/campaign.routes.js";
 import connectionsRoutes from "./routes/connections.routes.js";
 import creditsRoutes from "./routes/credits.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
-import dograhIntegrationRoutes from "./routes/dograhIntegration.routes.js";
-import dograhRoutes from "./routes/dograh.routes.js";
 import emailRoutes from "./routes/email.routes.js";
 import emailIntegrationRoutes from "./routes/emailIntegration.routes.js";
 import followUpRoutes from "./routes/followUp.routes.js";
@@ -37,9 +35,6 @@ import telephonyRoutes from "./routes/telephony.routes.js";
 import telegramIntegrationRoutes from "./routes/telegramIntegration.routes.js";
 import vapiRoutes from "./routes/vapi.routes.js";
 import voiceIntegrationRoutes from "./routes/voiceIntegration.routes.js";
-import webhookRoutes from "./routes/webhook.routes.js";
-
-import { dograhWebhook } from "./controllers/webhook.controller.js";
 import { handleBillingWebhook } from "./controllers/billing.controller.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
@@ -86,9 +81,6 @@ app.use("/api/auth", authRoutes);
 app.use("/api/bio-page", bioPageRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
-app.post("/api/dograh/webhook", dograhWebhook);
-app.use("/api/dograh", dograhRoutes);
-
 app.use("/api/email", emailRoutes);
 app.use("/api/email-integrations", emailIntegrationRoutes);
 app.use("/api/followups", followUpRoutes);
@@ -97,7 +89,6 @@ app.use("/api/agent-templates", agentTemplateRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/appointments", appointmentRoutes);
 
-app.post("/api/calls/webhook", dograhWebhook);
 app.use("/api/calls", callRoutes);
 app.use("/api/campaigns", campaignRoutes);
 
@@ -113,7 +104,6 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/plans", plansRoutes);
 app.use("/api/connections", connectionsRoutes);
 app.use("/api/credits", creditsRoutes);
-app.use("/api/integrations/dograh", dograhIntegrationRoutes);
 app.use("/api/integrations/telegram", telegramIntegrationRoutes);
 // Vapi custom-LLM + webhook. The /chat/completions route streams its own SSE response and must not
 // be wrapped in any middleware that buffers the body. Both routes consume plain JSON (fine under the
@@ -122,7 +112,6 @@ app.use("/api/integrations/telegram", telegramIntegrationRoutes);
 app.use("/api/vapi", vapiRoutes);
 app.use("/api", voiceIntegrationRoutes);
 app.use("/api", llmIntegrationRoutes);
-app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
 
 // Error handlers

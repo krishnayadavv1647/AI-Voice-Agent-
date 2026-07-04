@@ -17,7 +17,7 @@ export const DeepgramSTTProvider = {
     supportsInterimResults: true,
     supportsSmartFormatting: true,
     supportsPunctuation: true,
-    dograhRuntimeSupport: true
+    runtimeSupport: true
   },
   validateCredentials: DeepgramTTSProvider.validateCredentials,
   async listModels(apiKey) {

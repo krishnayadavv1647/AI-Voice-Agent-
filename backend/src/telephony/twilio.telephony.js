@@ -158,21 +158,10 @@ export const TwilioTelephony = {
   },
 
   handleIncomingCall({ reply, agent, config }) {
-    const inboundMode = config?.inboundMode || (config?.inboundEnabled === false ? "disabled" : "dograh_ai");
+    const inboundMode = config?.inboundMode || (config?.inboundEnabled === false ? "disabled" : "ai_agent");
 
     if (inboundMode === "disabled") {
       return buildFailureResponse("Inbound calling is currently unavailable.");
-    }
-
-    if (inboundMode === "dograh_ai") {
-      if (!config?.dograhInboundWebhookUrl) {
-        return buildFailureResponse("We are unable to connect your call right now. Please try again later.");
-      }
-
-      return {
-        contentType: "text/xml",
-        body: `<Response><Redirect method="POST">${escapeXml(config.dograhInboundWebhookUrl)}</Redirect></Response>`
-      };
     }
 
     const message = reply || agent?.firstMessage || agent?.greetingMessage || "Hello. How can I help you today?";

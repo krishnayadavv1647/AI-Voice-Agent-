@@ -182,7 +182,7 @@ export default function Agents() {
       {!agents.length ? (
         <EmptyState
           title="No agents yet. Create your first AI voice agent."
-          description="Choose a template, add business knowledge, and launch outbound AI calls through Dograh."
+          description="Choose a template, add business knowledge, and launch outbound AI calls through Vapi."
           action={<Link className="agents-library-create" to="/create-agent"><Plus size={16} />Create</Link>}
         />
       ) : (

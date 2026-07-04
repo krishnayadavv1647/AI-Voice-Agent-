@@ -35,18 +35,18 @@ export function isOwnKeyActive(integration) {
 
 const defaultDeps = {
   getBalance: ledger.getBalance,
-  getDograhConnection: (userId) => UserIntegration.findOne({ userId, provider: "dograh" }),
+  getVoiceConnection: (userId) => UserIntegration.findOne({ userId, provider: "vapi", status: "connected" }),
   decrypt: decryptSecret
 };
 
 // Resolve the provider for a single call attempt. MUST be called fresh at execution time for
 // every attempt (including scheduled/recurring runs) — never cache the result across calls,
 // because balance, preference, and key health all change between attempts.
-export async function resolveProvider(userId, action = "dograh_call", deps = {}) {
-  const { getBalance, getDograhConnection, decrypt } = { ...defaultDeps, ...deps };
+export async function resolveProvider(userId, action = "voice_call", deps = {}) {
+  const { getBalance, getVoiceConnection, decrypt } = { ...defaultDeps, ...deps };
   const { cost, platformFee } = getActionPricing(action);
 
-  const [balance, integration] = await Promise.all([getBalance(userId), getDograhConnection(userId)]);
+  const [balance, integration] = await Promise.all([getBalance(userId), getVoiceConnection(userId)]);
   const ownKeyActive = isOwnKeyActive(integration);
 
   const decision = decideProviderMode({

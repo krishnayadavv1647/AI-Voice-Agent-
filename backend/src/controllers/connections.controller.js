@@ -4,7 +4,12 @@ import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { decryptSecret, maskSecret } from "../utils/crypto.js";
 
-function sanitizeDograhConnection(integration, walletBalance) {
+// The provider a user may bring their own key for on voice calls. There is no BYOK voice provider
+// after the platform moved fully to Vapi, so this normally resolves to "not connected"; the shape
+// is kept so the billing resolver and the Connections UI keep working if BYOK is reintroduced.
+const VOICE_BYOK_PROVIDER = "vapi";
+
+function sanitizeVoiceConnection(integration, walletBalance) {
   if (!integration) {
     return {
       connected: false,
@@ -45,21 +50,21 @@ function sanitizeDograhConnection(integration, walletBalance) {
   };
 }
 
-// GET /api/connections/dograh
-export const getDograhConnection = asyncHandler(async (req, res) => {
+// GET /api/connections/voice
+export const getVoiceConnection = asyncHandler(async (req, res) => {
   const [integration, walletBalance] = await Promise.all([
-    UserIntegration.findOne({ userId: req.user._id, provider: "dograh" }),
+    UserIntegration.findOne({ userId: req.user._id, provider: VOICE_BYOK_PROVIDER }),
     ledger.getBalance(req.user._id)
   ]);
-  res.json(sanitizeDograhConnection(integration, walletBalance));
+  res.json(sanitizeVoiceConnection(integration, walletBalance));
 });
 
-// PATCH /api/connections/dograh/preferences  { preferOwnKey, fallbackOnFailure }
-export const updateDograhPreferences = asyncHandler(async (req, res) => {
-  const integration = await UserIntegration.findOne({ userId: req.user._id, provider: "dograh" });
+// PATCH /api/connections/voice/preferences  { preferOwnKey, fallbackOnFailure }
+export const updateVoicePreferences = asyncHandler(async (req, res) => {
+  const integration = await UserIntegration.findOne({ userId: req.user._id, provider: VOICE_BYOK_PROVIDER });
   if (!integration || integration.status !== "connected" || !integration.apiKeyEncrypted) {
-    throw new ApiError(400, "Connect and validate a Dograh API key before setting key preferences.", {
-      code: "DOGRAH_KEY_NOT_VALIDATED"
+    throw new ApiError(400, "Connect and validate a voice API key before setting key preferences.", {
+      code: "VOICE_KEY_NOT_VALIDATED"
     });
   }
 
@@ -72,7 +77,7 @@ export const updateDograhPreferences = asyncHandler(async (req, res) => {
   await integration.save();
 
   const walletBalance = await ledger.getBalance(req.user._id);
-  res.json(sanitizeDograhConnection(integration, walletBalance));
+  res.json(sanitizeVoiceConnection(integration, walletBalance));
 });
 
-export default { getDograhConnection, updateDograhPreferences };
+export default { getVoiceConnection, updateVoicePreferences };

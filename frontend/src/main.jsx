@@ -30,7 +30,6 @@ import TestAgent from "./pages/TestAgent.jsx";
 import Admin from "./pages/Admin.jsx";
 import VoiceLanguage from "./pages/VoiceLanguage.jsx";
 import Integrations from "./pages/Integrations.jsx";
-import DograhSettings from "./pages/DograhSettings.jsx";
 import EmailOutreach from "./pages/EmailOutreach.jsx";
 import EmailInbox from "./pages/EmailInbox.jsx";
 import EmailIntegrationSettings from "./pages/EmailIntegrationSettings.jsx";
@@ -89,7 +88,6 @@ function Router() {
         <Route path="integrations/llm-providers" element={<Navigate to="/integrations" replace />} />
         <Route path="telephony-configuration" element={<TelephonyConfiguration />} />
         <Route path="telephony-configuration/:id" element={<TelephonyConfiguration />} />
-        <Route path="dograh-settings" element={<DograhSettings />} />
         <Route path="knowledge" element={<KnowledgeBase />} />
         <Route path="billing" element={<Billing />} />
         <Route path="credits" element={<Credits />} />

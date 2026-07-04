@@ -28,7 +28,7 @@ export default function TestAgent() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="Test Call" description="Trigger a real Dograh test workflow call through the backend." action={<Link className="btn-secondary" to={`/agents/${id}`}>Agent Details</Link>} />
+      <PageHeader title="Test Call" description="Trigger a real Vapi test call through the backend." action={<Link className="btn-secondary" to={`/agents/${id}`}>Agent Details</Link>} />
       <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
         <form className="card space-y-4" onSubmit={submit}>
           <label className="block text-sm font-medium text-neutral-700">
@@ -41,11 +41,11 @@ export default function TestAgent() {
         </form>
 
         <section className="card">
-          <h2 className="mb-3 font-semibold text-ink">Dograh response</h2>
+          <h2 className="mb-3 font-semibold text-ink">Provider response</h2>
           {result ? (
             <pre className="max-h-[520px] overflow-auto rounded-lg bg-ink p-4 text-xs text-slate-100">{JSON.stringify(result, null, 2)}</pre>
           ) : (
-            <p className="text-sm text-neutral-500">The Dograh response will appear after a call is triggered.</p>
+            <p className="text-sm text-neutral-500">The provider response will appear after a call is triggered.</p>
           )}
         </section>
       </div>

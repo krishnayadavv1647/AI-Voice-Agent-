@@ -4,7 +4,7 @@ import { api } from "../lib/api.js";
 
 export const defaultLLMConfiguration = {
   integrationId: null,
-  provider: "dograh_default",
+  provider: "google_gemini",
   model: "",
   settings: {
     temperature: 0.4,
@@ -14,17 +14,11 @@ export const defaultLLMConfiguration = {
     presencePenalty: 0,
     timeoutMs: 30000,
     streaming: true,
-    toolCalling: true,
-    fallbackToDograhDefault: false
-  },
-  dograhSyncStatus: "not_configured",
-  dograhSyncError: "",
-  dograhEffectiveProvider: "",
-  dograhEffectiveModel: ""
+    toolCalling: true
+  }
 };
 
 const PROVIDERS = [
-  { value: "dograh_default", label: "Dograh Default - Recommended" },
   { value: "openai", label: "OpenAI" },
   { value: "google_gemini", label: "Google Gemini" },
   { value: "groq", label: "Groq" },
@@ -34,13 +28,6 @@ const PROVIDERS = [
 
 function providerLabel(provider) {
   return PROVIDERS.find((item) => item.value === provider)?.label || provider;
-}
-
-function statusClass(status) {
-  if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  if (status === "pending" || status === "syncing") return "border-sky-200 bg-sky-50 text-sky-800";
-  if (status === "failed" || status === "configuration_required") return "border-amber-200 bg-amber-50 text-amber-800";
-  return "border-hairline bg-white text-neutral-700";
 }
 
 function modelOptionLabel(model) {
@@ -110,7 +97,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
   );
 
   useEffect(() => {
-    if (config.provider === "dograh_default" || !config.integrationId) {
+    if (!config.integrationId) {
       setModels([]);
       return;
     }
@@ -179,9 +166,8 @@ export default function LLMConfigurationPanel({ value, onChange }) {
     }).slice(0, category === "recommended" ? 80 : 250);
   }, [models, modelQuery, category, config.provider]);
 
-  const dograhSynced = config.dograhSyncStatus === "synced";
-  const credentialsConnected = config.provider === "dograh_default" || Boolean(config.integrationId);
-  const agentConfigured = config.provider === "dograh_default" || Boolean(config.integrationId && config.model);
+  const credentialsConnected = Boolean(config.integrationId);
+  const agentConfigured = Boolean(config.integrationId && config.model);
 
   return (
     <section className="space-y-4 md:col-span-2">
@@ -191,7 +177,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           <ShieldCheck className="mt-0.5 text-neutral-500" size={19} />
           <div>
             <h3 className="font-bold text-ink">LLM Configuration</h3>
-            <p className="mt-1 text-sm text-neutral-500">Dograh remains the runtime. This only manages provider credentials, model selection, and Dograh overrides.</p>
+            <p className="mt-1 text-sm text-neutral-500">Choose the model configuration used by the voice assistant.</p>
           </div>
         </div>
 
@@ -203,56 +189,48 @@ export default function LLMConfigurationPanel({ value, onChange }) {
             </select>
           </label>
 
-          {config.provider !== "dograh_default" && (
-            <label className="block text-sm font-semibold text-neutral-700">
-              Connected Account
-              <select className="mt-1" value={config.integrationId || ""} onChange={(event) => patch({ integrationId: event.target.value, model: "" })}>
-                <option value="">Select account</option>
-                {accounts.map((account) => <option key={account.id} value={account.id}>{account.connectionName} ({account.maskedApiKey})</option>)}
-              </select>
-            </label>
-          )}
+          <label className="block text-sm font-semibold text-neutral-700">
+            Connected Account
+            <select className="mt-1" value={config.integrationId || ""} onChange={(event) => patch({ integrationId: event.target.value, model: "" })}>
+              <option value="">Select account</option>
+              {accounts.map((account) => <option key={account.id} value={account.id}>{account.connectionName} ({account.maskedApiKey})</option>)}
+            </select>
+          </label>
 
-          {config.provider === "dograh_default" ? (
-            <div className="rounded-xl border border-hairline bg-white p-3 text-sm text-neutral-600 xl:col-span-2">Managed by Dograh. No external API key or model override is used.</div>
-          ) : (
-            <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
-              Manual Model ID
-              <input className="mt-1" value={config.model || ""} onChange={(event) => patch({ model: event.target.value })} placeholder="Paste model ID" />
-            </label>
-          )}
+          <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
+            Manual Model ID
+            <input className="mt-1" value={config.model || ""} onChange={(event) => patch({ model: event.target.value })} placeholder="Paste model ID" />
+          </label>
         </div>
 
-        {config.provider !== "dograh_default" && (
-          <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
-            <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]">
-              <label className="relative block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-                <input className="pl-9" value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder="Search models" />
-              </label>
-              <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                {categories.map((item) => <option key={item} value={item}>{item === "recommended" ? "Recommended for Voice Agents" : item}</option>)}
-              </select>
-              <button type="button" className="btn-secondary" disabled={loadingModels || !config.integrationId} onClick={refreshModels}>
-                {loadingModels ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}Refresh
-              </button>
-            </div>
-            <label className="block text-sm font-semibold text-neutral-700">
-              Model
-              <select className="mt-1" disabled={!config.integrationId || loadingModels} value={config.model || ""} onChange={(event) => patch({ model: event.target.value })}>
-                <option value="">{loadingModels ? "Loading models..." : "Select model"}</option>
-                {filteredModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {modelOptionLabel(model)}
-                  </option>
-                ))}
-              </select>
-              {!loadingModels && config.integrationId && models.length === 0 && (
-                <p className="mt-2 text-xs font-medium text-amber-700">No chat-compatible models were returned for this provider account.</p>
-              )}
+        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+          <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]">
+            <label className="relative block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+              <input className="pl-9" value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder="Search models" />
             </label>
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              {categories.map((item) => <option key={item} value={item}>{item === "recommended" ? "Recommended for Voice Agents" : item}</option>)}
+            </select>
+            <button type="button" className="btn-secondary" disabled={loadingModels || !config.integrationId} onClick={refreshModels}>
+              {loadingModels ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}Refresh
+            </button>
           </div>
-        )}
+          <label className="block text-sm font-semibold text-neutral-700">
+            Model
+            <select className="mt-1" disabled={!config.integrationId || loadingModels} value={config.model || ""} onChange={(event) => patch({ model: event.target.value })}>
+              <option value="">{loadingModels ? "Loading models..." : "Select model"}</option>
+              {filteredModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {modelOptionLabel(model)}
+                </option>
+              ))}
+            </select>
+            {!loadingModels && config.integrationId && models.length === 0 && (
+              <p className="mt-2 text-xs font-medium text-amber-700">No chat-compatible models were returned for this provider account.</p>
+            )}
+          </label>
+        </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <NumberField label="Temperature" min={0} max={2} step={0.05} value={config.settings.temperature} onChange={(value) => patchSettings({ temperature: value })} />
@@ -261,38 +239,31 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           <NumberField label="Request Timeout (ms)" min={5000} max={120000} step={1000} value={config.settings.timeoutMs} onChange={(value) => patchSettings({ timeoutMs: value })} />
           <NumberField label="Frequency Penalty" min={-2} max={2} step={0.1} value={config.settings.frequencyPenalty} onChange={(value) => patchSettings({ frequencyPenalty: value })} />
           <NumberField label="Presence Penalty" min={-2} max={2} step={0.1} value={config.settings.presencePenalty} onChange={(value) => patchSettings({ presencePenalty: value })} />
-          <Toggle label="Streaming" checked={config.settings.streaming} onChange={(value) => patchSettings({ streaming: value })} disabled={config.provider === "dograh_default"} />
-          <Toggle label="Tool Calling" checked={config.settings.toolCalling} onChange={(value) => patchSettings({ toolCalling: value })} disabled={config.provider === "dograh_default"} />
-          <Toggle label="Fallback to Dograh Default" checked={config.settings.fallbackToDograhDefault} onChange={(value) => patchSettings({ fallbackToDograhDefault: value })} disabled />
+          <Toggle label="Streaming" checked={config.settings.streaming} onChange={(value) => patchSettings({ streaming: value })} />
+          <Toggle label="Tool Calling" checked={config.settings.toolCalling} onChange={(value) => patchSettings({ toolCalling: value })} />
         </div>
 
-        {config.provider !== "dograh_default" && (
-          <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
-            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-              <input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
-              <button type="button" className="btn-secondary" disabled={testing || !config.integrationId || !config.model} onClick={testModel}>
-                {testing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Test Model
-              </button>
-            </div>
-            {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.responseText || testResult.text}</div>}
+        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
+            <button type="button" className="btn-secondary" disabled={testing || !config.integrationId || !config.model} onClick={testModel}>
+              {testing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Test Model
+            </button>
           </div>
-        )}
+          {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.responseText || testResult.text}</div>}
+        </div>
 
-        <div className={`mt-4 rounded-xl border px-3 py-3 text-sm ${statusClass(config.dograhSyncStatus)}`}>
+        <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
           <p className="font-bold">LLM Runtime Status</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <StatusLine label="Credentials" value={credentialsConnected ? "Connected" : "Not connected"} ok={credentialsConnected} />
             <StatusLine label="Agent" value={agentConfigured ? "Configured" : "Not configured"} ok={agentConfigured} />
-            <StatusLine label="Dograh Runtime" value={String(config.dograhSyncStatus || "not_configured").replaceAll("_", " ")} ok={dograhSynced} />
-            <StatusLine label="Last Call Runtime" value="Not verified here" ok={false} />
+            <StatusLine label="Provider" value={providerLabel(config.provider)} ok />
+            <StatusLine label="Model" value={config.model || "Not selected"} ok={Boolean(config.model)} />
           </div>
           <p className="mt-1 text-xs leading-5">
-            Agent configured: {providerLabel(config.provider)} {config.model ? `/ ${config.model}` : ""}. Runtime: {dograhSynced ? `${config.dograhEffectiveProvider || "dograh_default"} ${config.dograhEffectiveModel ? `/ ${config.dograhEffectiveModel}` : ""}` : "not verified"}.
+            Agent configured: {providerLabel(config.provider)} {config.model ? `/ ${config.model}` : ""}.
           </p>
-          {credentialsConnected && !dograhSynced && config.provider !== "dograh_default" && (
-            <p className="mt-2 text-xs leading-5">Provider credentials are valid, but the LLM is not active in Dograh.</p>
-          )}
-          {config.dograhSyncError && <p className="mt-2 text-xs leading-5">{config.dograhSyncError}</p>}
         </div>
       </div>
     </section>

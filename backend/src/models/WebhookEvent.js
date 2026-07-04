@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const webhookEventSchema = new mongoose.Schema(
   {
-    provider: { type: String, default: "dograh", index: true },
+    provider: { type: String, default: "vapi", index: true },
     eventType: String,
     payload: { type: mongoose.Schema.Types.Mixed },
     matchedAgentId: { type: mongoose.Schema.Types.ObjectId, ref: "Agent" },

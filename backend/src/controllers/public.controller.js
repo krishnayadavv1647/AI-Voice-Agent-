@@ -38,7 +38,7 @@ function agentWebCallReady(agent) {
   if (agent.provider === "vapi") {
     return Boolean(agent.publicWebCallEnabled && agent.providerAgentId);
   }
-  return Boolean(agent.publicWebCallEnabled && agent.dograhWidgetEnabled && agent.dograhEmbedToken);
+  return false;
 }
 
 async function enforceCallbackLimits({ phoneNumber, ip }) {
@@ -164,17 +164,7 @@ export const chatWithPublicAgent = asyncHandler(async (req, res) => {
 });
 
 export const getPublicWebCallToken = asyncHandler(async (req, res) => {
-  const agent = await getPublicAgentByIdOrSlug(req.params.publicSlug);
-  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
-
-  if (bioPage.isPublished === false) throw new ApiError(403, "This agent page is currently unavailable.");
-  if (!bioPageAllowsWebCall(bioPage)) throw new ApiError(403, "Public web call is not enabled for this agent.");
-  if (!agentWebCallReady(agent)) throw new ApiError(400, "Web call is not ready for this agent.");
-
-  res.json({
-    success: true,
-    embedToken: agent.dograhEmbedToken
-  });
+  return getWebCallConfig(req, res);
 });
 
 export const requestCallbackCall = asyncHandler(async (req, res) => {
@@ -185,7 +175,7 @@ export const requestCallbackCall = asyncHandler(async (req, res) => {
   if (!E164_PATTERN.test(phoneNumber || "")) {
     throw new ApiError(400, "Phone number must be in E.164 format, for example +918000281647.");
   }
-  if (!agent.dograhWorkflowUuid) throw new ApiError(400, "AI callback is not ready for this agent.");
+  if (agent.provider !== "vapi" || !agent.providerAgentId) throw new ApiError(400, "AI callback is not ready for this agent.");
   if (!agent.callerIdNumber) throw new ApiError(400, "Caller ID number is not configured for this agent.");
 
   const ip = requesterIp(req);

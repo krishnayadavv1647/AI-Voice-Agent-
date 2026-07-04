@@ -116,7 +116,7 @@ export default function CallLogs() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="Call Logs" description="Review Dograh run data, recordings, transcripts, summaries, and lead extraction status." />
+      <PageHeader title="Call Logs" description="Review call data, recordings, transcripts, summaries, and lead extraction status." />
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
@@ -133,7 +133,7 @@ export default function CallLogs() {
         </div>
       )}
       {!calls.length ? (
-        <EmptyState title="No calls yet. Start a test call to see call logs." description="Completed Dograh runs will sync duration, status, transcript URL, and recording URL." />
+        <EmptyState title="No calls yet. Start a test call to see call logs." description="Completed calls will sync duration, status, transcript URL, and recording URL." />
       ) : !filteredCalls.length ? (
         <p className="py-8 text-center text-sm text-neutral-500">No call logs found for your search.</p>
       ) : (
@@ -232,7 +232,7 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
   const menuRef = useRef(null);
   const [position, setPosition] = useState({ top: 0, left: 0, maxHeight: 420 });
   const hasRecording = Boolean(call.recordingUrl);
-  const canSync = Boolean(call.dograhRunId);
+  const canSync = Boolean(call.providerCallId);
   const canCallAgain = Boolean(call.agentId && callPhone(call));
 
   function updatePosition() {
@@ -332,7 +332,7 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
             <MenuButton icon={FileText} onClick={() => run(() => setSelected(call))}>
               View Transcript / Details
             </MenuButton>
-            <MenuButton icon={RefreshCw} disabled={actingId === call._id || !canSync} title={!canSync ? "Dograh run ID is missing for this call log." : ""} onClick={() => run(() => sync(call._id))}>
+            <MenuButton icon={RefreshCw} disabled={actingId === call._id || !canSync} title={!canSync ? "Provider call ID is missing for this call log." : ""} onClick={() => run(() => sync(call._id))}>
               Retry Sync
             </MenuButton>
             <MenuButton icon={PhoneCall} disabled={actingId === call._id || !canCallAgain} title={!canCallAgain ? "This call log needs an agent and phone number before calling again." : ""} onClick={() => run(() => retry(call._id))}>
@@ -390,12 +390,12 @@ function CallModal({ call, onClose }) {
           <Info label="Calling Number" value={call.callingNumber} />
         </div>
         {call.recordingUrl && <div className="mt-5 rounded-2xl border border-hairline p-4"><p className="mb-2 text-sm font-semibold">Recording</p><audio className="w-full" controls src={call.recordingUrl} /></div>}
-        <Block title="Summary" value={call.summary || "No summary from Dograh"} />
+        <Block title="Summary" value={call.summary || "No summary from the provider"} />
         <Block title="Transcript" value={call.transcript || "No transcript"} />
-        <Block title="Extracted Lead Data" value={call.leadData ? JSON.stringify(call.leadData, null, 2) : "No extracted lead data returned by Dograh."} pre />
+        <Block title="Extracted Lead Data" value={call.leadData ? JSON.stringify(call.leadData, null, 2) : "No extracted lead data returned by the provider."} pre />
         <details className="mt-5 rounded-2xl border border-hairline p-4">
           <summary className="cursor-pointer text-sm font-semibold text-neutral-700">Raw debug data</summary>
-          <pre className="mt-3 max-h-80 overflow-auto rounded-2xl bg-ink p-4 text-xs text-slate-100">{JSON.stringify(call.rawRunDetails || call.rawDograhPayload || {}, null, 2)}</pre>
+          <pre className="mt-3 max-h-80 overflow-auto rounded-2xl bg-ink p-4 text-xs text-slate-100">{JSON.stringify(call.rawRunDetails || call.providerPayload || call.rawWebhookPayload || {}, null, 2)}</pre>
         </details>
       </div>
     </div>

@@ -86,7 +86,7 @@ ${buildSafetyAddendum(agent)}
 Text chat behavior:
 - You are replying in a dashboard/web chat, not a phone call.
 - Do not say you are calling.
-- Do not mention Twilio or Dograh.
+- Do not mention Twilio or any voice provider.
 - Keep replies short and practical.
 - If booking/callback is needed, ask for details one by one.
 `;

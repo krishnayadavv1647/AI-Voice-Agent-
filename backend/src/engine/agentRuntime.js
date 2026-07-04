@@ -9,7 +9,7 @@ export async function runCustomAgent({ agent, userMessage, conversationId }) {
   const messages = buildAgentMessages({ agent, userMessage, history });
 
   const reply = await generateLLMResponse({
-    provider: agent.llmProvider || process.env.DEFAULT_LLM_PROVIDER || "dograh_default",
+    provider: agent.llmProvider || process.env.DEFAULT_LLM_PROVIDER || "platform_default",
     model: agent.llmModel,
     messages,
     settings: agent.settings || {}

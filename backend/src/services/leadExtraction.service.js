@@ -76,7 +76,7 @@ Rules:
 - For restaurant booking calls, map "4 baje", "04:00" to preferredTime.
 - For restaurant booking calls, map "table book", "booking", "reservation" to requirement "Table booking".
 - Keep summary short.
-- Do not mention Dograh, Twilio, or Gemini in the JSON.
+- Do not mention Twilio or Gemini in the JSON.
 `;
 
   try {

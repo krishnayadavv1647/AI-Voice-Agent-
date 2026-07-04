@@ -9,7 +9,6 @@ import EmailLog from "../models/EmailLog.js";
 import FollowUp from "../models/FollowUp.js";
 import Lead from "../models/Lead.js";
 import LeadFinder from "../models/LeadFinder.js";
-import UserIntegration from "../models/UserIntegration.js";
 import User from "../models/User.js";
 import CreditWallet from "../models/CreditWallet.js";
 import PlanConfig from "../models/PlanConfig.js";
@@ -154,17 +153,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     countsByUser(Lead, ids),
     countsByUser(EmailLog, ids, { status: "sent" })
   ]);
-  const integrations = await UserIntegration.find({ userId: { $in: ids }, provider: "dograh" }).select("userId status lastError updatedAt apiKeyEncrypted").lean();
   const wallets = await CreditWallet.find({ userId: { $in: ids } }).select("userId balance reserved").lean();
-  const dograhByUser = Object.fromEntries(integrations.map((integration) => [
-    String(integration.userId),
-    {
-      status: integration.status,
-      maskedApiKey: integration.apiKeyEncrypted ? "encrypted" : "",
-      lastError: integration.lastError || "",
-      updatedAt: integration.updatedAt
-    }
-  ]));
   const walletByUser = Object.fromEntries(wallets.map((wallet) => [String(wallet.userId), wallet]));
 
   res.json(users.map((user) => ({
@@ -173,7 +162,6 @@ export const listUsers = asyncHandler(async (req, res) => {
       balance: walletByUser[String(user._id)]?.balance || 0,
       reserved: walletByUser[String(user._id)]?.reserved || 0
     },
-    dograhIntegration: dograhByUser[String(user._id)] || { status: "not_connected" },
     counts: {
       agents: agents[String(user._id)] || 0,
       calls: calls[String(user._id)] || 0,
@@ -188,9 +176,8 @@ export const adminUsers = listUsers;
 export const getUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).select("-password").lean();
   actorCanManage(req.user, user);
-  const [usage, dograhIntegration, wallet] = await Promise.all([
+  const [usage, wallet] = await Promise.all([
     usageForUser(user._id),
-    UserIntegration.findOne({ userId: user._id, provider: "dograh" }).select("status baseUrl accountEmail workspaceId lastTestedAt lastError apiKeyEncrypted").lean(),
     ledger.ensureWallet(user._id)
   ]);
   res.json({
@@ -198,14 +185,7 @@ export const getUser = asyncHandler(async (req, res) => {
       ...user,
       creditWallet: { balance: wallet.balance || 0, reserved: wallet.reserved || 0 }
     },
-    usage,
-    dograhIntegration: dograhIntegration
-      ? {
-          ...dograhIntegration,
-          apiKeyEncrypted: undefined,
-          maskedApiKey: dograhIntegration.apiKeyEncrypted ? "encrypted" : ""
-        }
-      : { status: "not_connected" }
+    usage
   });
 });
 
@@ -442,8 +422,6 @@ export const updatePlan = asyncHandler(async (req, res) => {
 
 export const getIntegrationSettings = asyncHandler(async (req, res) => {
   res.json({
-    dograhApiKey: masked(process.env.DOGRAH_API_KEY),
-    dograhBaseUrl: process.env.DOGRAH_BASE_URL || "",
     brevoApiKey: masked(process.env.BREVO_API_KEY),
     fromEmail: process.env.FROM_EMAIL || "",
     fromName: process.env.FROM_NAME || "",

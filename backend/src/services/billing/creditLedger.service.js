@@ -29,7 +29,7 @@ async function findByKey(idempotencyKey) {
 // Phase 1 of the two-phase platform-credit flow. Atomically moves `amount` from spendable
 // balance into the reserved hold, guarded so it can never overdraw. Idempotent on
 // idempotencyKey: a replay returns the existing reservation instead of holding twice.
-export async function reserve({ userId, amount, action = "dograh_call", idempotencyKey, metadata = {} }) {
+export async function reserve({ userId, amount, action = "voice_call", idempotencyKey, metadata = {} }) {
   await ensureWallet(userId);
   const existing = await findByKey(idempotencyKey);
   if (existing) {
@@ -141,7 +141,7 @@ export async function settleReservation({ idempotencyKey, actualAmount, allowNeg
 // already-incurred fee settle even if the wallet is short — the BYOK call already happened on
 // the user's key and cannot be un-rung, so we record the (possibly negative) balance truthfully
 // rather than failing a completed call. Idempotent.
-export async function charge({ userId, amount, action = "dograh_call", mode = "byok", idempotencyKey, allowNegative = false, metadata = {} }) {
+export async function charge({ userId, amount, action = "voice_call", mode = "byok", idempotencyKey, allowNegative = false, metadata = {} }) {
   await ensureWallet(userId);
   const existing = await findByKey(idempotencyKey);
   if (existing) return { ok: true, reused: true, transaction: existing, amount: existing.amount };

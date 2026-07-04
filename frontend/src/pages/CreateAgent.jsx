@@ -32,20 +32,18 @@ const initialForm = {
   additionalInfo: "",
   leadQuestions: defaultLeadQuestions,
   templateType: "",
-  provider: "dograh",
-  dograhConnectionType: "platform",
-  dograhIntegrationId: "",
+  provider: "vapi",
   voiceConfiguration: defaultVoiceConfiguration,
   llmConfiguration: defaultLLMConfiguration,
   language: "english",
-  sttProvider: "dograh_default",
-  ttsProvider: "dograh_default",
+  sttProvider: "deepgram",
+  ttsProvider: "elevenlabs",
   voiceId: "",
   firstMessage: "",
   telephonyConfigId: "",
   imageMode: "auto_generate",
   imageUrl: "",
-  voiceProvider: "Dograh Default",
+  voiceProvider: "ElevenLabs",
   voiceGender: "Female",
   voiceStyle: "Natural",
   tone: "Professional",
@@ -81,7 +79,6 @@ export default function CreateAgent() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(initialForm);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
-  const [dograhStatus, setDograhStatus] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -98,24 +95,7 @@ export default function CreateAgent() {
     }
 
     loadTelephonyConfigs();
-    loadDograhStatus();
   }, []);
-
-  async function loadDograhStatus() {
-    try {
-      const status = await api("/integrations/dograh");
-      setDograhStatus(status);
-      if (status.userDograh?.connected) {
-        setForm((current) => ({
-          ...current,
-          dograhConnectionType: current.dograhConnectionType === "platform" ? "user_integration" : (current.dograhConnectionType || "user_integration"),
-          dograhIntegrationId: status.userDograh.id || ""
-        }));
-      }
-    } catch {
-      setDograhStatus(null);
-    }
-  }
 
   function setField(name, value) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -158,8 +138,8 @@ export default function CreateAgent() {
       const agent = result.agent || result;
       navigate(`/agents/${agent._id}`, {
         state: {
-          notice: result.dograhCreated ? "Agent created and Dograh workflow created successfully." : null,
-          warning: result.warning || (result.dograhCreated === false ? "Agent created locally but Dograh workflow creation failed." : null)
+          notice: result.message || "Agent created successfully.",
+          warning: result.warning || null
         }
       });
     } catch (err) {
@@ -171,7 +151,7 @@ export default function CreateAgent() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="Create Agent" description="Build an outbound-first AI calling agent with templates, business knowledge, voice settings, and automatic Dograh workflow creation." />
+      <PageHeader title="Create Agent" description="Build an outbound-first AI calling agent with templates, business knowledge, and voice settings." />
 
       <div className="rounded-2xl border border-hairline bg-white p-3 shadow-soft sm:p-4">
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
@@ -217,21 +197,8 @@ export default function CreateAgent() {
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Provider" name="provider" value={form.provider} onChange={setField} options={[
               { label: "Custom Engine", value: "custom" },
-              { label: "Dograh", value: "dograh" },
               { label: "Vapi", value: "vapi" }
             ]} />
-            {form.provider === "dograh" && (
-              <Field label="Dograh Runtime" name="dograhConnectionType" value={form.dograhConnectionType} onChange={(name, value) => {
-                setForm((current) => ({
-                  ...current,
-                  [name]: value,
-                  dograhIntegrationId: value === "user_integration" ? (dograhStatus?.userDograh?.id || "") : ""
-                }));
-              }} options={[
-                { label: "Platform Dograh - Managed by platform", value: "platform" },
-                { label: dograhStatus?.userDograh?.connected ? "My Dograh - User connected account" : "My Dograh - Not connected", value: "user_integration" }
-              ]} />
-            )}
             <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} onChange={setField} options={[
               { label: "No telephony config", value: "" },
               ...telephonyConfigs.map((config) => ({
@@ -313,12 +280,12 @@ export default function CreateAgent() {
             <div className="grid gap-4 lg:grid-cols-2">
               {[
                 ["Agent type", form.agentType],
-                ["Provider", form.provider === "dograh" ? "Dograh" : form.provider === "vapi" ? "Vapi" : "Custom Engine"],
+                ["Provider", form.provider === "vapi" ? "Vapi" : "Custom Engine"],
                 ["Business", `${form.businessName} · ${form.businessCategory}`],
                 ["Goal", form.mainGoal],
                 ["Knowledge", form.services || "No services added"],
                 ["Lead questions", form.leadQuestions.map((q) => q.label).join(", ")],
-                ["Voice", `${form.language}, ${(form.voiceConfiguration?.ttsProvider || "dograh_default").replaceAll("_", " ")}, ${form.voiceConfiguration?.ttsVoiceId || "Dograh default voice"}, ${form.tone}`],
+                ["Voice", `${form.language}, ${(form.voiceConfiguration?.ttsProvider || "elevenlabs").replaceAll("_", " ")}, ${form.voiceConfiguration?.ttsVoiceId || "default voice"}, ${form.tone}`],
                 ["Rules", form.fallbackMessage]
               ].map(([label, value]) => (
                 <div key={label} className="rounded-2xl border border-hairline p-4">
@@ -328,9 +295,9 @@ export default function CreateAgent() {
               ))}
             </div>
             <div className="rounded-2xl bg-brand-50 p-4 text-sm text-brand-700">
-              {form.provider === "dograh"
-                ? "Dograh workflow will be created automatically after the local agent is saved."
-                : "This agent will be saved in your own app engine without creating a Dograh workflow."}
+              {form.provider === "vapi"
+                ? "A Vapi assistant will be created automatically after the local agent is saved."
+                : "This agent will be saved in your own app engine."}
             </div>
           </div>
         )}

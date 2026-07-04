@@ -29,7 +29,7 @@ export function getLLMProviderPublicMetadata(provider) {
     displayName: adapter?.displayName || provider,
     capabilities: {
       credentials: true,
-      dograhRuntimeSupport: true
+      runtimeSupport: true
     }
   };
 }

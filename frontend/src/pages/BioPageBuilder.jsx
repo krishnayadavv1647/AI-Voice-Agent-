@@ -170,8 +170,8 @@ export default function BioPageBuilder() {
   const [error, setError] = useState("");
 
   const publicUrl = agent?.publicSlug ? `${window.location.origin}/a/${agent.publicSlug}` : "";
-  const webCallEnabled = Boolean(webCallStatus?.publicWebCallEnabled ?? webCallStatus?.dograhWidgetEnabled);
-  const webCallProvider = webCallStatus?.webCallProvider === "dograh" ? "Dograh" : "Vapi";
+  const webCallEnabled = Boolean(webCallStatus?.publicWebCallEnabled);
+  const webCallProvider = "Vapi";
 
   async function load() {
     setError("");
@@ -192,7 +192,7 @@ export default function BioPageBuilder() {
   }
 
   async function loadWebCallStatus() {
-    const status = await api(`/agents/${id}/dograh/embed-token`);
+    const status = await api(`/agents/${id}/web-call`);
     setWebCallStatus(status);
     return status;
   }
@@ -359,7 +359,7 @@ export default function BioPageBuilder() {
     setNotice("");
     setWebCallBusy(true);
     try {
-      const result = await api(`/agents/${id}/dograh/embed-token`, { method: enabled ? "POST" : "DELETE" });
+      const result = await api(`/agents/${id}/web-call`, { method: enabled ? "POST" : "DELETE" });
       if (result.agent) setAgent(result.agent);
       await loadWebCallStatus();
       setNotice(enabled ? `${webCallProvider} web calling enabled for the public page.` : "Web calling disabled for the public page.");
@@ -490,7 +490,7 @@ export default function BioPageBuilder() {
                   {webCallEnabled ? `${webCallProvider} public web calling is enabled` : "Public web calling is not enabled"}
                 </p>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Vapi agents use the Vapi Web SDK. Dograh agents use the Dograh web widget.
+                  Vapi agents use the Vapi Web SDK on public pages.
                 </p>
               </div>
               <button

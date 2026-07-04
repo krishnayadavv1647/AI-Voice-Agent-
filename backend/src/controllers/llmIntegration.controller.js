@@ -2,7 +2,7 @@ import Agent from "../models/Agent.js";
 import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
 import LLMIntegration from "../models/LLMIntegration.js";
 import { getAgentLLMConfiguration, sanitizeLLMConfiguration, upsertAgentLLMConfiguration, validateLLMConfigurationOwnership } from "../services/agentLLMConfiguration.service.js";
-import { syncAgentLLMConfigurationToDograh } from "../services/dograhLLMConfigSync.service.js";
+import { getProvider } from "../providers/index.js";
 import { getLLMProvider, getLLMProviderPublicMetadata, SUPPORTED_LLM_PROVIDERS } from "../services/llmProviders/LLMProviderFactory.js";
 import { deduplicateModels, taskAwareCacheKey } from "../services/llmProviders/modelClassification.service.js";
 import { validateLLMModel } from "../services/llmProviders/llmModelValidation.service.js";
@@ -165,7 +165,7 @@ export const disconnectLLMIntegration = asyncHandler(async (req, res) => {
   const affected = await AgentLLMConfiguration.find({ userId: integration.userId, integrationId: integration._id }).select("agentId");
   if (affected.length && req.query.force !== "true") {
     const agents = await Agent.find({ _id: { $in: affected.map((item) => item.agentId) }, userId: integration.userId }).select("agentName name");
-    throw new ApiError(409, "This LLM integration is used by active agents. Switch those agents to Dograh Default or another account before disconnecting.", {
+    throw new ApiError(409, "This LLM integration is used by active agents. Switch those agents to another account before disconnecting.", {
       affectedAgents: agents.map((agent) => ({ id: agent._id, name: agent.agentName || agent.name }))
     });
   }
@@ -251,6 +251,13 @@ export const updateAgentLLMConfig = asyncHandler(async (req, res) => {
   await validateLLMConfigurationOwnership({ userId: agent.userId, config: configInput });
   const config = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: configInput });
   await agent.save();
-  const synced = await syncAgentLLMConfigurationToDograh({ agent, userId: agent.userId });
-  res.json({ success: true, llmConfiguration: synced || config });
+  // LLM choice is baked into the Vapi assistant, so refresh it (best-effort) after a config change.
+  if (agent.provider === "vapi" && agent.providerAgentId) {
+    try {
+      await getProvider("vapi").update(agent);
+    } catch (error) {
+      console.error("[LLM config] Vapi assistant refresh failed:", error.message);
+    }
+  }
+  res.json({ success: true, llmConfiguration: config });
 });

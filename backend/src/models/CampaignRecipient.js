@@ -21,7 +21,7 @@ const campaignRecipientSchema = new mongoose.Schema(
     lastCallLogId: { type: mongoose.Schema.Types.ObjectId, ref: "CallLog" },
     lastOutcome: String,
     lastError: String,
-    dograhRunId: String,
+    providerCallId: String,
     notes: String
   },
   { timestamps: true }

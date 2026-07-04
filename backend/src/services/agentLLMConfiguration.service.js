@@ -29,7 +29,7 @@ function nullableObjectId(value) {
 export function defaultLLMConfigurationForAgent(agent) {
   return {
     integrationId: null,
-    provider: "dograh_default",
+    provider: "platform_default",
     model: "",
     settings: {
       temperature: number(agent?.settings?.temperature, 0.4, 0, 2),
@@ -39,14 +39,8 @@ export function defaultLLMConfigurationForAgent(agent) {
       presencePenalty: 0,
       timeoutMs: 30000,
       streaming: true,
-      toolCalling: true,
-      fallbackToDograhDefault: false
-    },
-    dograhSyncStatus: "not_configured",
-    dograhLastSyncedAt: null,
-    dograhSyncError: "",
-    dograhEffectiveProvider: "",
-    dograhEffectiveModel: ""
+      toolCalling: true
+    }
   };
 }
 
@@ -54,12 +48,12 @@ export function sanitizeLLMConfiguration(input = {}, agent) {
   const defaults = defaultLLMConfigurationForAgent(agent);
   const provider = normalizeLLMProvider(cleanString(input.provider || defaults.provider, 40));
   if (!PROVIDERS.includes(provider)) throw invalidLLMProviderError();
-  const model = provider === "dograh_default" ? "" : normalizeModelId(cleanString(input.model || "", 300));
+  const model = provider === "platform_default" ? "" : normalizeModelId(cleanString(input.model || "", 300));
 
   const settings = { ...defaults.settings, ...asObject(input.settings) };
 
   return {
-    integrationId: provider === "dograh_default" ? null : nullableObjectId(input.integrationId),
+    integrationId: provider === "platform_default" ? null : nullableObjectId(input.integrationId),
     provider,
     model,
     settings: {
@@ -70,14 +64,13 @@ export function sanitizeLLMConfiguration(input = {}, agent) {
       presencePenalty: number(settings.presencePenalty, 0, -2, 2),
       timeoutMs: number(settings.timeoutMs, 30000, 5000, 120000),
       streaming: settings.streaming !== false,
-      toolCalling: settings.toolCalling !== false,
-      fallbackToDograhDefault: Boolean(settings.fallbackToDograhDefault)
+      toolCalling: settings.toolCalling !== false
     }
   };
 }
 
 export async function validateLLMConfigurationOwnership({ userId, config }) {
-  if (config.provider === "dograh_default") return null;
+  if (config.provider === "platform_default") return null;
   if (!config.integrationId) throw new ApiError(400, `Choose a connected ${config.provider} account before saving this LLM provider.`);
   if (!config.model) throw new ApiError(400, "Choose an LLM model before saving this agent.");
 
@@ -89,7 +82,7 @@ export async function validateLLMConfigurationOwnership({ userId, config }) {
   }).select("+encryptedCredentials");
   if (!integration) throw new ApiError(400, "Connected LLM integration was not found for this user.");
   if (!["supported", "configuration_required"].includes(integration.runtimeStatus)) {
-    throw new ApiError(400, "This LLM provider is not currently supported by the Dograh runtime.");
+    throw new ApiError(400, "This LLM provider is not currently supported.");
   }
   await validateLLMModel({
     provider: config.provider,
@@ -103,7 +96,7 @@ export async function validateLLMConfigurationOwnership({ userId, config }) {
 
 export function applyLLMConfigurationToAgent(agent, config) {
   agent.llmProvider = config.provider;
-  agent.llmModel = config.provider === "dograh_default" ? "" : config.model || "";
+  agent.llmModel = config.provider === "platform_default" ? "" : config.model || "";
   agent.settings = {
     ...asObject(agent.settings),
     llm: {
@@ -126,8 +119,7 @@ export async function upsertAgentLLMConfiguration({ userId, agent, input, markPe
       $set: {
         ...config,
         userId,
-        agentId: agent._id,
-        ...(markPending ? { dograhSyncStatus: agent.provider === "dograh" ? "pending" : "not_configured", dograhSyncError: "" } : {})
+        agentId: agent._id
       }
     },
     { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }

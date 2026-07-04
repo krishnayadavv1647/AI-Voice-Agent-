@@ -34,7 +34,6 @@ function formatDateTime(value) {
 }
 
 function systemLabel(value) {
-  if (value === "dograh") return "Platform Calling";
   if (value === "vapi") return "Web Calling";
   return "System Provider";
 }
@@ -50,7 +49,6 @@ export default function EditAgent() {
   const [saving, setSaving] = useState(false);
   const [retryingSync, setRetryingSync] = useState(false);
   const [syncingRuntime, setSyncingRuntime] = useState(false);
-  const [migrating, setMigrating] = useState(false);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(original), [form, original]);
@@ -86,19 +84,12 @@ export default function EditAgent() {
     editableFields.forEach((field) => {
       next[field] = agent[field] ?? defaultValue(field);
     });
-    next.dograhNeedsUpdate = Boolean(agent.dograhNeedsUpdate);
-    next.dograhStatus = agent.dograhStatus || "";
-    next.dograhError = agent.dograhError || "";
     next.workflowSyncStatus = agent.workflowSyncStatus || "";
     next.workflowLastSyncedAt = agent.workflowLastSyncedAt || "";
     next.workflowSyncError = agent.workflowSyncError || "";
     next.workflowVersion = agent.workflowVersion || 0;
-    next.dograhWorkflowId = agent.dograhWorkflowId || "";
-    next.dograhWorkflowUuid = agent.dograhWorkflowUuid || "";
-    next.dograhConnectionType = agent.dograhConnectionType || (agent.dograhIntegrationId ? "user_integration" : "platform");
-    next.dograhIntegrationId = agent.dograhIntegrationId || "";
-    next.provider = agent.provider || (agent.dograhWorkflowId ? "dograh" : "custom");
-    next.providerWorkflowId = agent.providerWorkflowId || agent.dograhWorkflowId || "";
+    next.provider = agent.provider || "vapi";
+    next.providerWorkflowId = agent.providerWorkflowId || "";
     next.voiceConfiguration = {
       ...defaultVoiceConfiguration,
       ...(result.voiceConfiguration || {}),
@@ -129,8 +120,8 @@ export default function EditAgent() {
     if (field === "callMode") return "outbound";
     if (field === "responseStyle") return "short_clear";
     if (field === "voiceProvider") return "Default Voice";
-    if (field === "sttProvider") return "dograh_default";
-    if (field === "ttsProvider") return "dograh_default";
+    if (field === "sttProvider") return "deepgram";
+    if (field === "ttsProvider") return "elevenlabs";
     if (field === "voiceSpeed") return "Normal";
     return "";
   }
@@ -169,15 +160,10 @@ export default function EditAgent() {
       }
       const next = {
         ...form,
-        dograhNeedsUpdate: saved.dograhNeedsUpdate,
-        dograhStatus: saved.dograhStatus || "",
-        dograhError: saved.dograhError || "",
         workflowSyncStatus: saved.workflowSyncStatus || "",
         workflowLastSyncedAt: saved.workflowLastSyncedAt || "",
         workflowSyncError: saved.workflowSyncError || "",
         workflowVersion: saved.workflowVersion || 0,
-        dograhWorkflowId: saved.dograhWorkflowId || form.dograhWorkflowId,
-        dograhWorkflowUuid: saved.dograhWorkflowUuid || form.dograhWorkflowUuid,
         provider: saved.provider || form.provider,
         providerWorkflowId: saved.providerWorkflowId || form.providerWorkflowId,
         voiceConfiguration: result.voiceConfiguration || form.voiceConfiguration,
@@ -210,15 +196,10 @@ export default function EditAgent() {
       const updated = result.agent;
       setForm((current) => ({
         ...current,
-        dograhNeedsUpdate: updated.dograhNeedsUpdate,
-        dograhStatus: updated.dograhStatus || "",
-        dograhError: updated.dograhError || "",
         workflowSyncStatus: updated.workflowSyncStatus || "",
         workflowLastSyncedAt: updated.workflowLastSyncedAt || "",
         workflowSyncError: updated.workflowSyncError || "",
         workflowVersion: updated.workflowVersion || 0,
-        dograhWorkflowId: updated.dograhWorkflowId || "",
-        dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
         providerWorkflowId: updated.providerWorkflowId || "",
         voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
@@ -226,15 +207,10 @@ export default function EditAgent() {
       }));
       setOriginal((current) => ({
         ...current,
-        dograhNeedsUpdate: updated.dograhNeedsUpdate,
-        dograhStatus: updated.dograhStatus || "",
-        dograhError: updated.dograhError || "",
         workflowSyncStatus: updated.workflowSyncStatus || "",
         workflowLastSyncedAt: updated.workflowLastSyncedAt || "",
         workflowSyncError: updated.workflowSyncError || "",
         workflowVersion: updated.workflowVersion || 0,
-        dograhWorkflowId: updated.dograhWorkflowId || "",
-        dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
         provider: updated.provider || current.provider,
         providerWorkflowId: updated.providerWorkflowId || "",
         voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
@@ -257,15 +233,10 @@ export default function EditAgent() {
       const updated = result.agent;
       setForm((current) => ({
         ...current,
-        dograhNeedsUpdate: updated?.dograhNeedsUpdate,
-        dograhStatus: updated?.dograhStatus || "",
-        dograhError: updated?.dograhError || "",
         workflowSyncStatus: updated?.workflowSyncStatus || "",
         workflowLastSyncedAt: updated?.workflowLastSyncedAt || "",
         workflowSyncError: updated?.workflowSyncError || "",
         workflowVersion: updated?.workflowVersion || 0,
-        dograhWorkflowId: updated?.dograhWorkflowId || current.dograhWorkflowId,
-        dograhWorkflowUuid: updated?.dograhWorkflowUuid || current.dograhWorkflowUuid,
         provider: updated?.provider || current.provider,
         providerWorkflowId: updated?.providerWorkflowId || current.providerWorkflowId,
         voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
@@ -273,15 +244,10 @@ export default function EditAgent() {
       }));
       setOriginal((current) => ({
         ...current,
-        dograhNeedsUpdate: updated?.dograhNeedsUpdate,
-        dograhStatus: updated?.dograhStatus || "",
-        dograhError: updated?.dograhError || "",
         workflowSyncStatus: updated?.workflowSyncStatus || "",
         workflowLastSyncedAt: updated?.workflowLastSyncedAt || "",
         workflowSyncError: updated?.workflowSyncError || "",
         workflowVersion: updated?.workflowVersion || 0,
-        dograhWorkflowId: updated?.dograhWorkflowId || current.dograhWorkflowId,
-        dograhWorkflowUuid: updated?.dograhWorkflowUuid || current.dograhWorkflowUuid,
         provider: updated?.provider || current.provider,
         providerWorkflowId: updated?.providerWorkflowId || current.providerWorkflowId,
         voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
@@ -293,36 +259,6 @@ export default function EditAgent() {
       setError(formatApiError(err));
     } finally {
       setSyncingRuntime(false);
-    }
-  }
-
-  async function migrateDograh(targetConnectionType) {
-    setMigrating(true);
-    setError("");
-    setNotice("");
-    try {
-      const result = await api(`/agents/${id}/migrate-dograh`, {
-        method: "POST",
-        body: { targetConnectionType, targetIntegrationId: targetConnectionType === "user_integration" ? form.dograhIntegrationId : null }
-      });
-      const updated = result.agent;
-      setForm((current) => ({
-        ...current,
-        dograhConnectionType: updated.dograhConnectionType || targetConnectionType,
-        dograhIntegrationId: updated.dograhIntegrationId || "",
-        dograhWorkflowId: updated.dograhWorkflowId || "",
-        dograhWorkflowUuid: updated.dograhWorkflowUuid || "",
-        providerWorkflowId: updated.providerWorkflowId || "",
-        workflowSyncStatus: updated.workflowSyncStatus || "",
-        workflowLastSyncedAt: updated.workflowLastSyncedAt || "",
-        workflowSyncError: updated.workflowSyncError || "",
-        dograhStatus: updated.dograhStatus || ""
-      }));
-      setNotice("Calling system migration completed and verified.");
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setMigrating(false);
     }
   }
 
@@ -373,7 +309,6 @@ export default function EditAgent() {
           <div className="field-grid">
             <Field label="Calling System" name="provider" value={form.provider} setField={setField} options={[
               { label: "Custom Engine", value: "custom" },
-              { label: "Platform Calling", value: "dograh" },
               { label: "Web Calling", value: "vapi" }
             ]} />
             <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} setField={setField} options={[
@@ -453,28 +388,14 @@ export default function EditAgent() {
         {tab === "Calling System" && (
           <div className="space-y-4">
             <Info label="Calling System" value={systemLabel(form.provider)} />
-            <Info label="Connection" value={form.dograhConnectionType === "user_integration" ? "Connected Account" : "Platform Managed"} />
-            <Info label="Connection ID" value={form.dograhIntegrationId || "Platform managed"} />
             <Info label="Workflow ID" value={form.providerWorkflowId} />
-            <Info label="Workflow ID" value={form.dograhWorkflowId} />
-            <Info label="Workflow UUID" value={form.dograhWorkflowUuid} />
-            <Info label="Workflow Status" value={form.workflowSyncStatus || form.dograhStatus} />
+            <Info label="Workflow Status" value={form.workflowSyncStatus} />
             <Info label="Last Sync" value={formatDateTime(form.workflowLastSyncedAt)} />
-            <Info label="Last Error" value={form.workflowSyncError || form.dograhError} />
+            <Info label="Last Error" value={form.workflowSyncError} />
             {!form.providerWorkflowId && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">This agent is not synced with the selected calling system yet.</p>}
             {form.workflowSyncStatus === "failed" && (
               <button className="btn-primary" disabled={retryingSync} onClick={retryWorkflowSync}>
                 <RefreshCw size={16} />{retryingSync ? "Retrying..." : "Retry Sync"}
-              </button>
-            )}
-            {form.provider === "dograh" && form.dograhConnectionType === "platform" && (
-              <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-700">
-                This agent currently runs on Platform Calling. Connecting another account does not automatically move this agent.
-              </p>
-            )}
-            {form.provider === "dograh" && form.dograhWorkflowId && (
-              <button className="btn-secondary" disabled={migrating} onClick={() => migrateDograh(form.dograhConnectionType === "platform" ? "user_integration" : "platform")}>
-                <RefreshCw size={16} />{migrating ? "Migrating..." : "Migrate Agent"}
               </button>
             )}
           </div>

@@ -295,7 +295,7 @@ export default function AgentDetails() {
     }
   }
 
-  const connected = Boolean(agent?.dograhWorkflowId || agent?.dograhWorkflowUuid);
+  const connected = Boolean(agent?.providerWorkflowId || agent?.providerAgentId);
 
   return (
     <div className="page-stack">
@@ -537,7 +537,7 @@ export default function AgentDetails() {
 
             <div className="mt-6 action-row sm:justify-end">
               {(() => {
-                const canSync = Boolean(selectedCall.dograhRunId || selectedCall.providerCallId);
+                const canSync = Boolean(selectedCall.providerCallId);
                 const syncTitle = canSync ? "" : "This call has no provider run/call id to sync from yet.";
                 return (
                   <button className="btn-secondary" disabled={extracting} title={syncTitle} onClick={() => syncSelectedCall(selectedCall._id)}>

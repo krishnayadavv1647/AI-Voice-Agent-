@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 const usageLogSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    action: { type: String, default: "dograh_call", index: true },
+    action: { type: String, default: "voice_call", index: true },
     mode: { type: String, enum: ["platform_credits", "byok", "blocked"], required: true },
     success: { type: Boolean, default: false },
     cost: { type: Number, default: 0 },

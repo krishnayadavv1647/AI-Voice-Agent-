@@ -76,10 +76,6 @@ function localTimeToUtc(scheduledForLocal, timezone) {
 }
 
 function assertAgentCanCall(agent) {
-  if (!agent.dograhWorkflowUuid) {
-    throw new ApiError(400, "Dograh workflow sync must finish before scheduling calls.");
-  }
-
   if (!agent.callerIdNumber) {
     throw new ApiError(400, "Caller ID number is required before scheduling calls.");
   }
