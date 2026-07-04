@@ -5,6 +5,8 @@ import { runCustomAgent, runCustomAgentStream } from "../engine/agentRuntime.js"
 const FALLBACK_REPLY = "Sorry, I had a little trouble. Could you repeat that?";
 const AGENT_CACHE_FOUND_TTL_MS = 15000;
 const AGENT_CACHE_MISSING_TTL_MS = 5000;
+const TERMINAL_PUNCTUATION = /[.!?]$/;
+const PHRASE_PUNCTUATION = /[.!?,;:]$/;
 const agentCache = new Map();
 
 // Split a reply into ~40-80 char pieces on word boundaries so speech starts fast.
@@ -61,6 +63,150 @@ export function buildNonStreamCompletion({ id, created, model, reply }) {
         finish_reason: "stop"
       }
     ]
+  };
+}
+
+function compactChunkText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function appendToBuffer(current, delta) {
+  const text = String(delta || "").replace(/\s+/g, " ");
+  if (!text.trim()) return current;
+  if (!current) return text.trimStart();
+  if (/^\s/.test(text) || /\s$/.test(current) || /^[.,!?;:]/.test(text)) {
+    return `${current}${text}`.replace(/\s+([.,!?;:])/g, "$1");
+  }
+  return `${current} ${text}`;
+}
+
+function lastWordBoundaryIndex(text, maxChars) {
+  const slice = text.slice(0, maxChars + 1);
+  const boundary = slice.search(/\s+\S*$/);
+  if (boundary > 0) return boundary;
+  return text.length <= maxChars ? text.length : maxChars;
+}
+
+function hasCompleteWord(text) {
+  return /\S+\s+\S*$/.test(text) || PHRASE_PUNCTUATION.test(text.trim());
+}
+
+export function createVoiceChunkBuffer({
+  onFlush,
+  onLog = () => {},
+  now = () => Date.now(),
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = (timer) => clearTimeout(timer),
+  firstFlushChars = 32,
+  preferredMinChars = 60,
+  preferredMaxChars = 110,
+  maxWaitMs = 250,
+  firstMaxWaitMs = 300
+} = {}) {
+  if (typeof onFlush !== "function") throw new Error("createVoiceChunkBuffer requires onFlush.");
+
+  let buffer = "";
+  let firstTokenAt = null;
+  let lastFlushAt = now();
+  let firstFlushAt = null;
+  let flushes = 0;
+  let timer = null;
+
+  function clearFlushTimer() {
+    if (!timer) return;
+    clearTimer(timer);
+    timer = null;
+  }
+
+  function logFlush(text, reason) {
+    flushes += 1;
+    if (!firstFlushAt) {
+      firstFlushAt = now();
+      onLog("first_flush", { elapsedMs: firstFlushAt - (firstTokenAt || firstFlushAt) });
+    }
+    onLog("flush", { chars: text.length, reason });
+  }
+
+  function emit(text, reason) {
+    const clean = compactChunkText(text);
+    if (!clean) return false;
+    onFlush(clean);
+    lastFlushAt = now();
+    logFlush(clean, reason);
+    return true;
+  }
+
+  function flushSome(reason, { final = false } = {}) {
+    clearFlushTimer();
+    const cleanBuffer = compactChunkText(buffer);
+    if (!cleanBuffer) {
+      buffer = "";
+      return false;
+    }
+
+    if (final) {
+      buffer = "";
+      return emit(cleanBuffer, reason);
+    }
+
+    let flushText = "";
+    if (cleanBuffer.length > preferredMaxChars) {
+      const boundary = lastWordBoundaryIndex(cleanBuffer, preferredMaxChars);
+      flushText = cleanBuffer.slice(0, boundary);
+      buffer = cleanBuffer.slice(boundary).trimStart();
+    } else {
+      flushText = cleanBuffer;
+      buffer = "";
+    }
+
+    return emit(flushText, reason);
+  }
+
+  function shouldFlushForPunctuation(text) {
+    const clean = text.trim();
+    if (!PHRASE_PUNCTUATION.test(clean)) return false;
+    if (TERMINAL_PUNCTUATION.test(clean)) return clean.length >= Math.min(20, firstFlushChars);
+    return clean.length >= (firstFlushAt ? preferredMinChars : firstFlushChars);
+  }
+
+  function scheduleTimer() {
+    clearFlushTimer();
+    const wait = firstFlushAt ? maxWaitMs : firstMaxWaitMs;
+    timer = setTimer(() => {
+      timer = null;
+      if (buffer && hasCompleteWord(buffer)) flushSome("timer");
+    }, wait);
+  }
+
+  return {
+    push(delta) {
+      const text = String(delta || "");
+      if (!text.trim()) return;
+      if (!firstTokenAt) firstTokenAt = now();
+      buffer = appendToBuffer(buffer, text);
+      const clean = compactChunkText(buffer);
+
+      if (shouldFlushForPunctuation(clean)) {
+        flushSome("punctuation");
+        if (buffer) scheduleTimer();
+        return;
+      }
+
+      if (clean.length >= preferredMaxChars || (!firstFlushAt && clean.length >= firstFlushChars && hasCompleteWord(clean))) {
+        flushSome("length");
+        if (buffer) scheduleTimer();
+        return;
+      }
+
+      scheduleTimer();
+    },
+    async flushFinal({ logTotal = true } = {}) {
+      flushSome("final", { final: true });
+      if (logTotal) onLog("total_flushes", { totalFlushes: flushes });
+    },
+    get flushCount() {
+      return flushes;
+    }
   };
 }
 
@@ -180,6 +326,44 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   let agent = null;
   let provider = "";
   let selectedModel = model;
+  const smoothBuffer = createVoiceChunkBuffer({
+    onFlush: (part) => {
+      outputChars += part.length;
+      if (!sawFirstToken) {
+        sawFirstToken = true;
+        const firstTokenElapsed = elapsed(startedAt);
+        logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: firstTokenElapsed, outputChars });
+        if (firstTokenElapsed > 4000) console.warn("First token latency is high.");
+      }
+      res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
+    },
+    onLog: (event, details = {}) => {
+      if (event === "first_flush") {
+        console.log("[Vapi stream smoothing] first_flush", {
+          conversationId,
+          agentId,
+          elapsedMs: details.elapsedMs
+        });
+        return;
+      }
+      if (event === "flush") {
+        console.log("[Vapi stream smoothing] flush", {
+          conversationId,
+          agentId,
+          chars: details.chars,
+          reason: details.reason
+        });
+        return;
+      }
+      if (event === "total_flushes") {
+        console.log("[Vapi stream smoothing] total_flushes", {
+          conversationId,
+          agentId,
+          totalFlushes: details.totalFlushes
+        });
+      }
+    }
+  });
 
   try {
     agent = await loadAgent(agentId);
@@ -196,12 +380,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     if (!agent) {
       console.error("[Vapi chat] agent not found", { agentId, conversationId });
       for (const part of fallbackStream()) {
-        outputChars += part.length;
-        if (!sawFirstToken) {
-          sawFirstToken = true;
-          logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: elapsed(startedAt), outputChars });
-        }
-        res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
+        smoothBuffer.push(part);
       }
     } else {
       logLatency("llm_started", {
@@ -214,14 +393,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
 
       for await (const part of streamAgent({ agent, userMessage: userText, conversationId, voiceMode: true })) {
         if (!part) continue;
-        outputChars += part.length;
-        if (!sawFirstToken) {
-          sawFirstToken = true;
-          const firstTokenElapsed = elapsed(startedAt);
-          logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: firstTokenElapsed, outputChars });
-          if (firstTokenElapsed > 4000) console.warn("First token latency is high.");
-        }
-        res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
+        smoothBuffer.push(part);
       }
     }
   } catch (error) {
@@ -237,26 +409,25 @@ export async function vapiChatCompletions(req, res, deps = {}) {
 
     if (!sawFirstToken) {
       for (const part of fallbackStream()) {
-        outputChars += part.length;
-        if (!sawFirstToken) {
-          sawFirstToken = true;
-          logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: elapsed(startedAt), outputChars });
-        }
-        res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
+        smoothBuffer.push(part);
       }
     }
   }
 
+  await smoothBuffer.flushFinal({ logTotal: false });
+
   if (!sawFirstToken) {
     for (const part of fallbackStream()) {
-      outputChars += part.length;
-      if (!sawFirstToken) {
-        sawFirstToken = true;
-        logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: elapsed(startedAt), outputChars });
-      }
-      res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
+      smoothBuffer.push(part);
     }
+    await smoothBuffer.flushFinal({ logTotal: false });
   }
+
+  console.log("[Vapi stream smoothing] total_flushes", {
+    conversationId,
+    agentId,
+    totalFlushes: smoothBuffer.flushCount
+  });
 
   res.write(streamChunk({ id, created, model: selectedModel, delta: {}, finishReason: "stop" }));
   res.write("data: [DONE]\n\n");
