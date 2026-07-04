@@ -158,7 +158,7 @@ export const TwilioTelephony = {
   },
 
   handleIncomingCall({ reply, agent, config }) {
-    const inboundMode = config?.inboundMode || (config?.inboundEnabled === false ? "disabled" : "ai_agent");
+    const inboundMode = config?.inboundMode || (config?.inboundEnabled === false ? "disabled" : "agent_runtime");
 
     if (inboundMode === "disabled") {
       return buildFailureResponse("Inbound calling is currently unavailable.");

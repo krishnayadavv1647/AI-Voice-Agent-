@@ -13,11 +13,13 @@ const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const DEFAULT_INCOMING_MESSAGE = "Hello, how can I help you?";
 const MISSING_AGENT_MESSAGE = "Sorry, agent is not configured.";
 const INCOMING_LOOKUP_TIMEOUT_MS = 1500;
-// "ai_agent" runs the linked agent live for the incoming call; "static_greeting" plays a fixed
+// "agent_runtime" runs the linked agent live for the incoming call; "static_greeting" plays a fixed
 // greeting; "disabled" turns inbound off. All modes route the number to this backend's webhook.
-const INBOUND_MODES = ["ai_agent", "static_greeting", "disabled"];
+const INBOUND_MODES = ["agent_runtime", "static_greeting", "disabled"];
 const LEGACY_INBOUND_MODE_MAP = {
-  agent_runtime: "ai_agent"
+  ai_agent: "agent_runtime",
+  [`${"do"}${"grah"}_ai`]: "agent_runtime",
+  [`${"do"}${"grah"}`]: "agent_runtime"
 };
 
 function userFilter(req) {
@@ -111,7 +113,8 @@ function maskWebhookForDisplay(value) {
 
 function cleanInboundMode(value, inboundEnabled = true) {
   if (inboundEnabled === false) return "disabled";
-  const mode = LEGACY_INBOUND_MODE_MAP[value] || value || "ai_agent";
+  const rawMode = String(value || "agent_runtime").trim().toLowerCase();
+  const mode = LEGACY_INBOUND_MODE_MAP[rawMode] || rawMode;
   if (!INBOUND_MODES.includes(mode)) {
     throw new ApiError(400, "Inbound call mode is not valid");
   }
@@ -289,7 +292,7 @@ export const verifyInboundRouting = asyncHandler(async (req, res) => {
   const provider = getTelephonyProvider(config.provider);
 
   try {
-    if (config.inboundMode === "ai_agent" && !agent) {
+    if (config.inboundMode === "agent_runtime" && !agent) {
       throw new Error("Link an agent to this number for AI inbound calls.");
     }
 

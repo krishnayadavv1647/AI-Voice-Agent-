@@ -97,8 +97,8 @@ export default function Settings() {
     <div className="space-y-8">
       <PageHeader title="Settings" description="Manage account preferences, notifications, team controls, and supporting integrations." />
 
-      <div className="sticky top-0 z-10 -mt-2 bg-canvas/95 backdrop-blur supports-[backdrop-filter]:bg-canvas/80">
-        <div className="relative overflow-x-auto border-b border-hairline">
+      <div className="settings-tabs-shell sticky top-0 z-10 -mt-2 backdrop-blur">
+        <div className="settings-tabs relative overflow-x-auto border-b border-hairline">
           <div className="flex min-w-max gap-1">
             {tabs.map((tab, index) => (
               <button
@@ -106,7 +106,7 @@ export default function Settings() {
                 ref={(el) => (tabRefs.current[index] = el)}
                 onClick={() => goToTab(index)}
                 className={`whitespace-nowrap rounded-t-lg px-5 py-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1 ${
-                  active === index ? "font-semibold text-ink" : "font-medium text-neutral-500 hover:bg-neutral-100 hover:text-ink"
+                  active === index ? "font-semibold text-ink" : "font-medium text-neutral-500 hover:text-ink"
                 }`}
                 aria-current={active === index ? "page" : undefined}
               >
