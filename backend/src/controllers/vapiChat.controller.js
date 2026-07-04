@@ -97,11 +97,13 @@ export function createVoiceChunkBuffer({
   now = () => Date.now(),
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = (timer) => clearTimeout(timer),
-  firstFlushChars = 32,
-  preferredMinChars = 60,
-  preferredMaxChars = 110,
-  maxWaitMs = 250,
-  firstMaxWaitMs = 300
+  firstFlushChars = 20,
+  preferredMinChars = 35,
+  preferredMaxChars = 70,
+  maxWaitMs = 150,
+  firstMaxWaitMs = 120,
+  maxGapMs = 700,
+  noDeltaLogMs = 700
 } = {}) {
   if (typeof onFlush !== "function") throw new Error("createVoiceChunkBuffer requires onFlush.");
 
@@ -111,11 +113,27 @@ export function createVoiceChunkBuffer({
   let firstFlushAt = null;
   let flushes = 0;
   let timer = null;
+  let noDeltaTimer = null;
+  let maxGapBetweenFlushes = 0;
 
   function clearFlushTimer() {
     if (!timer) return;
     clearTimer(timer);
     timer = null;
+  }
+
+  function clearNoDeltaTimer() {
+    if (!noDeltaTimer) return;
+    clearTimer(noDeltaTimer);
+    noDeltaTimer = null;
+  }
+
+  function scheduleNoDeltaWatchdog() {
+    clearNoDeltaTimer();
+    noDeltaTimer = setTimer(() => {
+      noDeltaTimer = null;
+      if (!buffer) onLog("no_llm_delta", { elapsedMs: noDeltaLogMs });
+    }, noDeltaLogMs);
   }
 
   function logFlush(text, reason) {
@@ -124,15 +142,20 @@ export function createVoiceChunkBuffer({
       firstFlushAt = now();
       onLog("first_flush", { elapsedMs: firstFlushAt - (firstTokenAt || firstFlushAt) });
     }
+    onLog("max_gap_between_flushes", { maxGapBetweenFlushes });
     onLog("flush", { chars: text.length, reason });
   }
 
   function emit(text, reason) {
     const clean = compactChunkText(text);
     if (!clean) return false;
+    const emittedAt = now();
+    const gap = flushes > 0 ? emittedAt - lastFlushAt : 0;
+    maxGapBetweenFlushes = Math.max(maxGapBetweenFlushes, gap);
     onFlush(clean);
-    lastFlushAt = now();
+    lastFlushAt = emittedAt;
     logFlush(clean, reason);
+    scheduleNoDeltaWatchdog();
     return true;
   }
 
@@ -165,26 +188,35 @@ export function createVoiceChunkBuffer({
   function shouldFlushForPunctuation(text) {
     const clean = text.trim();
     if (!PHRASE_PUNCTUATION.test(clean)) return false;
-    if (TERMINAL_PUNCTUATION.test(clean)) return clean.length >= Math.min(20, firstFlushChars);
-    return clean.length >= (firstFlushAt ? preferredMinChars : firstFlushChars);
+    if (TERMINAL_PUNCTUATION.test(clean)) return clean.length >= Math.min(10, firstFlushChars);
+    return clean.length >= (firstFlushAt ? preferredMinChars : Math.min(10, firstFlushChars));
   }
 
   function scheduleTimer() {
     clearFlushTimer();
+    const timeUntilMaxGap = Math.max(0, maxGapMs - (now() - lastFlushAt));
     const wait = firstFlushAt ? maxWaitMs : firstMaxWaitMs;
+    const reason = timeUntilMaxGap <= wait ? "max_gap" : "timer";
     timer = setTimer(() => {
       timer = null;
-      if (buffer && hasCompleteWord(buffer)) flushSome("timer");
-    }, wait);
+      if (buffer && hasCompleteWord(buffer)) flushSome(reason);
+    }, Math.min(wait, timeUntilMaxGap));
   }
 
   return {
     push(delta) {
       const text = String(delta || "");
       if (!text.trim()) return;
+      clearNoDeltaTimer();
       if (!firstTokenAt) firstTokenAt = now();
       buffer = appendToBuffer(buffer, text);
       const clean = compactChunkText(buffer);
+
+      if (now() - lastFlushAt >= maxGapMs && hasCompleteWord(clean)) {
+        flushSome("max_gap");
+        if (buffer) scheduleTimer();
+        return;
+      }
 
       if (shouldFlushForPunctuation(clean)) {
         flushSome("punctuation");
@@ -201,11 +233,18 @@ export function createVoiceChunkBuffer({
       scheduleTimer();
     },
     async flushFinal({ logTotal = true } = {}) {
+      clearNoDeltaTimer();
       flushSome("final", { final: true });
-      if (logTotal) onLog("total_flushes", { totalFlushes: flushes });
+      if (logTotal) onLog("total_flushes", { totalFlushes: flushes, maxGapBetweenFlushes });
     },
     get flushCount() {
       return flushes;
+    },
+    get maxGapBetweenFlushes() {
+      return maxGapBetweenFlushes;
+    },
+    get hasBufferedContent() {
+      return Boolean(compactChunkText(buffer));
     }
   };
 }
@@ -276,6 +315,14 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   const startedAt = Date.now();
   const id = `chatcmpl-${conversationId}`;
   const created = Math.floor(startedAt / 1000);
+  const latencyMarks = {
+    requestReceived: startedAt,
+    agentLoaded: null,
+    llmStarted: null,
+    firstLlmToken: null,
+    firstSseFlush: null,
+    streamDone: null
+  };
 
   logLatency("request_received", {
     conversationId,
@@ -322,19 +369,85 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   res.flushHeaders?.();
 
   let outputChars = 0;
-  let sawFirstToken = false;
+  let sawFirstSseFlush = false;
+  let sawFirstLlmToken = false;
   let agent = null;
   let provider = "";
   let selectedModel = model;
+  let lastSseFlushAt = null;
+  let maxGapBetweenSseChunks = 0;
+  let firstTokenWarningTimer = null;
+  let enableFirstTokenFiller = body.enableFirstTokenFiller === true || metadata.enableFirstTokenFiller === true;
+
+  function clearFirstTokenWarningTimer() {
+    if (!firstTokenWarningTimer) return;
+    clearTimeout(firstTokenWarningTimer);
+    firstTokenWarningTimer = null;
+  }
+
+  function scheduleFirstTokenWarning() {
+    clearFirstTokenWarningTimer();
+    firstTokenWarningTimer = setTimeout(() => {
+      if (sawFirstLlmToken) return;
+      const elapsedMs = elapsed(latencyMarks.llmStarted || startedAt);
+      console.warn("[Vapi warning] first_llm_token_delayed", {
+        conversationId,
+        agentId,
+        provider,
+        model: selectedModel,
+        elapsedMs
+      });
+      if (enableFirstTokenFiller && !sawFirstSseFlush) {
+        smoothBuffer.push("One moment, let me check that.");
+      }
+    }, 2500);
+  }
+
+  function logLatencyBreakdown() {
+    const doneAt = latencyMarks.streamDone || Date.now();
+    console.log("[Vapi latency breakdown]", {
+      conversationId,
+      agentId,
+      provider,
+      model: selectedModel,
+      request_to_agent_loaded: latencyMarks.agentLoaded ? latencyMarks.agentLoaded - latencyMarks.requestReceived : null,
+      agent_loaded_to_llm_start: latencyMarks.agentLoaded && latencyMarks.llmStarted ? latencyMarks.llmStarted - latencyMarks.agentLoaded : null,
+      llm_start_to_first_token: latencyMarks.llmStarted && latencyMarks.firstLlmToken ? latencyMarks.firstLlmToken - latencyMarks.llmStarted : null,
+      first_token_to_first_flush: latencyMarks.firstLlmToken && latencyMarks.firstSseFlush ? latencyMarks.firstSseFlush - latencyMarks.firstLlmToken : null,
+      first_flush_to_stream_done: latencyMarks.firstSseFlush ? doneAt - latencyMarks.firstSseFlush : null,
+      total_backend_time: doneAt - latencyMarks.requestReceived,
+      max_gap_between_sse_chunks: maxGapBetweenSseChunks
+    });
+  }
+
   const smoothBuffer = createVoiceChunkBuffer({
     onFlush: (part) => {
+      const flushedAt = Date.now();
       outputChars += part.length;
-      if (!sawFirstToken) {
-        sawFirstToken = true;
-        const firstTokenElapsed = elapsed(startedAt);
-        logLatency("first_token", { conversationId, agentId, provider, model: selectedModel, elapsedMs: firstTokenElapsed, outputChars });
-        if (firstTokenElapsed > 4000) console.warn("First token latency is high.");
+      if (lastSseFlushAt) {
+        maxGapBetweenSseChunks = Math.max(maxGapBetweenSseChunks, flushedAt - lastSseFlushAt);
       }
+      lastSseFlushAt = flushedAt;
+      if (!sawFirstSseFlush) {
+        sawFirstSseFlush = true;
+        latencyMarks.firstSseFlush = flushedAt;
+        logLatency("first_sse_flush", {
+          conversationId,
+          agentId,
+          provider,
+          model: selectedModel,
+          elapsedMs: elapsed(startedAt),
+          outputChars
+        });
+      }
+      logLatency("tts_chunk_sent", {
+        conversationId,
+        agentId,
+        provider,
+        model: selectedModel,
+        elapsedMs: elapsed(startedAt),
+        outputChars
+      });
       res.write(streamChunk({ id, created, model: selectedModel, delta: { content: part }, finishReason: null }));
     },
     onLog: (event, details = {}) => {
@@ -355,6 +468,15 @@ export async function vapiChatCompletions(req, res, deps = {}) {
         });
         return;
       }
+      if (event === "no_llm_delta") {
+        console.log("[Vapi stream gap] no_llm_delta_for_ms=" + details.elapsedMs, {
+          conversationId,
+          agentId,
+          provider,
+          model: selectedModel
+        });
+        return;
+      }
       if (event === "total_flushes") {
         console.log("[Vapi stream smoothing] total_flushes", {
           conversationId,
@@ -369,6 +491,8 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     agent = await loadAgent(agentId);
     provider = providerFromAgent(agent);
     selectedModel = modelFromAgent(agent, model);
+    latencyMarks.agentLoaded = Date.now();
+    enableFirstTokenFiller = enableFirstTokenFiller || agent?.settings?.llm?.enableFirstTokenFiller === true;
     logLatency("agent_loaded", {
       conversationId,
       agentId,
@@ -383,6 +507,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
         smoothBuffer.push(part);
       }
     } else {
+      latencyMarks.llmStarted = Date.now();
       logLatency("llm_started", {
         conversationId,
         agentId,
@@ -390,13 +515,38 @@ export async function vapiChatCompletions(req, res, deps = {}) {
         model: selectedModel,
         elapsedMs: elapsed(startedAt)
       });
+      scheduleFirstTokenWarning();
 
       for await (const part of streamAgent({ agent, userMessage: userText, conversationId, voiceMode: true })) {
         if (!part) continue;
+        if (!sawFirstLlmToken) {
+          sawFirstLlmToken = true;
+          clearFirstTokenWarningTimer();
+          latencyMarks.firstLlmToken = Date.now();
+          const llmTokenElapsed = latencyMarks.firstLlmToken - latencyMarks.llmStarted;
+          logLatency("first_llm_token", {
+            conversationId,
+            agentId,
+            provider,
+            model: selectedModel,
+            elapsedMs: elapsed(startedAt),
+            outputChars
+          });
+          if (llmTokenElapsed > 2500) {
+            console.warn("[Vapi warning] first_llm_token_delayed", {
+              conversationId,
+              agentId,
+              provider,
+              model: selectedModel,
+              elapsedMs: llmTokenElapsed
+            });
+          }
+        }
         smoothBuffer.push(part);
       }
     }
   } catch (error) {
+    clearFirstTokenWarningTimer();
     logLatency("stream_failed", {
       conversationId,
       agentId,
@@ -407,7 +557,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     });
     console.error("[Vapi chat] stream failed:", error.message);
 
-    if (!sawFirstToken) {
+    if (!sawFirstSseFlush && !smoothBuffer.hasBufferedContent) {
       for (const part of fallbackStream()) {
         smoothBuffer.push(part);
       }
@@ -416,7 +566,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
 
   await smoothBuffer.flushFinal({ logTotal: false });
 
-  if (!sawFirstToken) {
+  if (!sawFirstSseFlush) {
     for (const part of fallbackStream()) {
       smoothBuffer.push(part);
     }
@@ -428,10 +578,16 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     agentId,
     totalFlushes: smoothBuffer.flushCount
   });
+  console.log("[Vapi stream smoothing] max_gap_between_flushes=" + smoothBuffer.maxGapBetweenFlushes, {
+    conversationId,
+    agentId
+  });
 
   res.write(streamChunk({ id, created, model: selectedModel, delta: {}, finishReason: "stop" }));
   res.write("data: [DONE]\n\n");
   res.end();
+  clearFirstTokenWarningTimer();
+  latencyMarks.streamDone = Date.now();
   logLatency("stream_done", {
     conversationId,
     agentId,
@@ -440,4 +596,5 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     elapsedMs: elapsed(startedAt),
     outputChars
   });
+  logLatencyBreakdown();
 }

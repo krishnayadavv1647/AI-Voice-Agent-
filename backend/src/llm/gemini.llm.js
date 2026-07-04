@@ -20,9 +20,9 @@ function clampNumber(value, fallback, min, max) {
 
 function geminiConfig(settings = {}) {
   const config = {
-    temperature: numberSetting(settings.temperature, 0.3),
+    temperature: numberSetting(settings.temperature, settings.voiceMode ? 0.35 : 0.3),
     maxOutputTokens: settings.voiceMode
-      ? clampNumber(settings.maxOutputTokens ?? settings.maxTokens, 96, 32, 160)
+      ? clampNumber(settings.maxOutputTokens ?? settings.maxTokens, 140, 80, 180)
       : numberSetting(settings.maxOutputTokens ?? settings.maxTokens, 512)
   };
 
