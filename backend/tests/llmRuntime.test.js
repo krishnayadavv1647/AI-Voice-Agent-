@@ -28,6 +28,24 @@ test("Gemini model defaults to gemini-2.5-flash", async () => {
   });
 });
 
+test("voice mode defaults to gemini-2.5-flash-lite when nothing is configured", async () => {
+  await withEnv({ GEMINI_MODEL: undefined, GEMINI_VOICE_MODEL: undefined }, async () => {
+    const config = await resolveAgentLLMRuntimeConfig({ agent: { settings: {} }, voiceMode: true, skipDb: true });
+    assert.equal(config.model, "gemini-2.5-flash-lite");
+  });
+});
+
+test("voice mode still honors an explicitly configured agent model", async () => {
+  await withEnv({ GEMINI_MODEL: undefined, GEMINI_VOICE_MODEL: undefined }, async () => {
+    const config = await resolveAgentLLMRuntimeConfig({
+      agent: { settings: { llm: { model: "gemini-ui-model" } } },
+      voiceMode: true,
+      skipDb: true
+    });
+    assert.equal(config.model, "gemini-ui-model");
+  });
+});
+
 test("env GEMINI_MODEL is respected when no agent model is selected", async () => {
   await withEnv({ GEMINI_MODEL: "gemini-env-model" }, async () => {
     const config = await resolveAgentLLMRuntimeConfig({ agent: { settings: {} }, skipDb: true });
@@ -67,10 +85,10 @@ test("env fallback API key is used when connected account is missing", async () 
   });
 });
 
-test("voice max tokens are clamped between 80 and 180", () => {
+test("voice max tokens are clamped between 80 and 400", () => {
   assert.equal(clampVoiceMaxTokens(1), 80);
-  assert.equal(clampVoiceMaxTokens(140), 140);
-  assert.equal(clampVoiceMaxTokens(1000), 180);
+  assert.equal(clampVoiceMaxTokens(200), 200);
+  assert.equal(clampVoiceMaxTokens(1000), 400);
 });
 
 test("temperature defaults to 0.3", async () => {

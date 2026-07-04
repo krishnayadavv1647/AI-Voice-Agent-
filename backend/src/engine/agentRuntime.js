@@ -9,6 +9,9 @@ import { decryptSecret } from "../utils/crypto.js";
 import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+// Voice calls default to Flash-Lite for the lowest time-to-first-token. Only used as a
+// last-resort fallback: an agent's configured model and GEMINI_MODEL still win.
+const DEFAULT_VOICE_GEMINI_MODEL = "gemini-2.5-flash-lite";
 const VOICE_HISTORY_LIMIT = 6;
 // The resolved LLM config (provider, key, model, settings) does not change during a
 // call, but resolving it costs two sequential DB reads. Cache it briefly per agent so
@@ -53,9 +56,13 @@ function numberSetting(...values) {
   return undefined;
 }
 
-export function clampVoiceMaxTokens(value, fallback = 140) {
+// Voice replies target 45-80 words (~110-150 tokens). The old 180 ceiling let Gemini
+// hit MAX_TOKENS and cut off mid-sentence, so give enough headroom that a full spoken
+// reply always fits. This ceiling does not affect time-to-first-token (streaming caps
+// length, not start latency), so it is safe for the sub-3s goal.
+export function clampVoiceMaxTokens(value, fallback = 200) {
   const selected = numberSetting(value, fallback) ?? fallback;
-  return Math.min(Math.max(selected, 80), 180);
+  return Math.min(Math.max(selected, 80), 400);
 }
 
 function firstDefined(...values) {
@@ -67,8 +74,11 @@ function envKeyForProvider(provider) {
   return process.env.GEMINI_API_KEY;
 }
 
-function envModelForProvider(provider) {
+function envModelForProvider(provider, voiceMode = false) {
   if (provider === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
+  if (voiceMode) {
+    return process.env.GEMINI_VOICE_MODEL || process.env.GEMINI_MODEL || DEFAULT_VOICE_GEMINI_MODEL;
+  }
   return process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
 }
 
@@ -158,7 +168,7 @@ export async function resolveAgentLLMRuntimeConfig({
     agentLLMSettings.model,
     savedConfig?.model,
     agent?.llmModel,
-    envModelForProvider(provider)
+    envModelForProvider(provider, voiceMode)
   );
 
   if (voiceMode && /pro/i.test(String(selectedModel || ""))) {
@@ -189,13 +199,14 @@ export async function resolveAgentLLMRuntimeConfig({
     voiceMode ? 0.35 : 0.3
   ) ?? (voiceMode ? 0.35 : 0.3);
 
-  const rawMaxTokens = firstDefined(
+  const configuredMaxTokens = firstDefined(
     agentLLMSettings.maxTokens,
     savedSettings.maxTokens,
-    process.env.GEMINI_MAX_TOKENS,
-    140
+    process.env.GEMINI_MAX_TOKENS
   );
-  const maxTokens = voiceMode ? clampVoiceMaxTokens(rawMaxTokens, 140) : (numberSetting(rawMaxTokens, 512) ?? 512);
+  const maxTokens = voiceMode
+    ? clampVoiceMaxTokens(configuredMaxTokens, 200)
+    : (numberSetting(configuredMaxTokens, 512) ?? 512);
   const toolCalling = resolveToolCalling({ agent, agentLLMSettings, savedSettings, voiceMode });
 
   return {
