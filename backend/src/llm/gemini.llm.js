@@ -22,7 +22,7 @@ function geminiConfig(settings = {}) {
   const config = {
     temperature: numberSetting(settings.temperature, settings.voiceMode ? 0.35 : 0.3),
     maxOutputTokens: settings.voiceMode
-      ? clampNumber(settings.maxOutputTokens ?? settings.maxTokens, 140, 80, 180)
+      ? clampNumber(settings.maxOutputTokens ?? settings.maxTokens, 200, 80, 400)
       : numberSetting(settings.maxOutputTokens ?? settings.maxTokens, 512)
   };
 
@@ -143,10 +143,24 @@ export async function* streamGeminiResponse({ apiKey, model, messages, settings 
       }
     });
 
+    let finishReason = null;
     for await (const chunk of stream) {
       const text = typeof chunk.text === "function" ? chunk.text() : chunk.text;
       const value = String(text || "");
       if (value) yield value;
+      const reason = chunk?.candidates?.[0]?.finishReason;
+      if (reason) finishReason = reason;
+    }
+
+    // A non-STOP finish reason (MAX_TOKENS, SAFETY, RECITATION…) means Gemini ended the
+    // reply early — the caller hears a sentence that stops mid-thought. Surface it so the
+    // cause is visible in logs instead of looking like a random cutoff.
+    if (finishReason && finishReason !== "STOP" && finishReason !== "FINISH_REASON_STOP") {
+      console.warn("[Gemini stream] reply ended early — may be cut off mid-sentence", {
+        finishReason,
+        model: selectedModel,
+        maxOutputTokens: geminiConfig(settings).maxOutputTokens
+      });
     }
   } catch (error) {
     if (error instanceof ApiError) throw error;
