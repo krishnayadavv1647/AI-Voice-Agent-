@@ -1,12 +1,45 @@
 import { GoogleGenAI } from "@google/genai";
 import { ApiError } from "../utils/apiError.js";
 
-export async function generateGeminiResponse({ model, messages, settings = {} }) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new ApiError(500, "Gemini provider is not configured.");
-  }
+function resolvedGeminiKey(apiKey) {
+  return String(apiKey || process.env.GEMINI_API_KEY || "").trim();
+}
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+function resolvedGeminiModel(model) {
+  return String(model || process.env.GEMINI_MODEL || "gemini-2.5-flash").trim();
+}
+
+function numberSetting(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clampNumber(value, fallback, min, max) {
+  return Math.min(Math.max(numberSetting(value, fallback), min), max);
+}
+
+function geminiConfig(settings = {}) {
+  const config = {
+    temperature: numberSetting(settings.temperature, 0.3),
+    maxOutputTokens: settings.voiceMode
+      ? clampNumber(settings.maxOutputTokens ?? settings.maxTokens, 96, 32, 160)
+      : numberSetting(settings.maxOutputTokens ?? settings.maxTokens, 512)
+  };
+
+  const topP = Number(settings.topP);
+  if (Number.isFinite(topP)) config.topP = Math.min(Math.max(topP, 0), 1);
+  return config;
+}
+
+function geminiClient(apiKey, settings = {}) {
+  const timeoutMs = Number(settings.timeoutMs);
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return new GoogleGenAI({ apiKey, httpOptions: { timeout: timeoutMs } });
+  }
+  return new GoogleGenAI({ apiKey });
+}
+
+function geminiMessages(messages = []) {
   const systemMessage = messages.find((message) => message.role === "system")?.content || "";
   const userMessages = messages
     .filter((message) => message.role !== "system")
@@ -16,17 +49,30 @@ export async function generateGeminiResponse({ model, messages, settings = {} })
       parts: [{ text: String(message.content).trim() }]
     }));
 
+  return { systemMessage, userMessages };
+}
+
+export async function generateGeminiResponse({ apiKey, model, messages, settings = {} }) {
+  const key = resolvedGeminiKey(apiKey);
+  if (!key) {
+    throw new ApiError(500, "Gemini provider is not configured.");
+  }
+
+  const selectedModel = resolvedGeminiModel(model);
+  const ai = geminiClient(key, settings);
+  const { systemMessage, userMessages } = geminiMessages(messages);
+
   if (!userMessages.length) {
     throw new ApiError(400, "Message is required.");
   }
 
   try {
     const response = await ai.models.generateContent({
-      model: model || process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      model: selectedModel,
       contents: userMessages,
       config: {
         systemInstruction: systemMessage || undefined,
-        temperature: settings.temperature ?? 0.4
+        ...geminiConfig(settings)
       }
     });
 
@@ -51,6 +97,54 @@ export async function generateGeminiResponse({ model, messages, settings = {} })
       friendlyGeminiMessage(details),
       details
     );
+  }
+}
+
+export async function* streamGeminiResponse({ apiKey, model, messages, settings = {} }) {
+  const key = resolvedGeminiKey(apiKey);
+  if (!key) {
+    throw new ApiError(500, "Gemini provider is not configured.");
+  }
+
+  const selectedModel = resolvedGeminiModel(model);
+  if (!selectedModel) {
+    throw new ApiError(500, "Gemini model is not configured.");
+  }
+
+  const { systemMessage, userMessages } = geminiMessages(messages);
+  if (!userMessages.length) {
+    throw new ApiError(400, "Message is required.");
+  }
+
+  try {
+    const ai = geminiClient(key, settings);
+    const stream = await ai.models.generateContentStream({
+      model: selectedModel,
+      contents: userMessages,
+      config: {
+        systemInstruction: systemMessage || undefined,
+        ...geminiConfig(settings)
+      }
+    });
+
+    for await (const chunk of stream) {
+      const text = typeof chunk.text === "function" ? chunk.text() : chunk.text;
+      const value = String(text || "");
+      if (value) yield value;
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+
+    const geminiError = parseGeminiError(error);
+    const details = {
+      status: error.status || error.response?.status || geminiError.status,
+      message: geminiError.message,
+      code: geminiError.code,
+      details: geminiError.details
+    };
+
+    console.error("Gemini LLM stream failed:", details);
+    throw new ApiError(details.status || 502, friendlyGeminiMessage(details), details);
   }
 }
 

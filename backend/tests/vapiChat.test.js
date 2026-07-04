@@ -62,6 +62,35 @@ test("streaming path writes a content delta and a terminal [DONE]", async () => 
   assert.ok(res.ended);
 });
 
+test("streaming path writes the first chunk before the full runtime stream completes", async () => {
+  const res = fakeRes();
+  const req = {
+    body: {
+      stream: true,
+      model: "agent_1",
+      messages: [{ role: "user", content: "hi" }],
+      call: { id: "call_progressive" }
+    }
+  };
+
+  let firstChunkWasWrittenBeforeSecond = false;
+  async function* runCustomAgentStream() {
+    yield "First chunk. ";
+    firstChunkWasWrittenBeforeSecond = res.chunks.join("").includes("First chunk.");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    yield "Second chunk.";
+  }
+
+  await vapiChatCompletions(req, res, {
+    loadAgent: async () => ({ _id: "agent_1" }),
+    runCustomAgentStream
+  });
+
+  assert.equal(firstChunkWasWrittenBeforeSecond, true);
+  assert.ok(res.chunks.join("").includes("First chunk."));
+  assert.ok(res.chunks.join("").includes("Second chunk."));
+});
+
 test("agent-not-found streams the fallback and still returns 200", async () => {
   const res = fakeRes();
   const req = {

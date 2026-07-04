@@ -1,18 +1,183 @@
-import { generateLLMResponse } from "../llm/index.js";
+import mongoose from "mongoose";
+import { generateLLMResponse, generateLLMResponseStream } from "../llm/index.js";
 import { getConversationHistory, saveConversationMessage } from "./memoryService.js";
 import { buildAgentMessages } from "./promptBuilder.js";
 import { runWorkflowNode } from "./workflowRunner.js";
+import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
+import LLMIntegration from "../models/LLMIntegration.js";
+import { decryptSecret } from "../utils/crypto.js";
+import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
+
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+const VOICE_HISTORY_LIMIT = 8;
+
+function dbAvailable() {
+  return mongoose.connection?.readyState === 1;
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function numberSetting(...values) {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function clampVoiceMaxTokens(value, fallback = 96) {
+  const selected = numberSetting(value, fallback) ?? fallback;
+  return Math.min(Math.max(selected, 32), 160);
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null && value !== "");
+}
+
+function envKeyForProvider(provider) {
+  if (provider === "openai") return process.env.OPENAI_API_KEY;
+  return process.env.GEMINI_API_KEY;
+}
+
+function envModelForProvider(provider) {
+  if (provider === "openai") return process.env.OPENAI_MODEL || "gpt-4o-mini";
+  return process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+}
+
+function normalizeRuntimeProvider(value) {
+  const provider = normalizeLLMProvider(value === "platform_default" ? "google_gemini" : value);
+  return provider === "platform_default" ? "google_gemini" : provider;
+}
+
+async function loadSavedLLMConfiguration(agent) {
+  if (!dbAvailable() || !agent?._id) return null;
+  try {
+    return await AgentLLMConfiguration.findOne({ agentId: agent._id, userId: agent.userId });
+  } catch (error) {
+    console.error("[Vapi LLM config] saved config lookup failed:", error.message);
+    return null;
+  }
+}
+
+async function resolveConnectedAccountApiKey({ agent, config, provider }) {
+  if (!dbAvailable() || !config?.integrationId || !agent?.userId) return null;
+
+  try {
+    const integration = await LLMIntegration.findOne({
+      _id: config.integrationId,
+      userId: agent.userId,
+      provider,
+      credentialStatus: "connected"
+    }).select("+encryptedCredentials");
+
+    if (!integration?.encryptedCredentials) return null;
+    const credentials = JSON.parse(decryptSecret(integration.encryptedCredentials));
+    return String(credentials?.apiKey || "").trim() || null;
+  } catch (error) {
+    console.error("[Vapi LLM config] connected account lookup failed:", error.message);
+    return null;
+  }
+}
+
+export async function resolveAgentLLMRuntimeConfig({
+  agent,
+  voiceMode = false,
+  savedConfigOverride,
+  connectedApiKeyOverride,
+  skipDb = false
+} = {}) {
+  const savedConfig = savedConfigOverride !== undefined
+    ? savedConfigOverride
+    : skipDb
+      ? null
+      : await loadSavedLLMConfiguration(agent);
+  const agentLLMSettings = asObject(agent?.settings?.llm);
+  const savedSettings = asObject(savedConfig?.settings);
+  const provider = normalizeRuntimeProvider(firstDefined(
+    agentLLMSettings.provider,
+    savedConfig?.provider,
+    agent?.llmProvider,
+    process.env.DEFAULT_LLM_PROVIDER,
+    "google_gemini"
+  ));
+
+  const selectedModel = firstDefined(
+    agentLLMSettings.manualModelId,
+    agentLLMSettings.model,
+    savedConfig?.model,
+    agent?.llmModel,
+    envModelForProvider(provider)
+  );
+
+  if (voiceMode && /pro/i.test(String(selectedModel || ""))) {
+    console.warn("Gemini Pro is not recommended for voice calls due to latency.");
+  }
+
+  const connectedApiKey = connectedApiKeyOverride !== undefined
+    ? connectedApiKeyOverride
+    : skipDb
+      ? null
+      : await resolveConnectedAccountApiKey({ agent, config: savedConfig, provider });
+  const apiKey = connectedApiKey || String(envKeyForProvider(provider) || "").trim();
+  console.log(
+    connectedApiKey
+      ? "[Vapi LLM config] using agent connected account"
+      : "[Vapi LLM config] using env fallback",
+    {
+      agentId: agent?._id?.toString?.() || agent?._id,
+      provider,
+      model: selectedModel
+    }
+  );
+
+  const temperature = numberSetting(
+    agentLLMSettings.temperature,
+    savedSettings.temperature,
+    process.env.GEMINI_TEMPERATURE,
+    0.3
+  ) ?? 0.3;
+
+  const rawMaxTokens = firstDefined(
+    agentLLMSettings.maxTokens,
+    savedSettings.maxTokens,
+    process.env.GEMINI_MAX_TOKENS,
+    96
+  );
+  const maxTokens = voiceMode ? clampVoiceMaxTokens(rawMaxTokens, 96) : (numberSetting(rawMaxTokens, 512) ?? 512);
+
+  return {
+    provider,
+    apiKey,
+    model: selectedModel,
+    settings: {
+      ...savedSettings,
+      ...agentLLMSettings,
+      temperature,
+      maxTokens,
+      maxOutputTokens: maxTokens,
+      topP: numberSetting(agentLLMSettings.topP, savedSettings.topP),
+      timeoutMs: numberSetting(agentLLMSettings.timeoutMs, savedSettings.timeoutMs, 30000),
+      streaming: firstDefined(agentLLMSettings.streaming, savedSettings.streaming, true) !== false,
+      toolCalling: firstDefined(agentLLMSettings.toolCalling, savedSettings.toolCalling, true) !== false,
+      voiceMode
+    }
+  };
+}
 
 export async function runCustomAgent({ agent, userMessage, conversationId }) {
   const history = await getConversationHistory(conversationId);
   const workflowState = runWorkflowNode({ agent, userMessage });
   const messages = buildAgentMessages({ agent, userMessage, history });
+  const llmConfig = await resolveAgentLLMRuntimeConfig({ agent, voiceMode: false });
 
   const reply = await generateLLMResponse({
-    provider: agent.llmProvider || process.env.DEFAULT_LLM_PROVIDER || "platform_default",
-    model: agent.llmModel,
+    provider: llmConfig.provider,
+    apiKey: llmConfig.apiKey,
+    model: llmConfig.model,
     messages,
-    settings: agent.settings || {}
+    settings: llmConfig.settings
   });
 
   await saveConversationMessage(conversationId, { role: "user", content: userMessage });
@@ -22,4 +187,38 @@ export async function runCustomAgent({ agent, userMessage, conversationId }) {
     reply,
     workflowState
   };
+}
+
+export async function* runCustomAgentStream({ agent, userMessage, conversationId, voiceMode = true }) {
+  const history = await getConversationHistory(conversationId, voiceMode ? VOICE_HISTORY_LIMIT : undefined);
+  const messages = buildAgentMessages({ agent, userMessage, history, voiceMode });
+  const llmConfig = await resolveAgentLLMRuntimeConfig({ agent, voiceMode });
+  let assistantReply = "";
+  let emitted = false;
+
+  try {
+    for await (const chunk of generateLLMResponseStream({
+      provider: llmConfig.provider,
+      apiKey: llmConfig.apiKey,
+      model: llmConfig.model,
+      messages,
+      settings: llmConfig.settings
+    })) {
+      emitted = true;
+      assistantReply += chunk;
+      yield chunk;
+    }
+  } catch (error) {
+    if (!emitted) throw error;
+    console.error("[agentRuntime] LLM stream failed after partial output:", {
+      agentId: agent?._id?.toString?.() || agent?._id,
+      conversationId,
+      message: error.message
+    });
+  } finally {
+    await saveConversationMessage(conversationId, { role: "user", content: userMessage });
+    if (assistantReply) {
+      await saveConversationMessage(conversationId, { role: "assistant", content: assistantReply });
+    }
+  }
 }

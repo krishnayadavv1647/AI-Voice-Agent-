@@ -102,8 +102,13 @@ export function applyLLMConfigurationToAgent(agent, config) {
     llm: {
       provider: config.provider,
       model: config.model || "",
+      manualModelId: config.model || "",
       temperature: config.settings?.temperature,
-      maxTokens: config.settings?.maxTokens
+      maxTokens: config.settings?.maxTokens,
+      topP: config.settings?.topP,
+      timeoutMs: config.settings?.timeoutMs,
+      streaming: config.settings?.streaming,
+      toolCalling: config.settings?.toolCalling
     }
   };
 }
