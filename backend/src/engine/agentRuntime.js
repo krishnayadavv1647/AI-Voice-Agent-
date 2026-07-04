@@ -10,9 +10,35 @@ import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const VOICE_HISTORY_LIMIT = 6;
+// The resolved LLM config (provider, key, model, settings) does not change during a
+// call, but resolving it costs two sequential DB reads. Cache it briefly per agent so
+// only the first turn pays that cost; later turns start the LLM stream immediately.
+const RUNTIME_CONFIG_CACHE_TTL_MS = 30000;
+const runtimeConfigCache = new Map();
 
 function dbAvailable() {
   return mongoose.connection?.readyState === 1;
+}
+
+function runtimeConfigCacheKey(agent, voiceMode) {
+  const id = agent?._id?.toString?.() || agent?._id;
+  return id ? `${id}:${voiceMode ? "voice" : "text"}` : null;
+}
+
+async function resolveAgentLLMRuntimeConfigCached({ agent, voiceMode }) {
+  const key = runtimeConfigCacheKey(agent, voiceMode);
+  if (!key) return resolveAgentLLMRuntimeConfig({ agent, voiceMode });
+
+  const cached = runtimeConfigCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.config;
+
+  const config = await resolveAgentLLMRuntimeConfig({ agent, voiceMode });
+  runtimeConfigCache.set(key, { config, expiresAt: Date.now() + RUNTIME_CONFIG_CACHE_TTL_MS });
+  return config;
+}
+
+export function clearRuntimeConfigCache() {
+  runtimeConfigCache.clear();
 }
 
 function asObject(value) {
@@ -215,9 +241,13 @@ export async function runCustomAgent({ agent, userMessage, conversationId }) {
 }
 
 export async function* runCustomAgentStream({ agent, userMessage, conversationId, voiceMode = true }) {
-  const history = await getConversationHistory(conversationId, voiceMode ? VOICE_HISTORY_LIMIT : undefined);
+  // History and config are independent; resolve them concurrently so their DB reads
+  // overlap instead of stacking up in front of the first LLM token.
+  const [history, llmConfig] = await Promise.all([
+    getConversationHistory(conversationId, voiceMode ? VOICE_HISTORY_LIMIT : undefined),
+    resolveAgentLLMRuntimeConfigCached({ agent, voiceMode })
+  ]);
   const messages = buildAgentMessages({ agent, userMessage, history, voiceMode });
-  const llmConfig = await resolveAgentLLMRuntimeConfig({ agent, voiceMode });
   let assistantReply = "";
   let emitted = false;
 
