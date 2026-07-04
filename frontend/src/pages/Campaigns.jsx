@@ -184,7 +184,7 @@ export default function Campaigns() {
           ) : (
             <div className="divide-y divide-hairline">
               {campaigns.map((campaign) => (
-                <button key={campaign._id} className={`block w-full p-4 text-left transition hover:bg-neutral-50 ${selected?._id === campaign._id ? "bg-brand-50" : ""}`} onClick={() => openCampaign(campaign)}>
+                <button key={campaign._id} className={`campaign-list-item block w-full p-4 text-left transition ${selected?._id === campaign._id ? "campaign-list-item-selected" : ""}`} onClick={() => openCampaign(campaign)}>
                   <div className="min-w-0">
                     <h3 className="break-anywhere font-semibold text-ink">{campaign.name}</h3>
                   </div>
