@@ -26,6 +26,22 @@ function geminiConfig(settings = {}) {
       : numberSetting(settings.maxOutputTokens ?? settings.maxTokens, 512)
   };
 
+  // Gemini 2.5 Flash/Flash-Lite enable "thinking" by default, which spends time on
+  // hidden reasoning tokens before emitting the first spoken token. On a live call
+  // that latency is unacceptable, so disable thinking for voice unless explicitly
+  // overridden. thinkingBudget: 0 turns thinking off on the models that support it.
+  if (settings.voiceMode) {
+    const requestedBudget = Number(settings.thinkingBudget);
+    config.thinkingConfig = {
+      thinkingBudget: Number.isFinite(requestedBudget) ? requestedBudget : 0
+    };
+  } else if (settings.thinkingBudget !== undefined) {
+    const requestedBudget = Number(settings.thinkingBudget);
+    if (Number.isFinite(requestedBudget)) {
+      config.thinkingConfig = { thinkingBudget: requestedBudget };
+    }
+  }
+
   const topP = Number(settings.topP);
   if (Number.isFinite(topP)) config.topP = Math.min(Math.max(topP, 0), 1);
   return config;
