@@ -5,6 +5,7 @@ const VOICE_INSTRUCTIONS = [
   "Ask only one question at a time.",
   "Do not explain your reasoning.",
   "Do not give long paragraphs.",
+  "Use short, natural spoken sentences. Include punctuation. Do not produce long paragraphs.",
   "Do not repeat the caller's full sentence.",
   "Be natural, direct, and conversational.",
   "If information is missing, ask one short follow-up question."

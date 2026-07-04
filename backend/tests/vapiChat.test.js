@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { chunkText, buildNonStreamCompletion, vapiChatCompletions } from "../src/controllers/vapiChat.controller.js";
+import { chunkText, buildNonStreamCompletion, createVoiceChunkBuffer, vapiChatCompletions } from "../src/controllers/vapiChat.controller.js";
 
 // ---- fake res --------------------------------------------------------------
 
@@ -34,6 +34,70 @@ test("chunkText splits into word-boundary pieces and reassembles to the original
 test("chunkText returns [] for empty input", () => {
   assert.deepEqual(chunkText(""), []);
   assert.deepEqual(chunkText(null), []);
+});
+
+// ---- voice chunk smoothing -------------------------------------------------
+
+function voiceBuffer(flushes, options = {}) {
+  return createVoiceChunkBuffer({
+    onFlush: (text) => flushes.push(text),
+    setTimer: options.setTimer || (() => null),
+    clearTimer: () => {},
+    now: options.now || (() => 0),
+    ...options
+  });
+}
+
+test("voice chunk buffer combines token fragments into complete phrase chunks", async () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes);
+  for (const delta of ["Yes", ",", " we", " can", " help", " you", " with", " that", ".", " What", " service", " do", " you", " need", "?"]) {
+    buffer.push(delta);
+  }
+  await buffer.flushFinal();
+
+  assert.deepEqual(flushes, [
+    "Yes, we can help you with that.",
+    "What service do you need?"
+  ]);
+});
+
+test("voice chunk buffer does not split words in the middle on length flush", () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes, { preferredMaxChars: 70, firstFlushChars: 70 });
+  buffer.push("This response contains several complete words that should be flushed only at a word boundary before continuing smoothly");
+
+  assert.ok(flushes.length >= 1);
+  assert.match(flushes[0], /\w$/);
+  assert.equal(flushes[0].includes("continu"), false);
+});
+
+test("voice chunk buffer flushes on punctuation once a spoken phrase is ready", () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes);
+  buffer.push("Please hold on while I check");
+  buffer.push(".");
+
+  assert.deepEqual(flushes, ["Please hold on while I check."]);
+});
+
+test("voice chunk buffer final flush sends remaining text", async () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes);
+  buffer.push("Let me check that for you");
+  await buffer.flushFinal();
+
+  assert.deepEqual(flushes, ["Let me check that for you"]);
+});
+
+test("voice chunk buffer ignores empty chunks", async () => {
+  const flushes = [];
+  const buffer = voiceBuffer(flushes);
+  buffer.push("");
+  buffer.push("   ");
+  await buffer.flushFinal();
+
+  assert.deepEqual(flushes, []);
 });
 
 // ---- streaming path --------------------------------------------------------
@@ -75,8 +139,8 @@ test("streaming path writes the first chunk before the full runtime stream compl
 
   let firstChunkWasWrittenBeforeSecond = false;
   async function* runCustomAgentStream() {
-    yield "First chunk. ";
-    firstChunkWasWrittenBeforeSecond = res.chunks.join("").includes("First chunk.");
+    yield "First phrase arrives quickly. ";
+    firstChunkWasWrittenBeforeSecond = res.chunks.join("").includes("First phrase arrives quickly.");
     await new Promise((resolve) => setTimeout(resolve, 5));
     yield "Second chunk.";
   }
@@ -87,7 +151,7 @@ test("streaming path writes the first chunk before the full runtime stream compl
   });
 
   assert.equal(firstChunkWasWrittenBeforeSecond, true);
-  assert.ok(res.chunks.join("").includes("First chunk."));
+  assert.ok(res.chunks.join("").includes("First phrase arrives quickly."));
   assert.ok(res.chunks.join("").includes("Second chunk."));
 });
 
