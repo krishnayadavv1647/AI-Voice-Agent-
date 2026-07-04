@@ -13,18 +13,19 @@ function dbAvailable() {
   return mongoose.connection?.readyState === 1;
 }
 
-export async function getConversationHistory(conversationId) {
+export async function getConversationHistory(conversationId, limit = HISTORY_LIMIT) {
   if (!conversationId) return [];
+  const safeLimit = Math.max(1, Math.min(Number(limit) || HISTORY_LIMIT, HISTORY_LIMIT));
 
   if (!dbAvailable()) {
-    return (fallbackMemory.get(conversationId) || []).slice(-HISTORY_LIMIT);
+    return (fallbackMemory.get(conversationId) || []).slice(-safeLimit);
   }
 
   try {
     // Fetch the most recent turns, then return them oldest-first.
     const turns = await ConversationTurn.find({ conversationId })
       .sort({ createdAt: -1 })
-      .limit(HISTORY_LIMIT)
+      .limit(safeLimit)
       .lean();
 
     return turns
@@ -36,7 +37,7 @@ export async function getConversationHistory(conversationId) {
       }));
   } catch (error) {
     console.error("[memoryService] getConversationHistory failed, using fallback:", error.message);
-    return (fallbackMemory.get(conversationId) || []).slice(-HISTORY_LIMIT);
+    return (fallbackMemory.get(conversationId) || []).slice(-safeLimit);
   }
 }
 
