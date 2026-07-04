@@ -2,6 +2,7 @@ import { Camera, Edit, Eye, Link2, Plus, RefreshCw, Search, Trash2, X } from "lu
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
+import AgentLikeCard from "../components/AgentLikeCard.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import { api, assetUrl } from "../lib/api.js";
 
@@ -189,18 +190,27 @@ export default function Agents() {
         {!filteredAgents.length && <p className="py-8 text-center text-sm text-neutral-500">No agents found for your search.</p>}
       <div className="agent-card-grid">
         {filteredAgents.map((agent, index) => (
-          <article
-            className={`agent-card ${cardImage(agent, index) ? "agent-card-has-image" : ""} ${generatingId === agent._id ? "agent-card-generating" : ""}`}
+          <AgentLikeCard
             key={agent._id}
-            style={{ "--agent-card-image": `url("${cardImage(agent, index)}")` }}
-          >
-            {agent.avatarImagePath && (
-              <img className="agent-card-avatar-img" src={assetUrl(agent.avatarImagePath)} alt="" aria-hidden="true" />
+            className={generatingId === agent._id ? "agent-card-generating" : ""}
+            imageUrl={cardImage(agent, index)}
+            avatarImageUrl={agent.avatarImagePath ? assetUrl(agent.avatarImagePath) : ""}
+            fallback={initials(agent)}
+            title={agent.agentName || "AI Sales Calling Agent"}
+            description={agent.businessName || "Automate sales calls, follow-ups, lead outreach, & appointment booking with one smart AI calling agent."}
+            topLeft={(
+              <Link className="agent-card-edit" title="Edit" to={`/agents/${agent._id}/edit`}>
+                <Edit size={13} />
+                <span>Edit</span>
+              </Link>
             )}
-            {!cardImage(agent, index) && <div className="agent-card-fallback" aria-hidden="true">{initials(agent)}</div>}
-            <button title="Delete" className="agent-card-delete" onClick={() => action(agent._id, "delete")} type="button">
-              <Trash2 size={14} />
-            </button>
+            topRight={(
+              <button title="Delete" className="agent-card-delete" onClick={() => action(agent._id, "delete")} type="button">
+                <Trash2 size={14} />
+              </button>
+            )}
+            floatingControls={(
+              <>
             <button
               type="button"
               className="agent-card-upload-badge"
@@ -223,12 +233,10 @@ export default function Agents() {
                 <X size={11} />Remove
               </button>
             )}
-            <Link className="agent-card-edit" title="Edit" to={`/agents/${agent._id}/edit`}>
-              <Edit size={13} />
-              <span>Edit</span>
-            </Link>
-
-            <div className="agent-actions" aria-label={`Actions for ${agent.agentName || "agent"}`}>
+              </>
+            )}
+            actions={(
+              <>
               <Link title="View" to={`/agents/${agent._id}`}>
                 <Eye size={13} />
                 <span>View</span>
@@ -246,13 +254,9 @@ export default function Agents() {
                 <Link2 size={13} />
                 <span>{copiedId === agent._id ? "Copied!" : "Share"}</span>
               </button>
-            </div>
-
-            <div className="agent-card-content">
-              <h2>{agent.agentName || "AI Sales Calling Agent"}</h2>
-              <p>{agent.businessName || "Automate sales calls, follow-ups, lead outreach, & appointment booking with one smart AI calling agent."}</p>
-            </div>
-          </article>
+              </>
+            )}
+          />
         ))}
       </div>
       </>

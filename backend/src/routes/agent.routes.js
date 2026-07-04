@@ -41,12 +41,14 @@ import {
   uploadAgentAvatar,
   deleteAgentAvatar
 } from "../controllers/agent.controller.js";
+import { createAgentFromTemplate as createAgentFromTemplateController } from "../controllers/agentTemplate.controller.js";
 import { adminOnly, protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 router.use(protect);
 router.route("/").post(createAgent).get(listAgents);
+router.post("/from-template", createAgentFromTemplateController);
 router.post("/backfill-images", adminOnly, backfillAgentImages);
 router.get("/bio-page/templates", listBioPageTemplates);
 router.route("/:id").get(getAgent).put(updateAgent).delete(removeAgent);

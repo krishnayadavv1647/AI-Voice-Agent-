@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import adminRoutes from "./routes/admin.routes.js";
 import plansRoutes from "./routes/plans.routes.js";
 import agentRoutes from "./routes/agent.routes.js";
+import agentTemplateRoutes from "./routes/agentTemplate.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import billingRoutes from "./routes/billing.routes.js";
@@ -92,6 +93,7 @@ app.use("/api/email", emailRoutes);
 app.use("/api/email-integrations", emailIntegrationRoutes);
 app.use("/api/followups", followUpRoutes);
 app.use("/api/import-calls", importCallsRoutes);
+app.use("/api/agent-templates", agentTemplateRoutes);
 app.use("/api/agents", agentRoutes);
 app.use("/api/appointments", appointmentRoutes);
 

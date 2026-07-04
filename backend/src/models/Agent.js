@@ -201,7 +201,19 @@ const agentSchema = new mongoose.Schema(
       updatedAt: Date
     },
     totalCalls: { type: Number, default: 0 },
-    totalLeads: { type: Number, default: 0 }
+    totalLeads: { type: Number, default: 0 },
+    sourceType: { type: String, enum: ["manual", "template"], default: "manual", index: true },
+    sourceTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: "AgentTemplate", default: null },
+    voiceConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    llmConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    callConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    webCallConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    workflowConfig: { type: mongoose.Schema.Types.Mixed, default: {} },
+    leadCaptureFields: { type: Array, default: [] },
+    fallbackRules: { type: Array, default: [] },
+    escalationRules: { type: Array, default: [] },
+    appointmentRules: { type: mongoose.Schema.Types.Mixed, default: {} },
+    knowledgeBaseDefaults: { type: mongoose.Schema.Types.Mixed, default: {} }
   },
   { timestamps: true }
 );

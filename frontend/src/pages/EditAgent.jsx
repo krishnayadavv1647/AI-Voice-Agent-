@@ -8,7 +8,7 @@ import VoiceConfigurationPanel, { defaultVoiceConfiguration } from "../component
 import { api } from "../lib/api.js";
 import { agentTypes, languages, tones, personalities } from "../lib/options.js";
 
-const tabs = ["Basic Info", "Business Information", "System Prompt", "Call Behavior", "Voice & Language", "Dograh Workflow"];
+const tabs = ["Basic Info", "Business Information", "System Prompt", "Call Behavior", "Voice & Language", "Calling System"];
 
 const editableFields = [
   "agentName", "agentType", "businessName", "businessCategory", "businessDescription",
@@ -31,6 +31,12 @@ function formatApiError(error) {
 
 function formatDateTime(value) {
   return value ? new Date(value).toLocaleString() : "-";
+}
+
+function systemLabel(value) {
+  if (value === "dograh") return "Platform Calling";
+  if (value === "vapi") return "Web Calling";
+  return "System Provider";
 }
 
 export default function EditAgent() {
@@ -122,7 +128,7 @@ export default function EditAgent() {
     if (field === "language") return "english";
     if (field === "callMode") return "outbound";
     if (field === "responseStyle") return "short_clear";
-    if (field === "voiceProvider") return "Dograh Default";
+    if (field === "voiceProvider") return "Default Voice";
     if (field === "sttProvider") return "dograh_default";
     if (field === "ttsProvider") return "dograh_default";
     if (field === "voiceSpeed") return "Normal";
@@ -234,7 +240,7 @@ export default function EditAgent() {
         voiceConfiguration: result.voiceConfiguration || current.voiceConfiguration,
         llmConfiguration: result.llmConfiguration || current.llmConfiguration
       }));
-      setNotice(result.message || "Dograh workflow sync started.");
+      setNotice(result.message || "Calling system sync started.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -282,7 +288,7 @@ export default function EditAgent() {
         llmConfiguration: result.llmConfiguration || current.llmConfiguration
       }));
       if (result.warning) setError(result.warning);
-      else setNotice(result.message || "Dograh runtime verified.");
+      else setNotice(result.message || "Calling system verified.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -312,7 +318,7 @@ export default function EditAgent() {
         workflowSyncError: updated.workflowSyncError || "",
         dograhStatus: updated.dograhStatus || ""
       }));
-      setNotice("Dograh migration completed and verified.");
+      setNotice("Calling system migration completed and verified.");
     } catch (err) {
       setError(formatApiError(err));
     } finally {
@@ -331,7 +337,7 @@ export default function EditAgent() {
     <div className="page-stack">
       <PageHeader
         title="Edit Agent"
-        description="Update agent details. Dograh workflow sync starts automatically after saving."
+        description="Update agent details. Calling system sync starts automatically after saving."
         action={
           <>
             <button className="btn-secondary" onClick={goBack}><ArrowLeft size={16} />Back</button>
@@ -342,7 +348,7 @@ export default function EditAgent() {
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {notice && <div className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
-      {form.workflowSyncStatus === "syncing" && <div className="mb-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">Dograh workflow sync is running in the background.</div>}
+      {form.workflowSyncStatus === "syncing" && <div className="mb-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-700">Calling system sync is running in the background.</div>}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,900px)]">
         <aside className="self-start rounded-xl border border-hairline bg-white p-3 lg:sticky lg:top-24">
@@ -365,29 +371,29 @@ export default function EditAgent() {
         </div>
         {tab === "Basic Info" && (
           <div className="field-grid">
-            <Field label="Provider" name="provider" value={form.provider} setField={setField} options={[
+            <Field label="Calling System" name="provider" value={form.provider} setField={setField} options={[
               { label: "Custom Engine", value: "custom" },
-              { label: "Dograh", value: "dograh" },
-              { label: "Vapi", value: "vapi" }
+              { label: "Platform Calling", value: "dograh" },
+              { label: "Web Calling", value: "vapi" }
             ]} />
             <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} setField={setField} options={[
               { label: "No telephony config", value: "" },
               ...telephonyConfigs.map((config) => ({
-                label: `${config.name} (${config.provider} · ${config.phoneNumber})`,
+                label: `${config.name} (${config.phoneNumber})`,
                 value: config._id
               }))
             ]} />
             {form.provider === "vapi" && (
               <div className="md:col-span-2">
                 <Field
-                  label="Vapi Phone Number ID"
+                  label="Web Calling Phone Number ID"
                   name="vapiPhoneNumberId"
                   value={form.vapiPhoneNumberId}
                   setField={setField}
                   placeholder="e.g. 95d51f79-c397-46f9-b49a-23763d3eaa2d"
                 />
                 <p className="mt-1 text-xs text-neutral-500">
-                  The phone number's UUID from the Vapi dashboard (Phone Numbers) after importing your Twilio number — not the phone number itself.
+                  Use the phone number ID from your calling system settings, not the phone number itself.
                 </p>
               </div>
             )}
@@ -444,18 +450,18 @@ export default function EditAgent() {
           </div>
         )}
 
-        {tab === "Dograh Workflow" && (
+        {tab === "Calling System" && (
           <div className="space-y-4">
-            <Info label="Provider" value={form.provider} />
-            <Info label="Dograh Connection" value={form.dograhConnectionType === "user_integration" ? "My Dograh" : "Platform Dograh"} />
-            <Info label="Dograh Integration ID" value={form.dograhIntegrationId || "Platform managed"} />
-            <Info label="Provider Workflow ID" value={form.providerWorkflowId} />
+            <Info label="Calling System" value={systemLabel(form.provider)} />
+            <Info label="Connection" value={form.dograhConnectionType === "user_integration" ? "Connected Account" : "Platform Managed"} />
+            <Info label="Connection ID" value={form.dograhIntegrationId || "Platform managed"} />
+            <Info label="Workflow ID" value={form.providerWorkflowId} />
             <Info label="Workflow ID" value={form.dograhWorkflowId} />
             <Info label="Workflow UUID" value={form.dograhWorkflowUuid} />
             <Info label="Workflow Status" value={form.workflowSyncStatus || form.dograhStatus} />
             <Info label="Last Sync" value={formatDateTime(form.workflowLastSyncedAt)} />
             <Info label="Last Error" value={form.workflowSyncError || form.dograhError} />
-            {!form.providerWorkflowId && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">This agent is not synced with the selected provider yet.</p>}
+            {!form.providerWorkflowId && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">This agent is not synced with the selected calling system yet.</p>}
             {form.workflowSyncStatus === "failed" && (
               <button className="btn-primary" disabled={retryingSync} onClick={retryWorkflowSync}>
                 <RefreshCw size={16} />{retryingSync ? "Retrying..." : "Retry Sync"}
@@ -463,7 +469,7 @@ export default function EditAgent() {
             )}
             {form.provider === "dograh" && form.dograhConnectionType === "platform" && (
               <p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-700">
-                This agent currently runs on Platform Dograh. Connecting My Dograh does not automatically move this agent.
+                This agent currently runs on Platform Calling. Connecting another account does not automatically move this agent.
               </p>
             )}
             {form.provider === "dograh" && form.dograhWorkflowId && (
