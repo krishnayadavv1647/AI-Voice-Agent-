@@ -10,6 +10,7 @@ import { startTelegramBot } from "./services/telegram/bot.js";
 import { startPipelineScheduler } from "./services/pipelineScheduler.js";
 import { refreshPlanConfig } from "./config/plans.js";
 import { refreshCreditPricing } from "./config/creditPricing.js";
+import { warmGeminiConnection } from "./llm/gemini.llm.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -19,6 +20,12 @@ connectDB()
     await Promise.all([refreshPlanConfig(), refreshCreditPricing()]);
     const server = app.listen(PORT, () => {
       console.log(`AI Voice Agent API running on port ${PORT}`);
+      warmGeminiConnection();
+      if (process.env.ENABLE_GEMINI_KEEPWARM !== "false") {
+        setInterval(() => {
+          warmGeminiConnection();
+        }, 4 * 60 * 1000).unref();
+      }
     });
 
     server.on("error", (error) => {

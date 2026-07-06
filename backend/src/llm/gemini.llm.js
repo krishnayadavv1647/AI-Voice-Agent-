@@ -47,12 +47,106 @@ function geminiConfig(settings = {}) {
   return config;
 }
 
-function geminiClient(apiKey, settings = {}) {
+// Constructing a GoogleGenAI client pays DNS + TCP + TLS setup before the request even starts.
+// Reuse one client per (apiKey, timeoutMs) pair so only the first call per key eats that cost.
+// Capped so per-user connected-account keys can't grow this unbounded.
+const clientCache = new Map(); // `${apiKey}:${timeoutMs||"default"}` -> GoogleGenAI
+const CLIENT_CACHE_MAX = 20;
+
+export function geminiClient(apiKey, settings = {}) {
   const timeoutMs = Number(settings.timeoutMs);
-  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    return new GoogleGenAI({ apiKey, httpOptions: { timeout: timeoutMs } });
+  const key = `${apiKey}:${Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : "default"}`;
+  let client = clientCache.get(key);
+  if (!client) {
+    client = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? new GoogleGenAI({ apiKey, httpOptions: { timeout: timeoutMs } })
+      : new GoogleGenAI({ apiKey });
+    if (clientCache.size >= CLIENT_CACHE_MAX) {
+      clientCache.delete(clientCache.keys().next().value);
+    }
+    clientCache.set(key, client);
   }
-  return new GoogleGenAI({ apiKey });
+  return client;
+}
+
+// Keeps DNS/TLS warm between real calls. Best-effort — a failed warmup must never affect a live call.
+export async function warmGeminiConnection() {
+  const key = resolvedGeminiKey();
+  if (!key) return;
+  try {
+    const ai = geminiClient(key, {});
+    await ai.models.generateContent({
+      model: process.env.GEMINI_VOICE_MODEL || "gemini-2.5-flash-lite",
+      contents: [{ role: "user", parts: [{ text: "ping" }] }],
+      config: { maxOutputTokens: 5, thinkingConfig: { thinkingBudget: 0 } }
+    });
+  } catch (error) {
+    console.warn("[gemini warmup] failed:", error.message);
+  }
+}
+
+// Resolves the first chunk of an async iterator, or signals a timeout — whichever comes first.
+// The timer is cleared as soon as a result arrives, and a late result after timeout is dropped
+// so the caller never processes (or yields) the same chunk twice.
+function firstChunkOrTimeout(iterator, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ timedOut: true });
+    }, timeoutMs);
+
+    iterator.next().then(
+      (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: false, result });
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ timedOut: false, error });
+      }
+    );
+  });
+}
+
+// Generic first-token watchdog: if `createStream()`'s first chunk doesn't arrive within
+// timeoutMs, abandon it and retry once with a fresh stream from the same factory. If the
+// retry also stalls, fall through to a plain (un-timed) await so the normal error/fallback
+// path upstream still gets a chance to resolve or fail naturally. Chunks after the first are
+// never subject to the watchdog.
+export async function* streamWithFirstTokenWatchdog(createStream, { timeoutMs = 4000, model } = {}) {
+  let iterator = (await createStream())[Symbol.asyncIterator]();
+  let first = await firstChunkOrTimeout(iterator, timeoutMs);
+
+  if (first.timedOut) {
+    console.warn("[Gemini stream] first-token timeout, retrying once", { model, timeoutMs });
+    try {
+      await iterator.return?.();
+    } catch {
+      // best-effort cleanup of the abandoned stream
+    }
+    iterator = (await createStream())[Symbol.asyncIterator]();
+    first = await firstChunkOrTimeout(iterator, timeoutMs);
+  }
+
+  let pendingResult;
+  if (first.timedOut) {
+    pendingResult = await iterator.next();
+  } else if (first.error) {
+    throw first.error;
+  } else {
+    pendingResult = first.result;
+  }
+
+  while (!pendingResult.done) {
+    yield pendingResult.value;
+    pendingResult = await iterator.next();
+  }
 }
 
 function geminiMessages(messages = []) {
@@ -134,7 +228,7 @@ export async function* streamGeminiResponse({ apiKey, model, messages, settings 
 
   try {
     const ai = geminiClient(key, settings);
-    const stream = await ai.models.generateContentStream({
+    const createStream = () => ai.models.generateContentStream({
       model: selectedModel,
       contents: userMessages,
       config: {
@@ -142,9 +236,10 @@ export async function* streamGeminiResponse({ apiKey, model, messages, settings 
         ...geminiConfig(settings)
       }
     });
+    const firstTokenTimeoutMs = settings.firstTokenTimeoutMs || 4000;
 
     let finishReason = null;
-    for await (const chunk of stream) {
+    for await (const chunk of streamWithFirstTokenWatchdog(createStream, { timeoutMs: firstTokenTimeoutMs, model: selectedModel })) {
       const text = typeof chunk.text === "function" ? chunk.text() : chunk.text;
       const value = String(text || "");
       if (value) yield value;
