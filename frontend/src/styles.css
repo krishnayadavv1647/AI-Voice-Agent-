@@ -2174,6 +2174,39 @@ pre {
 .table td { border-color: var(--border-dark) !important; color: var(--text-mid) !important; }
 .table tbody tr:hover { background-color: var(--surface-elev) !important; }
 
+.call-options-menu {
+  background-color: var(--surface-dark-solid) !important;
+  border-color: var(--border-dark) !important;
+  color: var(--text-mid);
+}
+
+.call-options-menu .border-hairline {
+  border-color: var(--border-dark) !important;
+}
+
+.call-options-menu .bg-neutral-50 {
+  background-color: var(--surface-elev) !important;
+}
+
+.call-options-menu .text-neutral-700,
+.call-options-menu .text-neutral-600 {
+  color: var(--text-mid) !important;
+}
+
+.call-options-menu .text-neutral-500,
+.call-options-menu .text-neutral-400 {
+  color: var(--text-lo) !important;
+}
+
+.call-options-menu .hover\:bg-neutral-50:hover,
+.call-options-menu .hover\:bg-neutral-100:hover {
+  background-color: var(--surface-elev) !important;
+}
+
+.call-options-menu .hover\:text-ink:hover {
+  color: var(--text-hi) !important;
+}
+
 /* Icon tile / tabs / skeleton */
 .icon-tile {
   border-color: var(--border-dark) !important;
