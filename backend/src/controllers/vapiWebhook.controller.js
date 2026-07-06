@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import mongoose from "mongoose";
 import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
@@ -33,8 +34,20 @@ function getDefaultDeps() {
   };
 }
 
+// Circular imports (see getDefaultDeps) can leave an imported model binding `undefined` at call
+// time. Prefer an explicitly injected dep (tests), else pull the live model from mongoose's
+// registry — which is fully populated by request time — and tolerate it being absent.
+function resolveModel(deps, name) {
+  if (deps?.[name]) return deps[name];
+  try { return mongoose.model(name); } catch { return undefined; }
+}
+
 async function findAgent(fields, deps) {
-  const { Agent: AgentModel } = deps;
+  const AgentModel = resolveModel(deps, "Agent");
+  if (!AgentModel) {
+    console.error("[Vapi webhook] model unavailable", { model: "Agent", event: "end-of-call-report" });
+    return null;
+  }
 
   if (fields.localAgentId && mongoose.Types.ObjectId.isValid(fields.localAgentId)) {
     const agent = await AgentModel.findById(fields.localAgentId);
@@ -53,10 +66,16 @@ async function findAgent(fields, deps) {
 async function upsertLead({ agent, callLog, leadData }, deps) {
   if (!hasUsefulLeadData(leadData)) return false;
 
-  const existingLead = await deps.Lead.findOne({ callLogId: callLog._id });
+  const LeadModel = resolveModel(deps, "Lead");
+  if (!LeadModel) {
+    console.error("[Vapi webhook] model unavailable", { model: "Lead", event: "end-of-call-report" });
+    return false;
+  }
+
+  const existingLead = await LeadModel.findOne({ callLogId: callLog._id });
   if (existingLead) return false;
 
-  await deps.Lead.create(deps.normalizeLeadToEnglish({
+  await LeadModel.create(deps.normalizeLeadToEnglish({
     userId: agent.userId,
     agentId: agent._id,
     callLogId: callLog._id,
@@ -84,11 +103,21 @@ function compactUpdate(update) {
 // Handles a Vapi end-of-call-report and returns a small result object
 // describing what happened (used by tests and logging).
 export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
+  const CallLogModel = resolveModel(deps, "CallLog");
+  const WebhookEventModel = resolveModel(deps, "WebhookEvent");
+  if (!CallLogModel || !WebhookEventModel) {
+    console.error("[Vapi webhook] model unavailable", {
+      model: !CallLogModel ? "CallLog" : "WebhookEvent",
+      event: message?.type
+    });
+    return { matched: false };
+  }
+
   const fields = extractVapiCallFields(message);
   const agent = await findAgent(fields, deps);
 
   if (!agent) {
-    await deps.WebhookEvent.create({
+    await WebhookEventModel.create({
       provider: "vapi",
       eventType: pick(fields.endedReason, message.type, "unmatched"),
       payload: message
@@ -135,7 +164,7 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
 
   let callLog = null;
   for (const query of matchQueries) {
-    callLog = await deps.CallLog.findOne(query).sort({ createdAt: -1 });
+    callLog = await CallLogModel.findOne(query).sort({ createdAt: -1 });
     if (callLog) break;
   }
 
@@ -143,7 +172,7 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
     Object.assign(callLog, update);
     await callLog.save();
   } else {
-    callLog = await deps.CallLog.create(update);
+    callLog = await CallLogModel.create(update);
   }
 
   const leadCreated = await upsertLead({ agent, callLog, leadData }, deps);
@@ -151,7 +180,7 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
   await callLog.save();
   await deps.syncCampaignRecipientFromCall(callLog);
   await deps.scheduleRetryFollowUpForCall(callLog);
-  await deps.WebhookEvent.create({
+  await WebhookEventModel.create({
     provider: "vapi",
     eventType: fields.endedReason || message.type,
     payload: message,
@@ -159,14 +188,15 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
     matchedCallLogId: callLog._id
   });
 
-  agent.totalCalls = await deps.CallLog.countDocuments({ agentId: agent._id });
+  agent.totalCalls = await CallLogModel.countDocuments({ agentId: agent._id });
   if (leadCreated) agent.totalLeads += 1;
 
   const durationSeconds = fields.durationSeconds || 0;
+  const UserModel = resolveModel(deps, "User");
   await Promise.all([
     agent.save(),
-    durationSeconds > 0
-      ? deps.User.findByIdAndUpdate(agent.userId, { $inc: { minutesUsed: Math.ceil(durationSeconds / 60) } })
+    durationSeconds > 0 && UserModel
+      ? UserModel.findByIdAndUpdate(agent.userId, { $inc: { minutesUsed: Math.ceil(durationSeconds / 60) } })
       : Promise.resolve()
   ]);
 
@@ -182,23 +212,46 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
 }
 
 // Lightweight status touch for interim status-update events; best-effort, never throws.
-async function applyVapiStatusUpdate(message, deps) {
+export async function applyVapiStatusUpdate(message, deps = getDefaultDeps()) {
   const fields = extractVapiCallFields(message);
   if (!fields.providerCallId || !message.status) return;
 
-  await deps.CallLog.updateOne(
+  const CallLogModel = resolveModel(deps, "CallLog");
+  if (!CallLogModel) {
+    console.error("[Vapi webhook] model unavailable", { model: "CallLog", event: message?.type });
+    return;
+  }
+
+  await CallLogModel.updateOne(
     { providerCallId: fields.providerCallId },
     { $set: { rawProviderStatus: String(message.status) } }
   );
+}
+
+// Constant-time secret comparison. A length mismatch is treated as failure (timingSafeEqual
+// throws on unequal-length buffers), so an attacker can't learn the length via timing.
+function secretsMatch(provided, expected) {
+  const a = Buffer.from(String(provided ?? ""));
+  const b = Buffer.from(String(expected ?? ""));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 // POST /api/vapi/webhook
 export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
   const message = req.body?.message || req.body || {};
 
-  // Optional signature verification: Vapi echoes server.secret as the x-vapi-secret header.
+  // Signature verification: Vapi echoes server.secret as the x-vapi-secret header.
   const expectedSecret = process.env.VAPI_WEBHOOK_SECRET?.trim();
-  if (expectedSecret && req.headers["x-vapi-secret"] !== expectedSecret) {
+
+  // In production an unset secret means anyone could POST forged end-of-call events (which trigger
+  // lead creation + billing settlement). Refuse to process unverified webhooks there.
+  if (process.env.NODE_ENV === "production" && !expectedSecret) {
+    console.error("[Vapi webhook] rejected: VAPI_WEBHOOK_SECRET not configured");
+    return res.status(401).json({ success: false, error: "webhook secret not configured" });
+  }
+
+  if (expectedSecret && !secretsMatch(req.headers["x-vapi-secret"], expectedSecret)) {
     console.warn("[Vapi webhook] rejected: x-vapi-secret mismatch");
     return res.status(401).json({ success: false, error: "invalid signature" });
   }

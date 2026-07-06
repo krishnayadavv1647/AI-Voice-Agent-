@@ -149,6 +149,103 @@ export async function* streamWithFirstTokenWatchdog(createStream, { timeoutMs = 
   }
 }
 
+// Errors that mean "this model/endpoint is temporarily unusable" — worth trying the next model in
+// the chain rather than failing the call.
+function isFallbackEligibleError(error) {
+  const status = Number(error?.status || error?.response?.status);
+  if (status === 503 || status === 429) return true;
+  const parsed = parseGeminiError(error);
+  const code = Number(parsed?.code);
+  if (code === 503 || code === 429) return true;
+  const message = String(parsed?.message || error?.message || "");
+  return /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(message);
+}
+
+function fallbackReason(error) {
+  const status = error?.status || error?.response?.status;
+  const parsed = parseGeminiError(error);
+  return String(status || parsed?.code || parsed?.message || error?.message || "error");
+}
+
+// Voice-mode streaming with a model fallback chain. For each model, race the FIRST chunk against a
+// short timer; on a 503/429/UNAVAILABLE/RESOURCE_EXHAUSTED error or a first-token stall, abandon the
+// attempt and try the next model. Once a chunk has been yielded the model is committed — a later
+// mid-stream error propagates via the normal partial-output path (no switch, no double-yield).
+export async function* streamGeminiVoiceWithFallback({ ai, selectedModel, userMessages, systemMessage, settings = {} }) {
+  const fallbacks = (process.env.GEMINI_VOICE_FALLBACK_MODELS || "gemini-2.5-flash,gemini-2.0-flash-lite")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const modelChain = [...new Set([selectedModel, ...fallbacks])];
+  const timeoutMs = settings.firstTokenTimeoutMs || 3000;
+  const config = geminiConfig(settings);
+
+  let lastError = null;
+
+  for (let i = 0; i < modelChain.length; i++) {
+    const model = modelChain[i];
+    const nextModel = modelChain[i + 1];
+    const hasNext = i < modelChain.length - 1;
+
+    let iterator = null;
+    let startError = null;
+    try {
+      const stream = await ai.models.generateContentStream({
+        model,
+        contents: userMessages,
+        config: { systemInstruction: systemMessage || undefined, ...config }
+      });
+      iterator = stream[Symbol.asyncIterator]();
+    } catch (error) {
+      startError = error;
+    }
+
+    const first = iterator ? await firstChunkOrTimeout(iterator, timeoutMs) : null;
+
+    // Attempt failed to produce a first chunk (start error, first-chunk error, or timeout).
+    const attemptError = startError || first?.error;
+    if (attemptError || first?.timedOut) {
+      if (iterator) { try { await iterator.return?.(); } catch { /* best-effort cleanup */ } }
+      const reason = attemptError ? fallbackReason(attemptError) : "first-token-timeout";
+      const eligible = attemptError ? isFallbackEligibleError(attemptError) : true;
+
+      if (eligible && hasNext) {
+        console.warn("[Gemini fallback] switching model", { from: model, to: nextModel, reason });
+        lastError = attemptError || new Error(`first-token timeout after ${timeoutMs}ms on ${model}`);
+        continue;
+      }
+      // No next model, or a non-retryable error: surface it (outer handler maps to ApiError).
+      throw attemptError || new Error(`first-token timeout after ${timeoutMs}ms on ${model}`);
+    }
+
+    // Committed to this model. Yield the first chunk and everything after it; a mid-stream error
+    // now throws out of here unchanged (matching the existing partial-output behavior).
+    let pendingResult = first.result;
+    let finishReason = null;
+    while (!pendingResult.done) {
+      const chunk = pendingResult.value;
+      const text = typeof chunk.text === "function" ? chunk.text() : chunk.text;
+      const value = String(text || "");
+      if (value) yield value;
+      const reason = chunk?.candidates?.[0]?.finishReason;
+      if (reason) finishReason = reason;
+      pendingResult = await iterator.next();
+    }
+
+    if (finishReason && finishReason !== "STOP" && finishReason !== "FINISH_REASON_STOP") {
+      console.warn("[Gemini stream] reply ended early — may be cut off mid-sentence", {
+        finishReason,
+        model,
+        maxOutputTokens: config.maxOutputTokens
+      });
+    }
+    return;
+  }
+
+  // Every model in the chain failed before producing a chunk.
+  if (lastError) throw lastError;
+}
+
 function geminiMessages(messages = []) {
   const systemMessage = messages.find((message) => message.role === "system")?.content || "";
   const userMessages = messages
@@ -210,7 +307,7 @@ export async function generateGeminiResponse({ apiKey, model, messages, settings
   }
 }
 
-export async function* streamGeminiResponse({ apiKey, model, messages, settings = {} }) {
+export async function* streamGeminiResponse({ apiKey, model, messages, settings = {}, client } = {}) {
   const key = resolvedGeminiKey(apiKey);
   if (!key) {
     throw new ApiError(500, "Gemini provider is not configured.");
@@ -227,7 +324,14 @@ export async function* streamGeminiResponse({ apiKey, model, messages, settings 
   }
 
   try {
-    const ai = geminiClient(key, settings);
+    const ai = client || geminiClient(key, settings);
+
+    // Voice calls tolerate no dead air: run a model fallback chain with a first-token watchdog.
+    if (settings.voiceMode) {
+      yield* streamGeminiVoiceWithFallback({ ai, selectedModel, userMessages, systemMessage, settings });
+      return;
+    }
+
     const createStream = () => ai.models.generateContentStream({
       model: selectedModel,
       contents: userMessages,
