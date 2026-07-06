@@ -40,6 +40,10 @@ import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
 
+// Behind Render's proxy, req.ip is otherwise the proxy IP, so the rate limiter would throttle all
+// users in one shared bucket. Trust the first proxy hop so per-client IPs are used.
+app.set("trust proxy", 1);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -61,7 +65,7 @@ app.post("/api/billing/webhook/:provider", express.raw({ type: "*/*" }), handleB
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(morgan("dev"));
+app.use(morgan(process.env.NODE_ENV === "production" ? "tiny" : "dev"));
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
 app.use((req, res, next) => {
   // Real-time voice path (custom LLM + webhooks) must never be throttled.

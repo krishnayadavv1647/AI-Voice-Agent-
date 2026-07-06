@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
-import { test } from "node:test";
+import { test, mock } from "node:test";
 
 import { extractVapiCallFields, mapVapiEndedReasonToStatus } from "../src/services/callLogMapper.js";
-import { processVapiEndOfCall } from "../src/controllers/vapiWebhook.controller.js";
+import { processVapiEndOfCall, applyVapiStatusUpdate } from "../src/controllers/vapiWebhook.controller.js";
+import RealCallLog from "../src/models/CallLog.js";
 
 // ---- extractVapiCallFields (pure) ------------------------------------------
 
@@ -168,4 +169,52 @@ test("unmatched agent records a WebhookEvent and reports matched:false", async (
   assert.equal(created.webhookEvents.length, 1);
   assert.equal(created.webhookEvents[0].provider, "vapi");
   assert.equal(created.callLogs.length, 0);
+});
+
+// ---- Change 2: undefined model resilience ----------------------------------
+
+test("processVapiEndOfCall does not throw and logs when the CallLog model is unavailable", async () => {
+  const agentId = new mongoose.Types.ObjectId("507f1f77bcf86cd799439011");
+  const agent = { _id: agentId, userId: "user_1", totalCalls: 0, totalLeads: 0, save: async () => {} };
+  const { deps, created } = makeDeps({ agent });
+  delete deps.CallLog; // simulate the circular-import undefined binding
+
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args);
+  // Force the mongoose-registry fallback to also miss, so the model truly resolves to undefined.
+  const modelMock = mock.method(mongoose, "model", () => { throw new Error("not registered"); });
+
+  let result;
+  try {
+    result = await processVapiEndOfCall(endOfCallMessage(), deps);
+  } finally {
+    console.error = originalError;
+    modelMock.mock.restore();
+  }
+
+  assert.equal(result.matched, false, "returns a non-throwing result");
+  assert.equal(created.callLogs.length, 0, "no CallLog work attempted");
+  const logged = errors.map((e) => JSON.stringify(e)).join("\n");
+  assert.match(logged, /model unavailable/);
+  assert.match(logged, /CallLog/);
+});
+
+test("applyVapiStatusUpdate resolves CallLog from the mongoose registry when deps lacks it", async () => {
+  const message = { type: "status-update", status: "in-progress", call: { id: "vapi_call_x" } };
+
+  let updateArgs = null;
+  const originalUpdateOne = RealCallLog.updateOne;
+  RealCallLog.updateOne = async (...args) => { updateArgs = args; return { acknowledged: true }; };
+
+  try {
+    // deps has no CallLog → resolveModel falls back to mongoose.model("CallLog") (registered on import).
+    await applyVapiStatusUpdate(message, {});
+  } finally {
+    RealCallLog.updateOne = originalUpdateOne;
+  }
+
+  assert.ok(updateArgs, "updateOne should have been called via the registered model");
+  assert.equal(updateArgs[0].providerCallId, "vapi_call_x");
+  assert.deepEqual(updateArgs[1], { $set: { rawProviderStatus: "in-progress" } });
 });

@@ -35,8 +35,10 @@ function accountEmail(account = {}) {
 }
 
 function signState(userId, nonce) {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new ApiError(500, "JWT_SECRET is missing in backend environment");
   const payload = Buffer.from(JSON.stringify({ userId: String(userId), nonce, ts: Date.now() })).toString("base64url");
-  const signature = crypto.createHmac("sha256", process.env.JWT_SECRET || "").update(payload).digest("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 

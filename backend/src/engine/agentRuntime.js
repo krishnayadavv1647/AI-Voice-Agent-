@@ -17,7 +17,17 @@ const VOICE_HISTORY_LIMIT = 6;
 // call, but resolving it costs two sequential DB reads. Cache it briefly per agent so
 // only the first turn pays that cost; later turns start the LLM stream immediately.
 const RUNTIME_CONFIG_CACHE_TTL_MS = 30000;
+const RUNTIME_CONFIG_CACHE_MAX = 500;
 const runtimeConfigCache = new Map();
+
+// Expired entries are ignored on read but never deleted, so sweep periodically to bound memory on
+// a small instance. Unref'd so it never keeps the process alive during shutdown.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of runtimeConfigCache) {
+    if (entry.expiresAt <= now) runtimeConfigCache.delete(key);
+  }
+}, 60 * 1000).unref();
 
 function dbAvailable() {
   return mongoose.connection?.readyState === 1;
@@ -36,6 +46,9 @@ async function resolveAgentLLMRuntimeConfigCached({ agent, voiceMode }) {
   if (cached && cached.expiresAt > Date.now()) return cached.config;
 
   const config = await resolveAgentLLMRuntimeConfig({ agent, voiceMode });
+  if (runtimeConfigCache.size >= RUNTIME_CONFIG_CACHE_MAX) {
+    runtimeConfigCache.delete(runtimeConfigCache.keys().next().value);
+  }
   runtimeConfigCache.set(key, { config, expiresAt: Date.now() + RUNTIME_CONFIG_CACHE_TTL_MS });
   return config;
 }

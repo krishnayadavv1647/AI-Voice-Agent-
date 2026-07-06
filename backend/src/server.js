@@ -1,5 +1,7 @@
 import "dotenv/config";
 
+import mongoose from "mongoose";
+
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import { startFollowUpWorker } from "./services/followUpWorker.js";
@@ -38,12 +40,40 @@ connectDB()
       process.exit(1);
     });
 
-    startScheduledCallWorker();
-    startCampaignWorker();
-    startFollowUpWorker();
-    startEmailSyncWorker();
-    startTelegramBot();
-    startPipelineScheduler();
+    // Render sends SIGTERM on every deploy. Stop accepting NEW connections but let in-flight SSE
+    // voice streams finish before exiting, so a deploy never severs a live call mid-sentence.
+    const SHUTDOWN_GRACE_MS = Number(process.env.SHUTDOWN_GRACE_MS || 30000);
+    let shuttingDown = false;
+    function gracefulShutdown(signal) {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`[shutdown] ${signal} received; draining connections for up to ${SHUTDOWN_GRACE_MS}ms`);
+      server.close(() => {
+        console.log("[shutdown] all connections drained");
+        mongoose.connection.close(false).finally(() => process.exit(0));
+      });
+      setTimeout(() => {
+        console.warn("[shutdown] grace period expired; forcing exit");
+        process.exit(0);
+      }, SHUTDOWN_GRACE_MS).unref();
+    }
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+    // Background workers steal CPU from real-time voice. Run them only when explicitly enabled, so
+    // the same codebase can run as a web service (workers off) and a separate Render Background
+    // Worker service (RUN_WORKERS=true). Default (unset) = OFF.
+    if (process.env.RUN_WORKERS === "true") {
+      startScheduledCallWorker();
+      startCampaignWorker();
+      startFollowUpWorker();
+      startEmailSyncWorker();
+      startTelegramBot();
+      startPipelineScheduler();
+      console.log("[server] background workers started (RUN_WORKERS=true)");
+    } else {
+      console.log("[server] background workers disabled on this instance (set RUN_WORKERS=true to enable)");
+    }
   })
   .catch((error) => {
     console.error("Database connection failed", error.message);

@@ -8,6 +8,16 @@ const AGENT_CACHE_MISSING_TTL_MS = 5000;
 const TERMINAL_PUNCTUATION = /[.!?]$/;
 const PHRASE_PUNCTUATION = /[.!?,;:]$/;
 const agentCache = new Map();
+const AGENT_CACHE_MAX = 500;
+
+// Expired entries are ignored on read but never deleted, so sweep periodically to bound memory on
+// a small instance. Unref'd so it never keeps the process alive during shutdown.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of agentCache) {
+    if (entry.expiresAt <= now) agentCache.delete(key);
+  }
+}, 60 * 1000).unref();
 
 // Split a reply into ~40-80 char pieces on word boundaries so speech starts fast.
 export function chunkText(text, { min = 40, max = 80 } = {}) {
@@ -256,6 +266,9 @@ async function defaultLoadAgent(agentId) {
   if (cached && cached.expiresAt > Date.now()) return cached.agent;
 
   const agent = await Agent.findById(agentId);
+  if (agentCache.size >= AGENT_CACHE_MAX) {
+    agentCache.delete(agentCache.keys().next().value);
+  }
   agentCache.set(key, {
     agent,
     expiresAt: Date.now() + (agent ? AGENT_CACHE_FOUND_TTL_MS : AGENT_CACHE_MISSING_TTL_MS)
