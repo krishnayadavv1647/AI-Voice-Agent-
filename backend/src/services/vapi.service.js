@@ -66,13 +66,6 @@ export function mapVoice(agent) {
   const provider = (agent.ttsProvider || "").toLowerCase();
   const defaultVoiceId = process.env.VAPI_DEFAULT_VOICE_ID?.trim() || "burt";
 
-  if (provider === "elevenlabs") {
-    return {
-      provider: "11labs",
-      voiceId: agent.voiceId || defaultVoiceId
-    };
-  }
-
   if (provider === "deepgram") {
     return {
       provider: "deepgram",
@@ -80,9 +73,12 @@ export function mapVoice(agent) {
     };
   }
 
+  // ElevenLabs (default): low-latency model + streaming optimization.
   return {
     provider: "11labs",
-    voiceId: defaultVoiceId
+    voiceId: agent.voiceId || defaultVoiceId,
+    model: "eleven_flash_v2_5",
+    optimizeStreamingLatency: 3
   };
 }
 
@@ -113,8 +109,13 @@ export function buildAssistantConfig(agent) {
     },
     transcriber: {
       provider: "deepgram",
-      model: agent.sttModel && agent.sttModel !== "" ? agent.sttModel : "nova-2",
-      language: agent.sttLanguage || "en"
+      model: agent.sttModel && agent.sttModel !== "" ? agent.sttModel : "nova-3",
+      language: agent.sttLanguage || "en",
+      endpointing: 200
+    },
+    startSpeakingPlan: {
+      waitSeconds: 0.2,
+      smartEndpointingPlan: { provider: "livekit" }
     },
     voice: mapVoice(agent),
     firstMessage:

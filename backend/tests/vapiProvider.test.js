@@ -86,14 +86,42 @@ test("buildAssistantConfig points the model at the custom-llm URL and routes to 
   assert.equal(config.metadata.localAgentId, "agent_123");
 });
 
+test("buildAssistantConfig sets low-latency transcriber and startSpeakingPlan defaults", () => {
+  const config = buildAssistantConfig(fakeAgent());
+
+  assert.equal(config.transcriber.provider, "deepgram");
+  assert.equal(config.transcriber.model, "nova-3");
+  assert.equal(config.transcriber.endpointing, 200);
+  assert.equal(config.startSpeakingPlan.waitSeconds, 0.2);
+  assert.equal(config.startSpeakingPlan.smartEndpointingPlan.provider, "livekit");
+});
+
 // ---- mapVoice fallback (checklist 2) ---------------------------------------
 
-test("mapVoice falls back to the default when ttsProvider is unsupported", () => {
+test("mapVoice falls back to the default voice id when unsupported ttsProvider has no voiceId", () => {
   process.env.VAPI_DEFAULT_VOICE_ID = "burt";
-  const voice = mapVoice(fakeAgent({ ttsProvider: "legacy_default", voiceId: "ignored" }));
+  const voice = mapVoice(fakeAgent({ ttsProvider: "legacy_default", voiceId: undefined }));
 
   assert.equal(voice.provider, "11labs");
   assert.equal(voice.voiceId, "burt");
+  assert.equal(voice.model, "eleven_flash_v2_5");
+  assert.equal(voice.optimizeStreamingLatency, 3);
+});
+
+test("mapVoice uses the low-latency Flash model for ElevenLabs and honors an explicit voiceId", () => {
+  const voice = mapVoice(fakeAgent({ ttsProvider: "elevenlabs", voiceId: "voice_abc" }));
+
+  assert.equal(voice.provider, "11labs");
+  assert.equal(voice.voiceId, "voice_abc");
+  assert.equal(voice.model, "eleven_flash_v2_5");
+  assert.equal(voice.optimizeStreamingLatency, 3);
+});
+
+test("mapVoice keeps Deepgram support unaffected by the ElevenLabs latency changes", () => {
+  const voice = mapVoice(fakeAgent({ ttsProvider: "deepgram", voiceId: "dg_voice" }));
+
+  assert.equal(voice.provider, "deepgram");
+  assert.equal(voice.voiceId, "dg_voice");
 });
 
 // ---- create() success (checklist 3) ----------------------------------------

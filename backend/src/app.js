@@ -62,7 +62,12 @@ app.post("/api/billing/webhook/:provider", express.raw({ type: "*/*" }), handleB
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(morgan("dev"));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
+app.use((req, res, next) => {
+  // Real-time voice path (custom LLM + webhooks) must never be throttled.
+  if (req.path.startsWith("/api/vapi")) return next();
+  return apiLimiter(req, res, next);
+});
 
 // Public uploaded files
 app.use("/uploads", express.static(uploadsPath));
