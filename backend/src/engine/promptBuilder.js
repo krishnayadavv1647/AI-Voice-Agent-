@@ -18,8 +18,34 @@ const VOICE_INSTRUCTIONS = [
   "Do not repeat the caller's full sentence."
 ].join("\n");
 
+// Oversized agent system prompts inflate Gemini time-to-first-token on live voice calls, so cap
+// them and warn once per agent instead of silently eating the latency on every call.
+const MAX_VOICE_SYSTEM_PROMPT_CHARS = 6000;
+const voiceTruncationWarned = new Set();
+
+function truncateForVoice(systemPrompt, agentId) {
+  if (systemPrompt.length <= MAX_VOICE_SYSTEM_PROMPT_CHARS) return systemPrompt;
+
+  const slice = systemPrompt.slice(0, MAX_VOICE_SYSTEM_PROMPT_CHARS);
+  const lastSpace = slice.lastIndexOf(" ");
+  const truncated = lastSpace > 0 ? slice.slice(0, lastSpace) : slice;
+
+  if (agentId && !voiceTruncationWarned.has(agentId)) {
+    voiceTruncationWarned.add(agentId);
+    console.warn("[promptBuilder] system prompt truncated for voice", {
+      agentId,
+      originalChars: systemPrompt.length
+    });
+  }
+
+  return `${truncated}\n[Instructions truncated for live call latency.]`;
+}
+
 export function buildAgentMessages({ agent, userMessage, history = [], voiceMode = false }) {
-  const systemPrompt = agent.systemPrompt || `You are ${agent.agentName || agent.name || "AI Assistant"}.`;
+  let systemPrompt = agent.systemPrompt || `You are ${agent.agentName || agent.name || "AI Assistant"}.`;
+  if (voiceMode) {
+    systemPrompt = truncateForVoice(systemPrompt, agent?._id?.toString?.() || agent?._id);
+  }
   const firstMessage = agent.firstMessage ? `\nFirst message guidance:\n${agent.firstMessage}` : "";
   const voiceInstructions = voiceMode ? `\n\nLive voice behavior:\n${VOICE_INSTRUCTIONS}` : "";
 

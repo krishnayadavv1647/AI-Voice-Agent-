@@ -81,6 +81,29 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Temporary Gemini time-to-first-token probe, isolating infra latency from application logic.
+// Only registered when explicitly enabled — never exposed by default.
+if (process.env.ENABLE_DEBUG_ROUTES === "true") {
+  app.get("/api/debug/gemini-ttft", async (req, res) => {
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const t0 = Date.now();
+    try {
+      const stream = await ai.models.generateContentStream({
+        model: req.query.model || "gemini-2.5-flash-lite",
+        contents: [{ role: "user", parts: [{ text: "Say hello in one short sentence." }] }],
+        config: { maxOutputTokens: 100, thinkingConfig: { thinkingBudget: 0 } }
+      });
+      for await (const chunk of stream) {
+        return res.json({ ttftMs: Date.now() - t0, ok: true });
+      }
+      res.json({ ttftMs: Date.now() - t0, ok: false, note: "no chunks" });
+    } catch (error) {
+      res.status(500).json({ ttftMs: Date.now() - t0, ok: false, error: error.message });
+    }
+  });
+}
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/bio-page", bioPageRoutes);

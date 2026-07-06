@@ -368,18 +368,23 @@ async function pollWithAxios() {
 }
 
 export async function startTelegramBot() {
-  if (started || !token()) return null;
-  started = true;
-  try {
-    await setCommandsWithAxios();
-  } catch (error) {
-    console.warn("Telegram setMyCommands failed:", error.message);
-  }
-  try {
-    return await startNodeTelegramBot();
-  } catch (error) {
-    console.warn("node-telegram-bot-api unavailable, using axios Telegram polling fallback:", error.message);
-    pollWithAxios();
+  if (process.env.ENABLE_TELEGRAM_POLLING === "true") {
+    if (started || !token()) return null;
+    started = true;
+    try {
+      await setCommandsWithAxios();
+    } catch (error) {
+      console.warn("Telegram setMyCommands failed:", error.message);
+    }
+    try {
+      return await startNodeTelegramBot();
+    } catch (error) {
+      console.warn("node-telegram-bot-api unavailable, using axios Telegram polling fallback:", error.message);
+      pollWithAxios();
+      return null;
+    }
+  } else {
+    console.log("[telegram] polling disabled (ENABLE_TELEGRAM_POLLING != 'true')");
     return null;
   }
 }
