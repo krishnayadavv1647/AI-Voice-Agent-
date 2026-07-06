@@ -282,9 +282,14 @@ export async function* runCustomAgentStream({ agent, userMessage, conversationId
       message: error.message
     });
   } finally {
-    await saveConversationMessage(conversationId, { role: "user", content: userMessage });
-    if (assistantReply) {
-      await saveConversationMessage(conversationId, { role: "assistant", content: assistantReply });
-    }
+    // Don't block the SSE close on Mongo writes — persist in the background.
+    Promise.all([
+      saveConversationMessage(conversationId, { role: "user", content: userMessage }),
+      assistantReply
+        ? saveConversationMessage(conversationId, { role: "assistant", content: assistantReply })
+        : Promise.resolve()
+    ]).catch((error) => {
+      console.error("[agentRuntime] history save failed:", { conversationId, message: error.message });
+    });
   }
 }
