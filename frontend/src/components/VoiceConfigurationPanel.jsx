@@ -56,7 +56,7 @@ function Toggle({ label, checked, onChange }) {
   );
 }
 
-export default function VoiceConfigurationPanel({ value, onChange }) {
+export default function VoiceConfigurationPanel({ value, onChange, section = "all", compact = false }) {
   const config = {
     ...defaultVoiceConfiguration,
     ...(value || {}),
@@ -143,6 +143,10 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
     const text = `${voice.name} ${voice.language} ${voice.gender} ${voice.style}`.toLowerCase();
     return (!search || text.includes(search.toLowerCase())) && (!languageFilter || voice.language === languageFilter);
   }), [voices, search, languageFilter]);
+  const voiceChoices = useMemo(() => {
+    if (!config.ttsVoiceId || filteredVoices.some((voice) => voice.id === config.ttsVoiceId)) return filteredVoices;
+    return [{ id: config.ttsVoiceId, name: config.ttsVoiceId }, ...filteredVoices];
+  }, [config.ttsVoiceId, filteredVoices]);
 
   function patch(patchValue) {
     onChange({ ...config, ...patchValue });
@@ -202,9 +206,11 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
   }
 
   const ttsCapabilities = integrationFor(integrations, config.ttsProvider)?.capabilities?.tts || {};
+  const showStt = section === "all" || section === "stt";
+  const showTts = section === "all" || section === "tts";
 
   return (
-    <div className="space-y-6 md:col-span-2">
+    <div className={compact ? "voice-provider-panel" : "space-y-6 md:col-span-2"}>
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {!integrations.some((item) => item.credentialStatus === "connected") && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -213,31 +219,31 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
         </div>
       )}
 
-      <section className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
+      {showStt && <section className={compact ? "voice-provider-card" : "rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5"}>
         <div className="mb-4">
           <h3 className="font-bold text-ink">Transcriber / Speech-to-Text</h3>
-          <p className="mt-1 text-sm text-neutral-500">Choose the provider that converts caller audio into text.</p>
+          <p className="mt-1 text-sm text-neutral-500">{compact ? "Select the speech recognition provider and model." : "Choose the provider that converts caller audio into text."}</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <label className="block text-sm font-semibold text-neutral-700">Provider<select className="mt-1" value={config.sttProvider} onChange={(event) => changeSttProvider(event.target.value)}>{sttOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="block text-sm font-semibold text-neutral-700">Model<select className="mt-1" disabled={loadingStt} value={config.sttModel} onChange={(event) => patch({ sttModel: event.target.value })}><option value="">{loadingStt ? "Loading models..." : "Select model"}</option>{sttModels.map((item) => <option key={item.id} value={item.id}>{optionName(item)}</option>)}</select></label>
           <label className="block text-sm font-semibold text-neutral-700">Language<input className="mt-1" value={config.sttLanguage} onChange={(event) => patch({ sttLanguage: event.target.value })} placeholder="en or en-IN" /></label>
-          <NumberField label="Endpointing (ms)" min={50} max={5000} step={50} value={config.sttSettings.endpointing} onChange={(value) => patchSttSettings({ endpointing: value })} />
-          <NumberField label="Silence timeout (ms)" min={100} max={10000} step={100} value={config.sttSettings.silenceTimeout} onChange={(value) => patchSttSettings({ silenceTimeout: value })} />
-          <div className="grid gap-2 sm:grid-cols-3 md:col-span-2 xl:col-span-3">
+          {!compact && <NumberField label="Endpointing (ms)" min={50} max={5000} step={50} value={config.sttSettings.endpointing} onChange={(value) => patchSttSettings({ endpointing: value })} />}
+          {!compact && <NumberField label="Silence timeout (ms)" min={100} max={10000} step={100} value={config.sttSettings.silenceTimeout} onChange={(value) => patchSttSettings({ silenceTimeout: value })} />}
+          {!compact && <div className="grid gap-2 sm:grid-cols-3 md:col-span-2 xl:col-span-3">
             <Toggle label="Interim results" checked={config.sttSettings.interimResults} onChange={(value) => patchSttSettings({ interimResults: value })} />
             <Toggle label="Smart formatting" checked={config.sttSettings.smartFormat} onChange={(value) => patchSttSettings({ smartFormat: value })} />
             <Toggle label="Punctuation" checked={config.sttSettings.punctuation} onChange={(value) => patchSttSettings({ punctuation: value })} />
-          </div>
+          </div>}
         </div>
-        <p className="mt-3 text-xs leading-5 text-neutral-500">Endpointing, silence timeout, interim results, smart formatting, and punctuation are stored with the agent.</p>
-      </section>
+        <p className="mt-3 text-xs leading-5 text-neutral-500">{compact ? "Save Agent applies this speech-to-text selection." : "Endpointing, silence timeout, interim results, smart formatting, and punctuation are stored with the agent."}</p>
+      </section>}
 
-      <section className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
+      {showTts && <section className={compact ? "voice-provider-card" : "rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5"}>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="font-bold text-ink">Voice / Text-to-Speech</h3>
-            <p className="mt-1 text-sm text-neutral-500">Voice and model options are fetched from the connected user's real provider account.</p>
+            <p className="mt-1 text-sm text-neutral-500">{compact ? "Select the voice provider, model, and voice." : "Voice and model options are fetched from the connected user's real provider account."}</p>
           </div>
           <button type="button" className="btn-secondary" disabled={previewing} onClick={preview}>{previewing ? <Loader2 className="animate-spin" size={16} /> : <Play size={16} />}Play Preview</button>
         </div>
@@ -248,22 +254,22 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
           <label className="block text-sm font-semibold text-neutral-700">Language<input className="mt-1" value={config.ttsLanguage} onChange={(event) => patch({ ttsLanguage: event.target.value })} placeholder="en or hi" /></label>
         </div>
 
-        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+        <div className={compact ? "voice-model-card" : "mt-4 rounded-xl border border-hairline bg-white p-4"}>
           <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
             <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} /><input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search voices by name, gender, language, or style" /></label>
             <select value={languageFilter} onChange={(event) => setLanguageFilter(event.target.value)}><option value="">All languages</option>{languages.map((language) => <option key={language} value={language}>{language}</option>)}</select>
           </div>
-          <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => changeTtsVoice(event.target.value)}><option value="">Select voice</option>{filteredVoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` - ${voice.language}` : ""}{voice.gender ? ` - ${voice.gender}` : ""}</option>)}</select></label>
-          <label className="mt-3 block text-sm font-semibold text-neutral-700">Manual Voice ID / Aura model<input className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })} placeholder="Paste voice ID when it is not listed" /></label>
+          <label className="block text-sm font-semibold text-neutral-700">Voice<select className="mt-1" value={config.ttsVoiceId} onChange={(event) => changeTtsVoice(event.target.value)}><option value="">Select voice</option>{voiceChoices.map((voice) => <option key={voice.id} value={voice.id}>{voice.name}{voice.language ? ` - ${voice.language}` : ""}{voice.gender ? ` - ${voice.gender}` : ""}</option>)}</select></label>
+          {!compact && <label className="mt-3 block text-sm font-semibold text-neutral-700">Manual Voice ID / Aura model<input className="mt-1" value={config.ttsVoiceId} onChange={(event) => patch({ ttsVoiceId: event.target.value })} placeholder="Paste voice ID when it is not listed" /></label>}
         </div>
 
-        {(ttsCapabilities.previewOnlySettings || []).length > 0 && (
+        {!compact && (ttsCapabilities.previewOnlySettings || []).length > 0 && (
           <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-5 text-sky-800">
             Preview-only controls for the current adapter: {(ttsCapabilities.previewOnlySettings || []).map((item) => item.replace(/([A-Z])/g, " $1").toLowerCase()).join(", ")}.
           </div>
         )}
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {!compact && <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {ttsCapabilities.supportsSpeed !== false && <NumberField label="Speed" min={0.5} max={2} step={0.05} value={config.ttsSettings.speed} onChange={(value) => patchTtsSettings({ speed: value })} />}
           {ttsCapabilities.supportsStability && <NumberField label="Stability" min={0} max={1} step={0.05} value={config.ttsSettings.stability} onChange={(value) => patchTtsSettings({ stability: value })} />}
           {ttsCapabilities.supportsSimilarityBoost && <NumberField label="Similarity boost" min={0} max={1} step={0.05} value={config.ttsSettings.similarityBoost} onChange={(value) => patchTtsSettings({ similarityBoost: value })} />}
@@ -271,15 +277,16 @@ export default function VoiceConfigurationPanel({ value, onChange }) {
           {ttsCapabilities.supportsEmotion && <label className="block text-sm font-semibold text-neutral-700">Emotion<input className="mt-1" value={config.ttsSettings.emotion} onChange={(event) => patchTtsSettings({ emotion: event.target.value })} placeholder="neutral, happy..." /></label>}
           <label className="block text-sm font-semibold text-neutral-700">Output encoding<select className="mt-1" value={config.ttsSettings.outputEncoding || ""} onChange={(event) => patchTtsSettings({ outputEncoding: event.target.value })}><option value="">Provider default</option>{(ttsCapabilities.supportedOutputFormats || []).map((format) => <option key={format} value={format}>{format}</option>)}</select></label>
           <label className="block text-sm font-semibold text-neutral-700">Sample rate<select className="mt-1" value={config.ttsSettings.sampleRate || ""} onChange={(event) => patchTtsSettings({ sampleRate: event.target.value ? Number(event.target.value) : null })}><option value="">Provider default</option>{(ttsCapabilities.supportedSampleRates || []).map((rate) => <option key={rate} value={rate}>{rate} Hz</option>)}</select></label>
-        </div>
+        </div>}
+        {compact && <p className="voice-provider-note">Save Agent applies this text-to-speech selection to calls.</p>}
 
         {audioUrl && <div className="mt-4 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><Volume2 className="shrink-0 text-emerald-700" size={18} /><audio controls autoPlay src={audioUrl} className="w-full" /></div>}
-      </section>
+      </section>}
 
-      <div className="flex items-start gap-3 rounded-xl border border-hairline bg-white p-4 text-sm text-neutral-600">
+      {!compact && <div className="flex items-start gap-3 rounded-xl border border-hairline bg-white p-4 text-sm text-neutral-600">
         <Volume2 className="mt-0.5 shrink-0" size={18} />
         <p>Saving updates the existing local agent and refreshes the provider configuration used for calls.</p>
-      </div>
+      </div>}
     </div>
   );
 }

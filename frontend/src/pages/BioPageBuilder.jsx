@@ -119,6 +119,49 @@ const defaults = {
   quickTopics: defaultQuickTopics
 };
 
+const templateDisplay = {
+  classic_business: {
+    name: "Local Service Business",
+    description: "For salons, repair services, clinics, studios, and teams that need clear contact and enquiry actions.",
+    recommendedUseCase: "Calls, enquiries, bookings"
+  },
+  modern_saas: {
+    name: "SaaS Product Assistant",
+    description: "For software teams that want visitors to ask about pricing, onboarding, integrations, and demos.",
+    recommendedUseCase: "Demos, support, pricing"
+  },
+  coaching_education: {
+    name: "Coaching & Admissions",
+    description: "For coaching centers, tutors, and institutes handling course questions, fees, batches, and counselling.",
+    recommendedUseCase: "Courses, fees, admissions"
+  },
+  healthcare_clinic: {
+    name: "Clinic Appointment Desk",
+    description: "For clinics and wellness practices that need appointment requests, service details, and location help.",
+    recommendedUseCase: "Appointments, services, hours"
+  },
+  real_estate: {
+    name: "Property Consultant",
+    description: "For brokers and real estate teams collecting buyer details, property preferences, and site visit requests.",
+    recommendedUseCase: "Leads, visits, property FAQs"
+  },
+  restaurant_booking: {
+    name: "Restaurant Reservation",
+    description: "For restaurants and cafes managing table bookings, menu questions, timings, and location queries.",
+    recommendedUseCase: "Tables, menu, directions"
+  },
+  bank_loan_agent: {
+    name: "Loan Advisor",
+    description: "For finance teams qualifying borrowers, explaining documents, eligibility, rates, and next steps.",
+    recommendedUseCase: "Eligibility, documents, leads"
+  },
+  minimal_professional: {
+    name: "Consultant Profile",
+    description: "For consultants, agencies, and solo professionals who want a restrained profile with direct actions.",
+    recommendedUseCase: "Consultations, enquiries"
+  }
+};
+
 function errorText(err) {
   return err.response?.userMessage || err.response?.message || err.message || "Something went wrong.";
 }
@@ -127,6 +170,14 @@ function assetUrl(value) {
   if (!value) return "";
   if (/^(https?:|blob:|data:)/i.test(value)) return value;
   return `${API_URL.replace(/\/api$/, "")}${value}`;
+}
+
+function templateMeta(template) {
+  return templateDisplay[template.templateId] || {
+    name: template.name,
+    description: template.description,
+    recommendedUseCase: template.recommendedUseCase
+  };
 }
 
 function cleanForm(value = {}, agent = {}) {
@@ -396,7 +447,7 @@ export default function BioPageBuilder() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack bio-builder-page">
       <PageHeader
         title="Agent Bio Page Builder"
         description={`Customize the public bio page for ${agent?.agentName || "this agent"}.`}
@@ -406,22 +457,35 @@ export default function BioPageBuilder() {
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
-      <div className="grid min-w-0 gap-5 pb-28">
-        <section className="min-w-0 space-y-5">
+      <div className="bio-builder-layout">
+        <section className="bio-builder-main">
           <Panel title="Choose Template" icon={Sparkles}>
-            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-              {templates.map((template) => (
-                <article key={template.templateId} className={`rounded-2xl border p-4 transition ${form.template === template.templateId ? "border-amber-300 bg-amber-50" : "border-hairline bg-white"}`}>
-                  <div className="mb-3 aspect-video rounded-xl border border-hairline" style={{ background: `linear-gradient(135deg, ${template.colors?.backgroundColor || "#fff"}, ${template.colors?.primaryColor || "#2563EB"}55)` }} />
-                  <h3 className="font-semibold text-ink">{template.name}</h3>
-                  <p className="mt-1 min-h-10 text-sm text-neutral-500">{template.description}</p>
-                  <p className="mt-2 text-xs font-semibold uppercase text-neutral-500">{template.recommendedUseCase}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+            <div className="bio-template-grid">
+              {templates.map((template) => {
+                const meta = templateMeta(template);
+                const selected = form.template === template.templateId;
+                return (
+                <article key={template.templateId} className={`bio-template-card ${selected ? "is-selected" : ""}`}>
+                  <div className="bio-template-preview" style={{ "--template-bg": template.colors?.backgroundColor || "#F8FAFC", "--template-primary": template.colors?.primaryColor || "#2563EB", "--template-accent": template.colors?.accentColor || "#DBEAFE" }}>
+                    <span />
+                    <div>
+                      <i />
+                      <i />
+                      <i />
+                    </div>
+                  </div>
+                  <div className="bio-template-copy">
+                    <h3>{meta.name}</h3>
+                    <p>{meta.description}</p>
+                    <span>{meta.recommendedUseCase}</span>
+                  </div>
+                  <div className="bio-template-actions">
                     <button className="btn-secondary" onClick={() => previewTemplate(template)}>Preview</button>
-                    <button className="btn-primary" onClick={() => useTemplate(template)}>Use Template</button>
+                    <button className="btn-primary" onClick={() => useTemplate(template)}>Use</button>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </Panel>
 
@@ -484,7 +548,7 @@ export default function BioPageBuilder() {
           </Panel>
 
           <Panel title="Web Calling" icon={Phone}>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-hairline bg-white p-4">
+            <div className="bio-inline-card">
               <div>
                 <p className="font-semibold text-ink">
                   {webCallEnabled ? `${webCallProvider} public web calling is enabled` : "Public web calling is not enabled"}
@@ -518,7 +582,7 @@ export default function BioPageBuilder() {
                   onUpload={uploadTopicIcon}
                 />
               ))}
-              <button className="btn-secondary" type="button" disabled={(form.quickTopics || []).length >= 8} onClick={addTopic}>
+              <button className="btn-secondary bio-add-topic" type="button" disabled={(form.quickTopics || []).length >= 8} onClick={addTopic}>
                 <MessageCircle size={16} /> Add Topic
               </button>
               {(form.quickTopics || []).length >= 8 && <p className="text-sm text-neutral-500">Maximum 8 quick topics allowed.</p>}
@@ -553,13 +617,17 @@ export default function BioPageBuilder() {
 
       <div className="bio-page-action-bar fixed inset-x-0 bottom-0 z-30 px-4 py-3">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2">
-          <button className="btn-primary" disabled={saving} onClick={() => save()}><Save size={16} />{saving ? "Saving..." : "Save Changes"}</button>
-          <a className="btn-secondary" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Preview Public Page</a>
-          <button className="btn-secondary" onClick={() => action("publish")}>Publish</button>
-          <button className="btn-secondary" onClick={() => action("unpublish")}>Unpublish</button>
-          <button className="btn-secondary" onClick={() => action("reset")}><RefreshCw size={16} />Reset to Default</button>
-          <button className="btn-secondary" disabled={!publicUrl} onClick={copyLink}><Copy size={16} />Copy Link</button>
-          <div className="ml-auto"><StatusBadge status={form.isPublished ? "Published" : "Draft"} /></div>
+          <div className="bio-action-primary">
+            <button className="btn-primary" disabled={saving} onClick={() => save()}><Save size={16} />{saving ? "Saving..." : "Save"}</button>
+            <a className="btn-secondary" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Preview</a>
+          </div>
+          <div className="bio-action-secondary">
+            <button className="btn-secondary" onClick={() => action("publish")}>Publish</button>
+            <button className="btn-secondary" onClick={() => action("unpublish")}>Unpublish</button>
+            <button className="btn-secondary" disabled={!publicUrl} onClick={copyLink}><Copy size={16} />Copy</button>
+            <button className="btn-secondary" onClick={() => action("reset")}><RefreshCw size={16} />Reset</button>
+          </div>
+          <div className="ml-auto bio-action-status"><StatusBadge status={form.isPublished ? "Published" : "Draft"} /></div>
         </div>
       </div>
     </div>
@@ -568,10 +636,10 @@ export default function BioPageBuilder() {
 
 function Panel({ title, icon: Icon, children }) {
   return (
-    <section className="card min-w-0">
-      <div className="mb-4 flex items-center gap-3">
-        {Icon && <div className="icon-tile"><Icon size={18} /></div>}
-        <h2 className="font-semibold text-ink">{title}</h2>
+    <section className="card min-w-0 bio-builder-panel">
+      <div className="bio-builder-panel-header">
+        {Icon && <div className="icon-tile"><Icon size={17} /></div>}
+        <h2>{title}</h2>
       </div>
       {children}
     </section>
@@ -583,9 +651,9 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
   const color = topic.color || "#2563EB";
 
   return (
-    <article className="rounded-2xl border border-hairline bg-white p-4">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl text-white" style={{ background: color }}>
+    <article className="bio-topic-card">
+      <div className="bio-topic-header">
+        <span className="bio-topic-icon" style={{ background: color }}>
           {topic.iconType === "image" && topic.iconImageUrl ? (
             <img className="h-full w-full object-cover" src={assetUrl(topic.iconImageUrl)} alt="" />
           ) : topic.iconType === "emoji" ? (
@@ -595,17 +663,17 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
           )}
         </span>
         <div className="min-w-0">
-          <h3 className="font-semibold text-ink">Topic {index + 1}</h3>
-          <p className="text-sm text-neutral-500">Customize the card shown on the public page.</p>
+          <h3>Topic {index + 1}</h3>
+          <p>Shown as a quick action on the public page.</p>
         </div>
-        <div className="ml-auto flex flex-wrap gap-2">
+        <div className="bio-topic-actions">
           <button className="btn-secondary" type="button" disabled={index === 0} onClick={() => onMove(index, -1)}>Up</button>
           <button className="btn-secondary" type="button" disabled={index === total - 1} onClick={() => onMove(index, 1)}>Down</button>
-          <button className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700" type="button" onClick={() => onDelete(index)}>Delete</button>
+          <button className="bio-danger-button" type="button" onClick={() => onDelete(index)}>Delete</button>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="bio-topic-fields">
         <Field label="Title"><input value={topic.title || ""} onChange={(event) => onChange(index, "title", event.target.value)} /></Field>
         <Field label="Description"><input value={topic.description || ""} onChange={(event) => onChange(index, "description", event.target.value)} /></Field>
         <ColorField label="Topic Color" value={color} onChange={(value) => onChange(index, "color", value)} />
@@ -626,7 +694,7 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
             </select>
           </Field>
         )}
-        <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center text-sm font-semibold text-neutral-600">
+        <label className="bio-upload-tile bio-topic-upload">
           <Upload size={18} className="mb-2 text-brand-700" />
           Upload custom icon
           <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => onUpload(index, event.target.files?.[0])} />
@@ -638,13 +706,13 @@ function QuickTopicEditor({ topic, index, total, onChange, onMove, onDelete, onU
 }
 
 function Field({ label, children }) {
-  return <label className="block min-w-0 text-sm font-semibold text-neutral-700">{label}<div className="mt-1">{children}</div></label>;
+  return <label className="bio-builder-field">{label}<div>{children}</div></label>;
 }
 
 function ColorField({ label, value, onChange }) {
   return (
     <Field label={label}>
-      <div className="flex overflow-hidden rounded-xl border border-hairline bg-white">
+      <div className="bio-color-field">
         <input className="h-11 w-14 cursor-pointer border-0 p-1" type="color" value={value || "#2563EB"} onChange={(event) => onChange(event.target.value)} />
         <input className="min-w-0 flex-1 border-0 px-3 text-sm font-semibold uppercase outline-none" value={value || ""} onChange={(event) => onChange(event.target.value)} />
       </div>
@@ -654,7 +722,7 @@ function ColorField({ label, value, onChange }) {
 
 function Toggle({ label, checked, onChange }) {
   return (
-    <label className="flex items-center justify-between gap-3 rounded-2xl border border-hairline bg-white p-3 text-sm font-semibold">
+    <label className="bio-toggle">
       <span className="min-w-0 break-words">{label}</span>
       <input className="h-5 w-5 flex-none" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
@@ -664,7 +732,7 @@ function Toggle({ label, checked, onChange }) {
 function UploadField({ label, value, onChange }) {
   const src = assetUrl(value);
   return (
-    <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center text-sm font-semibold text-neutral-600">
+    <label className="bio-upload-tile">
       {src ? <img className="mb-2 h-20 w-full max-w-full rounded-xl object-cover" src={src} alt="" /> : <Upload size={18} className="mb-2 text-brand-700" />}
       {label}
       <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => onChange(event.target.files?.[0])} />

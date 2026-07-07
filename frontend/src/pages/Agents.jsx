@@ -223,7 +223,7 @@ export default function Agents() {
               <button
                 type="button"
                 className="agent-card-upload-badge"
-                style={{ right: 10, bottom: 86 }}
+                style={{ right: 10, bottom: 124 }}
                 title="Remove custom avatar"
                 disabled={uploadingId === agent._id}
                 onClick={(e) => { e.preventDefault(); removeAvatar(agent._id); }}

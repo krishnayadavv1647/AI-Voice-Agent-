@@ -1,4 +1,4 @@
-﻿import { ArrowLeft, RefreshCw, Save } from "lucide-react";
+import { ArrowLeft, Bot, Mic, RefreshCw, Save, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
@@ -9,6 +9,11 @@ import { api } from "../lib/api.js";
 import { agentTypes, languages, tones, personalities } from "../lib/options.js";
 
 const tabs = ["Basic Info", "Business Information", "System Prompt", "Call Behavior", "Voice & Language", "Calling System"];
+const voiceSections = [
+  { id: "llm", label: "LLM", description: "Reasoning model", Icon: Bot },
+  { id: "stt", label: "STT", description: "Speech to text", Icon: Mic },
+  { id: "tts", label: "TTS", description: "Voice output", Icon: Volume2 }
+];
 
 const editableFields = [
   "agentName", "agentType", "businessName", "businessCategory", "businessDescription",
@@ -50,6 +55,7 @@ export default function EditAgent() {
   const [retryingSync, setRetryingSync] = useState(false);
   const [syncingRuntime, setSyncingRuntime] = useState(false);
   const [telephonyConfigs, setTelephonyConfigs] = useState([]);
+  const [voiceSection, setVoiceSection] = useState("llm");
 
   const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(original), [form, original]);
 
@@ -289,14 +295,36 @@ export default function EditAgent() {
       <div className="grid min-w-0 gap-6 lg:grid-cols-[240px_minmax(0,900px)]">
         <aside className="self-start rounded-xl border border-hairline bg-white p-3 lg:sticky lg:top-24">
           {tabs.map((item) => (
-            <button
-              key={item}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${item === tab ? "bg-ink text-white" : "text-neutral-600 hover:bg-neutral-50 hover:text-ink"}`}
-              onClick={() => setTab(item)}
-            >
-              <span>{item}</span>
-              {item !== tab && !dirty && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
-            </button>
+            <div key={item} className={`edit-sidebar-item-wrap ${item === tab ? "is-active" : ""}`}>
+              <button
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${item === tab ? "bg-ink text-white" : "text-neutral-600 hover:bg-neutral-50 hover:text-ink"}`}
+                onClick={() => setTab(item)}
+              >
+                <span>{item}</span>
+                {item !== tab && !dirty && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+              </button>
+              {item === "Voice & Language" && (
+                <div className="edit-voice-subnav" aria-label="Voice and language settings">
+                  {voiceSections.map(({ id: sectionId, label, description, Icon }) => (
+                    <button
+                      key={sectionId}
+                      type="button"
+                      className={`edit-voice-subnav-item ${voiceSection === sectionId ? "is-active" : ""}`}
+                      onClick={() => {
+                        setTab(item);
+                        setVoiceSection(sectionId);
+                      }}
+                    >
+                      <Icon size={15} />
+                      <span>
+                        <strong>{label}</strong>
+                        <small>{description}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </aside>
 
@@ -376,13 +404,14 @@ export default function EditAgent() {
         )}
 
         {tab === "Voice & Language" && (
-          <div className="field-grid">
-            <Field label="Conversation Language" name="language" value={form.language} setField={setField} options={languages} />
-            <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
-            <Field label="Tone" name="tone" value={form.tone} setField={setField} options={tones} />
-            <Field label="Personality" name="personality" value={form.personality} setField={setField} options={personalities} />
-            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} onSyncRuntime={syncRuntime} syncingRuntime={syncingRuntime} />
-          </div>
+          <VoiceLanguageEditor
+            form={form}
+            setField={setField}
+            activeSection={voiceSection}
+            setActiveSection={setVoiceSection}
+            onSyncRuntime={syncRuntime}
+            syncingRuntime={syncingRuntime}
+          />
         )}
 
         {tab === "Calling System" && (
@@ -411,6 +440,68 @@ export default function EditAgent() {
         )}
       </div>
       </div>
+    </div>
+  );
+}
+
+function VoiceLanguageEditor({ form, setField, activeSection, setActiveSection, onSyncRuntime, syncingRuntime }) {
+  const active = voiceSections.find((item) => item.id === activeSection) || voiceSections[0];
+
+  return (
+    <div className="edit-voice-workspace">
+      <div className="edit-voice-basics">
+        <Field label="Conversation Language" name="language" value={form.language} setField={setField} options={languages} />
+        <Field label="Tone" name="tone" value={form.tone} setField={setField} options={tones} />
+        <Field label="Personality" name="personality" value={form.personality} setField={setField} options={personalities} />
+      </div>
+
+      <div className="edit-voice-mobile-nav">
+        {voiceSections.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={activeSection === id ? "is-active" : ""}
+            onClick={() => setActiveSection(id)}
+          >
+            <Icon size={15} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section className="edit-voice-panel">
+        <div className="edit-voice-panel-header">
+          <div>
+            <p className="edit-voice-kicker">Integration Settings</p>
+            <h3>{active.label}</h3>
+            <p>{active.description}. Choose the provider model, then save the agent.</p>
+          </div>
+        </div>
+
+        {activeSection === "llm" && (
+          <LLMConfigurationPanel compact value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
+        )}
+        {activeSection === "stt" && (
+          <VoiceConfigurationPanel
+            compact
+            section="stt"
+            value={form.voiceConfiguration}
+            onChange={(value) => setField("voiceConfiguration", value)}
+            onSyncRuntime={onSyncRuntime}
+            syncingRuntime={syncingRuntime}
+          />
+        )}
+        {activeSection === "tts" && (
+          <VoiceConfigurationPanel
+            compact
+            section="tts"
+            value={form.voiceConfiguration}
+            onChange={(value) => setField("voiceConfiguration", value)}
+            onSyncRuntime={onSyncRuntime}
+            syncingRuntime={syncingRuntime}
+          />
+        )}
+      </section>
     </div>
   );
 }

@@ -69,7 +69,7 @@ function Toggle({ label, checked, onChange, disabled }) {
   );
 }
 
-export default function LLMConfigurationPanel({ value, onChange }) {
+export default function LLMConfigurationPanel({ value, onChange, compact = false }) {
   const config = {
     ...defaultLLMConfiguration,
     ...(value || {}),
@@ -165,19 +165,23 @@ export default function LLMConfigurationPanel({ value, onChange }) {
       return !query || `${model.id} ${model.name} ${model.provider} ${model.description}`.toLowerCase().includes(query);
     }).slice(0, category === "recommended" ? 80 : 250);
   }, [models, modelQuery, category, config.provider]);
+  const modelChoices = useMemo(() => {
+    if (!config.model || filteredModels.some((model) => model.id === config.model)) return filteredModels;
+    return [{ id: config.model, name: config.model }, ...filteredModels];
+  }, [config.model, filteredModels]);
 
   const credentialsConnected = Boolean(config.integrationId);
   const agentConfigured = Boolean(config.integrationId && config.model);
 
   return (
-    <section className="space-y-4 md:col-span-2">
+    <section className={compact ? "voice-provider-panel" : "space-y-4 md:col-span-2"}>
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-      <div className="rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5">
+      <div className={compact ? "voice-provider-card" : "rounded-xl border border-hairline bg-neutral-50/70 p-4 sm:p-5"}>
         <div className="mb-4 flex items-start gap-3">
           <ShieldCheck className="mt-0.5 text-neutral-500" size={19} />
           <div>
             <h3 className="font-bold text-ink">LLM Configuration</h3>
-            <p className="mt-1 text-sm text-neutral-500">Choose the model configuration used by the voice assistant.</p>
+            <p className="mt-1 text-sm text-neutral-500">{compact ? "Select the connected account and model used by this agent." : "Choose the model configuration used by the voice assistant."}</p>
           </div>
         </div>
 
@@ -197,14 +201,14 @@ export default function LLMConfigurationPanel({ value, onChange }) {
             </select>
           </label>
 
-          <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
+          {!compact && <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
             Manual Model ID
             <input className="mt-1" value={config.model || ""} onChange={(event) => patch({ model: event.target.value })} placeholder="Paste model ID" />
-          </label>
+          </label>}
         </div>
 
-        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
-          <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]">
+        <div className={compact ? "voice-model-card" : "mt-4 rounded-xl border border-hairline bg-white p-4"}>
+          <div className={compact ? "voice-model-tools" : "mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]"}>
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
               <input className="pl-9" value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder="Search models" />
@@ -220,7 +224,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
             Model
             <select className="mt-1" disabled={!config.integrationId || loadingModels} value={config.model || ""} onChange={(event) => patch({ model: event.target.value })}>
               <option value="">{loadingModels ? "Loading models..." : "Select model"}</option>
-              {filteredModels.map((model) => (
+              {modelChoices.map((model) => (
                 <option key={model.id} value={model.id}>
                   {modelOptionLabel(model)}
                 </option>
@@ -232,7 +236,11 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           </label>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {compact && (
+          <p className="voice-provider-note">Save Agent applies this LLM selection to the existing calling configuration.</p>
+        )}
+
+        {!compact && <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <NumberField label="Temperature" min={0} max={2} step={0.05} value={config.settings.temperature} onChange={(value) => patchSettings({ temperature: value })} />
           <NumberField label="Maximum Output Tokens" min={16} max={4096} step={16} value={config.settings.maxTokens} onChange={(value) => patchSettings({ maxTokens: value })} />
           <NumberField label="Top P" min={0} max={1} step={0.05} value={config.settings.topP} onChange={(value) => patchSettings({ topP: value })} />
@@ -241,9 +249,9 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           <NumberField label="Presence Penalty" min={-2} max={2} step={0.1} value={config.settings.presencePenalty} onChange={(value) => patchSettings({ presencePenalty: value })} />
           <Toggle label="Streaming" checked={config.settings.streaming} onChange={(value) => patchSettings({ streaming: value })} />
           <Toggle label="Tool Calling" checked={config.settings.toolCalling} onChange={(value) => patchSettings({ toolCalling: value })} />
-        </div>
+        </div>}
 
-        <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+        {!compact && <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
             <button type="button" className="btn-secondary" disabled={testing || !config.integrationId || !config.model} onClick={testModel}>
@@ -251,9 +259,9 @@ export default function LLMConfigurationPanel({ value, onChange }) {
             </button>
           </div>
           {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.responseText || testResult.text}</div>}
-        </div>
+        </div>}
 
-        <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
+        {!compact && <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
           <p className="font-bold">LLM Runtime Status</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <StatusLine label="Credentials" value={credentialsConnected ? "Connected" : "Not connected"} ok={credentialsConnected} />
@@ -264,7 +272,7 @@ export default function LLMConfigurationPanel({ value, onChange }) {
           <p className="mt-1 text-xs leading-5">
             Agent configured: {providerLabel(config.provider)} {config.model ? `/ ${config.model}` : ""}.
           </p>
-        </div>
+        </div>}
       </div>
     </section>
   );
