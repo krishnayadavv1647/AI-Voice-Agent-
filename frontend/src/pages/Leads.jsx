@@ -1,4 +1,5 @@
 ﻿import { CalendarClock, Download, FileText, MailSearch, MoreVertical, PhoneCall, Search, Trash2, UserRound } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -45,7 +46,10 @@ function truncateValue(value, max = 32) {
 }
 
 export default function Leads() {
-  const [leads, setLeads] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: leads = [], error: leadsError } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
+  const { data: followUps = [] } = useQuery({ queryKey: ["followups"], queryFn: () => api("/followups") });
+  const { data: emailThreads = [] } = useQuery({ queryKey: ["email-threads"], queryFn: () => api("/email/threads") });
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
 
@@ -58,60 +62,56 @@ export default function Leads() {
         .some((v) => String(v).toLowerCase().includes(q))
     );
   }, [leads, search]);
-  const [followUpsByLead, setFollowUpsByLead] = useState({});
-  const [threadsByLead, setThreadsByLead] = useState({});
+  const followUpsByLead = useMemo(() => followUps.reduce((acc, followUp) => {
+    const leadId = followUp.leadId?._id || followUp.leadId;
+    if (leadId) acc[leadId] = (acc[leadId] || 0) + 1;
+    return acc;
+  }, {}), [followUps]);
+  const threadsByLead = useMemo(() => emailThreads.reduce((acc, thread) => {
+    const leadId = thread.leadId?._id || thread.leadId;
+    if (leadId) acc[leadId] = [...(acc[leadId] || []), thread];
+    return acc;
+  }, {}), [emailThreads]);
   const [openActionsId, setOpenActionsId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [schedulingId, setSchedulingId] = useState("");
   const [enrichingId, setEnrichingId] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || leadsError?.message || "";
 
-  async function load() {
-    const [leadList, followUps, emailThreads] = await Promise.all([api("/leads"), api("/followups"), api("/email/threads")]);
-    setLeads(leadList);
-    setFollowUpsByLead(followUps.reduce((acc, followUp) => {
-      const leadId = followUp.leadId?._id || followUp.leadId;
-      if (leadId) acc[leadId] = (acc[leadId] || 0) + 1;
-      return acc;
-    }, {}));
-    setThreadsByLead(emailThreads.reduce((acc, thread) => {
-      const leadId = thread.leadId?._id || thread.leadId;
-      if (leadId) acc[leadId] = [...(acc[leadId] || []), thread];
-      return acc;
-    }, {}));
+  function reloadLeads() {
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+    queryClient.invalidateQueries({ queryKey: ["followups"] });
+    queryClient.invalidateQueries({ queryKey: ["email-threads"] });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function addNote(id) {
     const note = prompt("Add note");
     if (!note) return;
     await api(`/leads/${id}`, { method: "PUT", body: { note } });
-    load();
+    reloadLeads();
   }
 
   async function callAgain(id) {
     await api(`/leads/${id}/call-again`, { method: "POST" });
-    load();
+    reloadLeads();
   }
 
   async function deleteLead(id) {
     if (!confirm("Are you sure you want to delete this lead?")) return;
     setDeletingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       await api(`/leads/${id}`, { method: "DELETE" });
-      setLeads((current) => current.filter((lead) => lead._id !== id));
+      reloadLeads();
       if (selected?._id === id) setSelected(null);
       setOpenActionsId("");
       setNotice("Lead deleted successfully");
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setActionError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
     } finally {
       setDeletingId("");
     }
@@ -119,7 +119,7 @@ export default function Leads() {
 
   async function scheduleFollowUp(lead) {
     if (!lead.agentId?._id && !lead.agentId) {
-      setError("Lead is missing an assigned agent.");
+      setActionError("Lead is missing an assigned agent.");
       return;
     }
 
@@ -129,7 +129,7 @@ export default function Leads() {
 
     setSchedulingId(lead._id);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       await api("/followups", {
@@ -146,9 +146,9 @@ export default function Leads() {
         }
       });
       setNotice("Follow-up scheduled successfully");
-      await load();
+      reloadLeads();
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setActionError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
     } finally {
       setSchedulingId("");
     }
@@ -156,13 +156,13 @@ export default function Leads() {
 
   async function findEmail(lead) {
     if (!lead.website) {
-      setError("Lead website is missing.");
+      setActionError("Lead website is missing.");
       return;
     }
 
     setEnrichingId(lead._id);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       const result = await api("/lead-finder/enrich-emails", {
@@ -171,10 +171,10 @@ export default function Leads() {
       });
       const enrichedLead = result.saved?.[0];
       setNotice(enrichedLead?.email ? `Email found: ${enrichedLead.email}` : "No email found on this website.");
-      await load();
+      reloadLeads();
       if (selected?._id === lead._id && enrichedLead) setSelected(enrichedLead);
     } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
+      setActionError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
     } finally {
       setEnrichingId("");
     }

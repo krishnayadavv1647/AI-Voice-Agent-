@@ -1,5 +1,6 @@
 import { Eye, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AgentLikeCard from "../components/AgentLikeCard.jsx";
 import { api } from "../lib/api.js";
@@ -39,30 +40,17 @@ function previewList(value) {
 
 export default function Templates() {
   const navigate = useNavigate();
-  const [templates, setTemplates] = useState([]);
+  const { data: templates = [], error: queryError, isPending } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => api("/agent-templates")
+  });
+  const loading = isPending;
+  const error = queryError ? errorText(queryError) : "";
   const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [modalError, setModalError] = useState("");
-
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
-  async function loadTemplates() {
-    setLoading(true);
-    setError("");
-    try {
-      setTemplates(await api("/agent-templates"));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function openTemplate(template) {
     setSelected(template);

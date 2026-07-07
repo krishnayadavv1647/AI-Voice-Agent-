@@ -1,4 +1,5 @@
 import { Check, Coins, CreditCard, Sparkles, Zap } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -34,39 +35,37 @@ function loadRazorpay() {
 export default function Billing() {
   const { user } = useAuth();
   const { refresh } = useCredits();
-  const [catalogData, setCatalogData] = useState(null);
-  const [billingData, setBillingData] = useState(null);
+  const queryClient = useQueryClient();
+  // Catalog plans (new endpoint) and billing overview (topup packs + provider) run in parallel.
+  const { data: catalogData, error: catalogError } = useQuery({
+    queryKey: ["billing", "catalog"],
+    queryFn: () => api("/plans")
+  });
+  const { data: billingData, error: billingError } = useQuery({
+    queryKey: ["billing", "overview"],
+    queryFn: () => api("/billing/plans")
+  });
   const [busyKey, setBusyKey] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const loadError = catalogError || billingError;
+  const error = actionError || (loadError ? (loadError.response?.message || loadError.message) : "");
 
   useEffect(() => {
-    load();
     if (new URLSearchParams(window.location.search).get("checkout") === "success") {
       setMessage("Payment successful! Your credits have been added.");
       refresh();
     }
   }, []);
 
-  async function load() {
-    try {
-      // Catalog plans (new endpoint) and billing overview (topup packs + provider) in parallel
-      const [catalog, billing] = await Promise.all([
-        api("/plans"),
-        api("/billing/plans")
-      ]);
-      setCatalogData(catalog);
-      setBillingData(billing);
-    } catch (err) {
-      setError(err.response?.message || err.message);
-    }
+  function reloadBilling() {
+    queryClient.invalidateQueries({ queryKey: ["billing"] });
   }
-
 
   async function checkout(type, key) {
     setBusyKey(key);
     setMessage("");
-    setError("");
+    setActionError("");
     try {
       const result = await api("/billing/checkout", { method: "POST", body: { type, key } });
       const cp = result.clientPayload;
@@ -94,9 +93,10 @@ export default function Billing() {
                 }
               });
               setMessage("Payment successful! Your credits have been added.");
-              await Promise.all([load(), refresh()]);
+              reloadBilling();
+              refresh();
             } catch (err) {
-              setError(err.response?.message || err.message);
+              setActionError(err.response?.message || err.message);
             }
           }
         });
@@ -105,7 +105,7 @@ export default function Billing() {
         window.location.href = cp.url;
       }
     } catch (err) {
-      setError(err.response?.message || err.message);
+      setActionError(err.response?.message || err.message);
     } finally {
       setBusyKey("");
     }

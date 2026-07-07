@@ -1,4 +1,5 @@
 ﻿import { CalendarClock, Pause, PhoneCall, Play, Plus, RefreshCw, RotateCcw, Square, Upload, Users } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -27,8 +28,9 @@ function leadName(lead) {
 }
 
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: campaigns = [], error: campaignsError } = useQuery({ queryKey: ["campaigns"], queryFn: () => api("/campaigns") });
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(null);
   const [recipients, setRecipients] = useState([]);
@@ -38,17 +40,15 @@ export default function Campaigns() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (campaignsError ? errorText(campaignsError) : "");
 
   const selectedStats = selected?.stats || {};
   const filteredLeads = useMemo(() => leads.filter((lead) => !form.agentId || lead.agentId === form.agentId || lead.agentId?._id === form.agentId), [leads, form.agentId]);
 
-  async function load() {
-    setError("");
-    const [campaignData, agentData] = await Promise.all([api("/campaigns"), api("/agents")]);
-    setCampaigns(campaignData);
-    setAgents(agentData);
-    setForm((current) => ({ ...current, agentId: current.agentId || agentData[0]?._id || "" }));
+  function reloadCampaigns() {
+    queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
   }
 
   async function loadLeads(agentId) {
@@ -57,7 +57,7 @@ export default function Campaigns() {
 
   async function openCampaign(campaign) {
     setLoading(`open-${campaign._id}`);
-    setError("");
+    setActionError("");
     try {
       const [detail, recipientRows] = await Promise.all([
         api(`/campaigns/${campaign._id}`),
@@ -67,34 +67,35 @@ export default function Campaigns() {
       setRecipients(recipientRows);
       setShowCreate(false);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
   }
 
+  // Default the create-form agent once the agents list has loaded.
   useEffect(() => {
-    load().catch((err) => setError(errorText(err)));
-  }, []);
+    setForm((current) => ({ ...current, agentId: current.agentId || agents[0]?._id || "" }));
+  }, [agents]);
 
   useEffect(() => {
-    if (showCreate || selected) loadLeads(form.agentId || selected?.agentId?._id || selected?.agentId).catch((err) => setError(errorText(err)));
+    if (showCreate || selected) loadLeads(form.agentId || selected?.agentId?._id || selected?.agentId).catch((err) => setActionError(errorText(err)));
   }, [showCreate, form.agentId, selected?._id]);
 
   async function createCampaign(event) {
     event.preventDefault();
     setLoading("create");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const campaign = await api("/campaigns", { method: "POST", body: form });
       setNotice("Campaign created.");
       setShowCreate(false);
       setForm({ ...defaultForm, agentId: agents[0]?._id || "" });
-      await load();
+      reloadCampaigns();
       await openCampaign(campaign);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -104,15 +105,15 @@ export default function Campaigns() {
     if (!selected || !selectedLeadIds.length) return;
     setLoading("add-leads");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/campaigns/${selected._id}/add-leads`, { method: "POST", body: { leadIds: selectedLeadIds } });
       setNotice(`${result.created} recipient${result.created === 1 ? "" : "s"} added.`);
       setSelectedLeadIds([]);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -122,7 +123,7 @@ export default function Campaigns() {
     if (!selected || !file) return;
     setLoading("import");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const token = getToken();
       const response = await fetch(`${API_URL}/campaigns/${selected._id}/import-recipients?fileName=${encodeURIComponent(file.name)}`, {
@@ -138,9 +139,9 @@ export default function Campaigns() {
       setNotice(`${payload.created} recipient${payload.created === 1 ? "" : "s"} imported. ${payload.skipped || 0} skipped.`);
       setFile(null);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -151,14 +152,14 @@ export default function Campaigns() {
     if (type === "cancel" && !confirm("Cancel this campaign?")) return;
     setLoading(type);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/campaigns/${selected._id}/${type}`, { method: "POST" });
       setNotice(type === "retry-failed" ? `${result.queued || 0} recipients queued for retry.` : `Campaign ${type.replace("-", " ")} complete.`);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -169,7 +170,7 @@ export default function Campaigns() {
       <PageHeader
         title="Campaigns"
         description="Create bulk AI calling campaigns using your agents and leads."
-        action={<div className="action-row"><button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button><button className="btn-primary" onClick={() => { setShowCreate(true); setSelected(null); }}><Plus size={16} />Create Campaign</button></div>}
+        action={<div className="action-row"><button className="btn-secondary" onClick={reloadCampaigns}><RefreshCw size={16} />Refresh</button><button className="btn-primary" onClick={() => { setShowCreate(true); setSelected(null); }}><Plus size={16} />Create Campaign</button></div>}
       />
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}

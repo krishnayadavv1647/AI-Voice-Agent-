@@ -1,4 +1,5 @@
 ﻿import { Download, FileText, MoreVertical, PhoneCall, PlayCircle, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -24,13 +25,18 @@ function callPhone(call) {
 }
 
 export default function CallLogs() {
-  const [calls, setCalls] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: calls = [], error: queryError } = useQuery({
+    queryKey: ["calls"],
+    queryFn: () => api("/calls")
+  });
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [actingId, setActingId] = useState("");
   const [openOptionsId, setOpenOptionsId] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || queryError?.message || "";
 
   const filteredCalls = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,36 +48,28 @@ export default function CallLogs() {
     );
   }, [calls, search]);
 
-  async function load() {
-    try {
-      setCalls(await api("/calls"));
-    } catch (err) {
-      setError(err.message);
-    }
+  function reloadCalls() {
+    queryClient.invalidateQueries({ queryKey: ["calls"] });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function remove(id) {
     if (!confirm("Delete this call log?")) return;
     await api(`/calls/${id}`, { method: "DELETE" });
     setOpenOptionsId("");
-    load();
+    reloadCalls();
   }
 
   async function sync(id) {
     setActingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       await api(`/calls/${id}/sync`, { method: "POST" });
       setNotice("Call synced.");
       setOpenOptionsId("");
-      await load();
+      reloadCalls();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -80,14 +78,14 @@ export default function CallLogs() {
   async function retry(id) {
     setActingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       await api(`/calls/${id}/retry`, { method: "POST" });
       setNotice("Retry call started.");
       setOpenOptionsId("");
-      await load();
+      reloadCalls();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -96,7 +94,7 @@ export default function CallLogs() {
   async function downloadRecording(call) {
     setActingId(call._id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const { blob, contentType } = await apiBlob(`/calls/${call._id}/recording`);
       const extension = contentType.includes("wav") ? "wav" : contentType.includes("ogg") ? "ogg" : "mp3";
@@ -109,7 +107,7 @@ export default function CallLogs() {
       setNotice("Recording download started.");
       setOpenOptionsId("");
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
