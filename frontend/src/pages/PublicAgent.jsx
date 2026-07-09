@@ -17,14 +17,16 @@
   Landmark,
   MapPin,
   MessageCircle,
-  Mic,
   PhoneOff,
   Phone,
   Send,
+  ShieldCheck,
   Sparkles,
+  Star,
   Users,
   Utensils,
   User,
+  X,
   Zap
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,11 +37,14 @@ import { API_URL, api } from "../lib/api.js";
 import { startVapiWebCall } from "../utils/startVapiWebCall.js";
 import { requestMicrophoneAccess } from "../utils/microphone.js";
 
+// Business-neutral fallback topics. Only used when an agent has not configured its own
+// quickTopics in the bio builder, so they must read sensibly for any business type
+// (food, coaching, clinic, real estate, ...) rather than being education-specific.
 const defaultQuickTopics = [
-  { id: "admissions", icon: "Landmark", iconType: "lucide", color: "#2563EB", title: "Admissions", description: "Understand the step-by-step admission process", prompt: "Walk me through the admission process.", isVisible: true, order: 0 },
-  { id: "courses", icon: "BookOpen", iconType: "lucide", color: "#2563EB", title: "Courses", description: "Explore courses and batches", prompt: "What courses and batches do you offer?", isVisible: true, order: 1 },
-  { id: "fees", icon: "DollarSign", iconType: "lucide", color: "#2563EB", title: "Fees", description: "Get details about fees and payments", prompt: "I want to know about fees and payment options.", isVisible: true, order: 2 },
-  { id: "scholarships", icon: "GraduationCap", iconType: "lucide", color: "#2563EB", title: "Scholarships", description: "Find scholarships and financial aid", prompt: "What scholarships and financial aid are available?", isVisible: true, order: 3 }
+  { id: "offerings", icon: "Sparkles", iconType: "lucide", color: "#2563EB", title: "What we offer", description: "Explore our products and services", prompt: "What products and services do you offer?", isVisible: true, order: 0 },
+  { id: "pricing", icon: "BadgePercent", iconType: "lucide", color: "#2563EB", title: "Pricing & offers", description: "Get prices, packages and current deals", prompt: "Can you share pricing and any current offers?", isVisible: true, order: 1 },
+  { id: "hours-location", icon: "MapPin", iconType: "lucide", color: "#2563EB", title: "Hours & location", description: "Timings, address and how to reach us", prompt: "What are your opening hours and where are you located?", isVisible: true, order: 2 },
+  { id: "contact", icon: "MessageCircle", iconType: "lucide", color: "#2563EB", title: "Talk to us", description: "Book, order or reach the team", prompt: "I'd like to get in touch or place a request.", isVisible: true, order: 3 }
 ];
 
 const topicIconMap = {
@@ -47,16 +52,23 @@ const topicIconMap = {
   BookOpen,
   Building2,
   Calendar,
+  CalendarDays,
+  Clock,
   DollarSign,
   GraduationCap,
+  Headphones,
   HeartPulse,
   HelpCircle,
   Home,
   Landmark,
+  MapPin,
   MessageCircle,
   Phone,
+  Sparkles,
+  Star,
   Users,
-  Utensils
+  Utensils,
+  Zap
 };
 
 const slots = ["10:00 AM", "11:30 AM", "02:00 PM", "04:30 PM", "06:00 PM"];
@@ -127,6 +139,7 @@ export default function PublicAgent() {
   const [loading, setLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [callStatus, setCallStatus] = useState("idle");
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const vapiRef = useRef(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -241,6 +254,31 @@ export default function PublicAgent() {
     if (prompt) setSeedPrompt({ prompt, id: Date.now() });
   }
 
+  // Opens the animated voice-call popup. The modal plays a short connecting animation and then
+  // invokes startWebCall() (the real Vapi flow) so the existing call logic stays untouched.
+  function launchVoiceCall() {
+    if (!agent?.publicWebCallEnabled) {
+      setNotice("Voice calling is not enabled for this assistant yet. You can continue in chat.");
+      setView("chat");
+      return;
+    }
+    setError("");
+    setNotice("");
+    setCallStatus("connecting");
+    setVoiceModalOpen(true);
+  }
+
+  function closeVoiceModal() {
+    try {
+      vapiRef.current?.stop();
+    } catch {
+      // ignore – call may not have started yet
+    }
+    vapiRef.current = null;
+    setVoiceModalOpen(false);
+    setCallStatus("idle");
+  }
+
   async function startWebCall() {
     if (!agent?.publicWebCallEnabled) {
       setNotice("Voice calling is not enabled for this assistant yet. You can continue in chat.");
@@ -251,7 +289,6 @@ export default function PublicAgent() {
     setError("");
     setNotice("");
     setCallStatus("connecting");
-    setView("call");
 
     try {
       await requestMicrophoneAccess();
@@ -304,7 +341,7 @@ export default function PublicAgent() {
           showVoiceCall={showVoiceCall}
           quickTopics={quickTopics}
           onStart={() => openChat()}
-          onCall={startWebCall}
+          onCall={launchVoiceCall}
           onBook={() => setView("booking")}
           onTile={(cat) => openChat(cat.prompt || cat.title)}
         />
@@ -321,7 +358,7 @@ export default function PublicAgent() {
           notice={notice}
           chatEnabled={agent?.publicChatEnabled}
           onBack={() => setView("landing")}
-          onCall={startWebCall}
+          onCall={launchVoiceCall}
           onBook={() => setView("booking")}
           showAppointment={showAppointment}
           showVoiceCall={showVoiceCall}
@@ -329,11 +366,24 @@ export default function PublicAgent() {
           onSuggestion={(prompt) => sendChatText(prompt)}
         />
       )}
-      {view === "call" && (
-        <CallView profile={profile} status={callStatus} error={error} onBack={() => setView("landing")} onEnd={endWebCall} onRetry={startWebCall} onChat={() => openChat()} onBook={() => setView("booking")} />
-      )}
       {view === "booking" && (
         <Booking profile={profile} agent={agent} onBack={() => setView("landing")} onChat={() => openChat()} />
+      )}
+
+      {voiceModalOpen && (
+        <VoiceCallModal
+          profile={profile}
+          status={callStatus}
+          error={error}
+          onStart={startWebCall}
+          onEnd={endWebCall}
+          onRetry={startWebCall}
+          onClose={closeVoiceModal}
+          onChat={() => {
+            closeVoiceModal();
+            openChat();
+          }}
+        />
       )}
     </main>
   );
@@ -341,23 +391,29 @@ export default function PublicAgent() {
 
 function TopBar({ profile, view, onHome }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-[#d8e4f5] bg-[#ffffff]/85 backdrop-blur">
-      <div className="mx-auto flex h-[60px] max-w-[1180px] items-center gap-3 px-4 sm:px-6">
-        <button onClick={onHome} className="flex min-w-0 items-center gap-2.5 text-left" aria-label="Home">
-          <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} />
+    <header className="sticky top-0 z-30 border-b border-[#d8e4f5] bg-white/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-[66px] max-w-[1200px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <button onClick={onHome} className="flex min-w-0 items-center gap-3 text-left" aria-label="Home">
+          <span className="vf-avatar-frame h-10 w-10 flex-none rounded-xl">
+            <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
+          </span>
           <span className="min-w-0 leading-tight">
-            <span className="block truncate text-sm font-extrabold">{profile.title}</span>
-            <span className="block truncate text-[11.5px] text-[#64748b]">{profile.category} Â· {profile.availability}</span>
+            <span className="block truncate text-[14.5px] font-extrabold">{profile.title}</span>
+            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#64748b]">
+              <span className="truncate">{profile.category}</span>
+              <span className="text-[#cbd5e1]">·</span>
+              <span className="hidden truncate sm:inline">{profile.availability}</span>
+            </span>
           </span>
         </button>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2.5">
           {view !== "landing" && (
             <button onClick={onHome} className="vf-btn vf-btn-ghost px-3 py-2 text-[13.5px]">
               <ArrowLeft size={16} />
               <span className="hidden sm:inline">Home</span>
             </button>
           )}
-          <span className="hidden items-center gap-1.5 text-xs font-semibold text-[#64748b] md:inline-flex">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
             <GreenDot /> Online now
           </span>
         </div>
@@ -368,60 +424,86 @@ function TopBar({ profile, view, onHome }) {
 
 function Landing({ profile, showBusinessInfo, showAppointment, showVoiceCall, quickTopics, onStart, onBook, onCall, onTile }) {
   return (
-    <div className="vf-enter mx-auto w-full max-w-[1060px] px-5 py-8 sm:py-12">
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,.92fr)] lg:items-center lg:gap-10">
+    <div className="vf-enter mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.82fr)]">
         <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
           <AiPill />
-          <div className="my-2">
+          <div className="vf-hero-visual mt-6 grid w-full max-w-[440px] place-items-center rounded-[24px] p-6 sm:p-8">
             <Robot size={248} src={profile.agentImageUrl} glow float />
           </div>
-          <h1 className="text-[clamp(38px,6vw,60px)] font-black leading-[1.03] tracking-normal">{profile.title}</h1>
-          <p className="mt-4 max-w-[460px] text-base leading-relaxed text-[#64748b] sm:text-[17px]">{profile.subtitle}</p>
+          <h1 className="mt-6 text-[clamp(34px,5.4vw,58px)] font-black leading-[1.04] tracking-tight">{profile.title}</h1>
+          <p className="mt-4 max-w-[500px] text-[15px] leading-relaxed text-[#64748b] sm:text-[17px]">{profile.subtitle}</p>
+          <TrustChips showVoiceCall={showVoiceCall} />
         </section>
 
-        <section className="flex flex-col gap-5">
+        <section className="flex w-full flex-col gap-5">
           {showBusinessInfo && (
-            <div className="vf-glass rounded-[22px] px-5 py-2">
+            <div className="vf-glass rounded-[24px] p-2 sm:p-3">
               <InfoRow icon={Building2} label="Business" value={profile.businessName} first />
               <InfoRow icon={BookOpen} label="Category" value={profile.category} />
               <InfoRow icon={MapPin} label="Location" value={profile.location} />
-              <InfoRow label="Availability" value={profile.availability} dot />
+              <InfoRow icon={Sparkles} label="Availability" value={profile.availability} dot />
               <InfoRow icon={Zap} label="Response Time" value={profile.responseTime} />
             </div>
           )}
           <div className="flex w-full flex-col gap-3">
-            <button className="vf-btn vf-btn-primary w-full px-5 py-4" onClick={onStart}>
+            <button className="vf-btn vf-btn-primary vf-cta w-full px-5" onClick={onStart}>
               <MessageCircle size={19} /> {profile.cta} <ArrowRight size={18} className="ml-auto" />
             </button>
-            <div className="flex flex-wrap gap-3">
-              {showAppointment && (
-                <button className="vf-btn vf-btn-ghost flex-1 px-4 py-3.5" onClick={onBook}>
-                  <CalendarDays size={18} /> {profile.secondaryCta}
-                </button>
-              )}
-              {showVoiceCall && (
-                <button className="vf-btn vf-btn-soft flex-1 px-4 py-3.5" onClick={onCall} title="Start a voice call">
-                  <Headphones size={18} /> {profile.voiceCta}
-                </button>
-              )}
-            </div>
+            {(showVoiceCall || showAppointment) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {showVoiceCall && (
+                  <button className="vf-btn vf-btn-soft vf-cta-sec px-4" onClick={onCall} title="Start a voice call">
+                    <Headphones size={18} /> {profile.voiceCta}
+                  </button>
+                )}
+                {showAppointment && (
+                  <button className="vf-btn vf-btn-ghost vf-cta-sec px-4" onClick={onBook}>
+                    <CalendarDays size={18} /> {profile.secondaryCta}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
       </div>
 
-      <section className="mt-7">
-        <div className="mb-3.5 flex items-center justify-between">
-          <h2 className="text-[15px] font-extrabold tracking-normal text-[#64748b]">QUICK TOPICS</h2>
-          <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#2563eb]">
+      <section className="mt-12 sm:mt-14">
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <h2 className="text-[13px] font-extrabold uppercase tracking-[.12em] text-[#94a3b8]">Quick topics</h2>
+            <p className="mt-0.5 text-[15px] font-bold text-[#0f172a]">Popular things people ask</p>
+          </div>
+          <span className="inline-flex items-center gap-1 text-[13px] font-bold text-[#2563eb]">
             Tap to ask <ArrowRight size={15} />
           </span>
         </div>
-        <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {quickTopics.map((cat, index) => (
             <CategoryTile key={cat.id || index} cat={cat} onClick={onTile} />
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function TrustChips({ showVoiceCall }) {
+  const chips = [
+    { icon: "dot", label: "Online now" },
+    { Icon: Zap, label: "Fast response" },
+    { Icon: Sparkles, label: "AI assistant" }
+  ];
+  if (showVoiceCall) chips.push({ Icon: Headphones, label: "Voice enabled" });
+
+  return (
+    <div className="mt-6 flex flex-wrap justify-center gap-2 lg:justify-start">
+      {chips.map(({ Icon, label, icon }) => (
+        <span key={label} className="vf-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-bold text-[#475569]">
+          {icon === "dot" ? <GreenDot /> : <Icon size={14} className="text-[#2563eb]" />}
+          {label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -505,138 +587,145 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
   );
 }
 
-function CallView({ profile, status, error, onBack, onEnd, onRetry, onChat, onBook }) {
+const CALL_STEPS = [
+  { icon: Phone, label: "Connecting" },
+  { icon: ShieldCheck, label: "Securing audio" },
+  { icon: Headphones, label: "Starting voice call" }
+];
+
+function VoiceCallModal({ profile, status, error, onStart, onEnd, onRetry, onClose, onChat }) {
+  const [step, setStep] = useState(0);
+  const startRef = useRef(onStart);
+  const startedRef = useRef(false);
+  startRef.current = onStart;
+
   const isLive = status === "connected";
-  const isEnded = status === "ended";
   const isError = status === "error";
+  const isEnded = status === "ended";
+  const isConnecting = !isLive && !isError && !isEnded;
   const displayImage = profile.agentImageUrl || profile.logoUrl;
 
+  // Play the scripted connecting animation, then kick off the real Vapi call once.
+  useEffect(() => {
+    startedRef.current = false;
+    setStep(0);
+    const t1 = setTimeout(() => setStep(1), 380);
+    const t2 = setTimeout(() => setStep(2), 760);
+    const t3 = setTimeout(() => {
+      if (!startedRef.current) {
+        startedRef.current = true;
+        startRef.current?.();
+      }
+    }, 1050);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, []);
+
+  const activeStep = isLive ? CALL_STEPS.length : step;
+
   return (
-    <div className="vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
-      <div className="vf-glass flex min-h-[min(720px,calc(100vh-104px))] w-full max-w-[560px] flex-col items-center overflow-hidden rounded-[28px] px-6 py-8 text-center sm:px-10">
-        {!isEnded && !isError ? (
-          <>
-            <div className="flex items-center gap-2 text-[12.5px] font-bold tracking-[.08em] text-[#64748b]">
-              <GreenDot /> {isLive ? "LIVE VOICE CALL" : "CONNECTING..."}
-            </div>
+    <div className="vf-modal-overlay" role="dialog" aria-modal="true" onMouseDown={isConnecting ? undefined : onClose}>
+      <div className="vf-modal vf-modal-in" onMouseDown={(event) => event.stopPropagation()}>
+        <button className="vf-modal-x" onClick={isLive ? onEnd : onClose} aria-label="Close">
+          <X size={18} />
+        </button>
 
-            <div className="relative my-6 grid h-[260px] w-[260px] place-items-center">
-              {!isLive && (
-                <>
-                  <span className="vf-pulse-ring" />
-                  <span className="vf-pulse-ring vf-d2" />
-                  <span className="vf-pulse-ring vf-d3" />
-                </>
-              )}
-
-              <Robot
-                size={isLive ? 210 : 200}
-                src={displayImage}
-                glow
-                float={isLive}
-              />
-            </div>
-
-            <h1 className="text-2xl font-extrabold tracking-normal">{profile.title}</h1>
-
-            <p className="mt-2 text-[15px] text-[#64748b]">
-              {isLive ? "Private voice line is active." : "Securing a private line..."}
-            </p>
-
-            {error && (
-              <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
-                {error}
-              </p>
-            )}
-
-            {isLive && (
-              <div className="vf-eq mt-5">
-                {Array.from({ length: 9 }).map((_, index) => (
-                  <span key={index} />
-                ))}
-              </div>
-            )}
-
-            <div className="mt-auto flex items-center justify-center gap-3.5 pt-7">
-              {isLive && (
-                <button className="vf-btn vf-btn-ghost h-[58px] w-[58px] rounded-full p-0" aria-label="Mute">
-                  <Mic size={22} />
-                </button>
-              )}
-
-              <button
-                className="grid h-16 w-16 place-items-center rounded-full bg-rose-600 text-white shadow-pop"
-                onClick={isLive ? onEnd : onBack}
-                aria-label="End call"
-              >
-                <PhoneOff size={24} />
-              </button>
-
-              {isLive && (
-                <button className="vf-btn vf-btn-ghost h-[58px] w-[58px] rounded-full p-0" onClick={onBook} aria-label="Book">
-                  <CalendarDays size={22} />
-                </button>
-              )}
-            </div>
-          </>
-        ) : isError ? (
-          <div className="vf-enter my-auto flex w-full flex-col items-center">
-            <span className="grid h-[76px] w-[76px] place-items-center rounded-full bg-rose-50 text-rose-700">
-              <PhoneOff size={34} />
+        {isError ? (
+          <div className="flex flex-col items-center text-center">
+            <span className="grid h-[68px] w-[68px] place-items-center rounded-full bg-rose-50 text-rose-600">
+              <PhoneOff size={30} />
             </span>
-
-            <h1 className="mt-5 text-[26px] font-extrabold tracking-normal">Call could not start</h1>
-
-            <p className="mt-1.5 max-w-sm text-[15px] text-[#64748b]">
+            <h3 className="mt-4 text-[20px] font-extrabold">Voice call could not start</h3>
+            <p className="mt-1.5 max-w-[300px] text-[14px] text-[#64748b]">
               {error || "Please allow microphone access and try again."}
             </p>
-
-            <div className="mt-6 flex w-full flex-col gap-3">
-              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onRetry}>
-                <Headphones size={17} /> Try web call again
+            <div className="mt-6 flex w-full flex-col gap-2.5">
+              <button className="vf-btn vf-btn-primary vf-cta w-full px-4" onClick={onRetry}>
+                <Headphones size={17} /> Retry
               </button>
-
-              <div className="flex gap-3">
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}>
-                  <MessageCircle size={17} /> Chat
-                </button>
-
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}>
-                  <ArrowLeft size={17} /> Home
-                </button>
-              </div>
-
-              <button className="vf-btn vf-btn-ghost w-full p-3" onClick={onBook}>
-                <CalendarDays size={17} /> Book appointment
+              <button className="vf-btn vf-btn-ghost w-full px-4 py-3" onClick={onClose}>
+                <X size={16} /> Close
+              </button>
+            </div>
+          </div>
+        ) : isEnded ? (
+          <div className="flex flex-col items-center text-center">
+            <span className="grid h-[68px] w-[68px] place-items-center rounded-full bg-[#dbeafe] text-[#1d4ed8]">
+              <Check size={32} strokeWidth={2.6} />
+            </span>
+            <h3 className="mt-4 text-[20px] font-extrabold">Call ended</h3>
+            <p className="mt-1.5 text-[14px] text-[#64748b]">with {profile.title}</p>
+            <div className="mt-6 flex w-full gap-2.5">
+              <button className="vf-btn vf-btn-ghost flex-1 px-4 py-3" onClick={onChat}>
+                <MessageCircle size={16} /> Chat
+              </button>
+              <button className="vf-btn vf-btn-primary flex-1 px-4 py-3" onClick={onClose}>
+                Done
               </button>
             </div>
           </div>
         ) : (
-          <div className="vf-enter my-auto flex w-full flex-col items-center">
-            <span className="grid h-[76px] w-[76px] place-items-center rounded-full bg-[#dbeafe] text-[#1d4ed8]">
-              <Check size={36} strokeWidth={2.6} />
+          <div className="flex flex-col items-center text-center">
+            <span className="inline-flex items-center gap-1.5 text-[11.5px] font-extrabold uppercase tracking-[.1em] text-[#64748b]">
+              <GreenDot /> {isLive ? "Live voice call" : "Connecting"}
             </span>
 
-            <h1 className="mt-5 text-[26px] font-extrabold tracking-normal">Call ended</h1>
+            <div className="relative my-5 grid h-[176px] w-[176px] place-items-center">
+              <span className="vf-pulse-ring" />
+              <span className="vf-pulse-ring vf-d2" />
+              <span className="vf-pulse-ring vf-d3" />
+              <span className="vf-call-orb grid h-[132px] w-[132px] place-items-center rounded-full">
+                <Robot size={112} src={displayImage} glow={false} float={isLive} />
+              </span>
+            </div>
 
-            <p className="mt-1.5 text-[15px] text-[#64748b]">
-              with {profile.title}
+            <h3 className="text-[20px] font-extrabold">{profile.title}</h3>
+            <p className="mt-1 text-[14px] text-[#64748b]">
+              {isLive ? "Voice line is active. Say hello!" : "Connecting to AI voice agent…"}
             </p>
 
-            <div className="mt-6 flex w-full flex-col gap-3">
-              <button className="vf-btn vf-btn-primary w-full p-4" onClick={onBook}>
-                <CalendarDays size={18} /> Book a counselling session
-              </button>
+            <div className="vf-eq vf-eq-lg mt-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <span key={index} className={isLive ? "" : "vf-eq-soft"} />
+              ))}
+            </div>
 
-              <div className="flex gap-3">
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}>
-                  <MessageCircle size={17} /> Chat
-                </button>
-
-                <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}>
-                  <ArrowLeft size={17} /> Home
-                </button>
+            {!isLive && (
+              <div className="mt-6 flex w-full flex-col gap-1.5">
+                {CALL_STEPS.map((item, index) => {
+                  const done = index < activeStep;
+                  const active = index === activeStep;
+                  const Icon = item.icon;
+                  return (
+                    <div key={item.label} className={`vf-step ${done ? "vf-step-done" : active ? "vf-step-active" : ""}`}>
+                      <span className="vf-step-dot grid h-6 w-6 place-items-center rounded-full">
+                        {done ? <Check size={13} strokeWidth={3} /> : <Icon size={13} />}
+                      </span>
+                      <span className="text-[13.5px] font-semibold">{item.label}</span>
+                      {active && <span className="vf-step-spin ml-auto" />}
+                    </div>
+                  );
+                })}
               </div>
+            )}
+
+            <div className="mt-6 flex w-full items-center justify-center gap-4">
+              {isLive ? (
+                <button
+                  className="grid h-14 w-14 place-items-center rounded-full bg-rose-600 text-white shadow-[0_10px_26px_rgba(225,29,72,.35)] transition hover:bg-rose-700"
+                  onClick={onEnd}
+                  aria-label="End call"
+                >
+                  <PhoneOff size={22} />
+                </button>
+              ) : (
+                <button className="vf-btn vf-btn-ghost w-full px-4 py-3" onClick={onClose}>
+                  Cancel
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -785,14 +874,20 @@ function Booking({ profile, agent, onBack, onChat }) {
 }
 
 function CategoryTile({ cat, onClick }) {
+  const accent = cat.color || "#2563EB";
   return (
-    <button onClick={() => onClick(cat)} className="vf-card-solid vf-tile flex min-h-[178px] flex-col rounded-[22px] p-5 text-left">
-      <span className="vf-icon-orb mb-4 h-[54px] w-[54px] overflow-hidden rounded-full" style={{ background: `${cat.color || "#2563EB"}18`, color: cat.color || "#2563EB" }}>
-        <TopicIcon topic={cat} size={24} />
+    <button onClick={() => onClick(cat)} className="vf-card-solid vf-tile group flex h-full min-h-[176px] flex-col rounded-[20px] p-5 text-left">
+      <span
+        className="vf-tile-orb mb-4 grid h-[52px] w-[52px] flex-none place-items-center overflow-hidden rounded-2xl"
+        style={{ background: `linear-gradient(140deg, ${accent}22, ${accent}12)`, color: accent }}
+      >
+        <TopicIcon topic={cat} size={23} />
       </span>
-      <span className="text-[17px] font-extrabold tracking-normal">{cat.title}</span>
-      <span className="mt-1.5 text-[13.5px] leading-snug text-[#64748b]">{cat.description}</span>
-      <span className="mt-auto inline-flex pt-4" style={{ color: cat.color || "#2563EB" }}><ArrowRight size={18} /></span>
+      <span className="text-[16px] font-extrabold leading-tight tracking-tight">{cat.title}</span>
+      <span className="mt-1.5 text-[13px] leading-snug text-[#64748b]">{cat.description}</span>
+      <span className="vf-tile-arrow mt-auto inline-flex items-center gap-1 pt-4 text-[13px] font-bold" style={{ color: accent }}>
+        Ask <ArrowRight size={15} />
+      </span>
     </button>
   );
 }
@@ -810,10 +905,10 @@ function TopicIcon({ topic, size = 20 }) {
 
 function InfoRow({ icon: Icon, label, value, dot, first }) {
   return (
-    <div className={`flex items-center gap-3.5 py-3.5 ${first ? "" : "border-t border-[#d8e4f5]"}`}>
-      <span className="vf-icon-orb h-[38px] w-[38px] rounded-xl">{dot ? <GreenDot /> : <Icon size={18} />}</span>
-      <span className="text-[15px] font-medium text-[#64748b]">{label}</span>
-      <span className="ml-auto text-right text-[15px] font-bold">{value}</span>
+    <div className={`flex items-center gap-3.5 px-3 py-3 ${first ? "" : "border-t border-[#e6eefb]"}`}>
+      <span className="vf-icon-orb h-[38px] w-[38px] flex-none rounded-xl">{dot ? <GreenDot /> : <Icon size={18} />}</span>
+      <span className="text-[14px] font-medium text-[#64748b]">{label}</span>
+      <span className="ml-auto text-right text-[14.5px] font-bold text-[#0f172a]">{value}</span>
     </div>
   );
 }
@@ -928,7 +1023,29 @@ const themeCss = `
 .vf-scroll{scrollbar-width:thin;scrollbar-color:#bfdbfe transparent}.vf-scroll::-webkit-scrollbar{width:9px}.vf-scroll::-webkit-scrollbar-thumb{background:#bfdbfe;border-radius:99px}
 .vf-typing span{width:6px;height:6px;border-radius:999px;background:#2563eb;animation:vfTyping 1s infinite}.vf-typing span:nth-child(2){animation-delay:.14s}.vf-typing span:nth-child(3){animation-delay:.28s}
 .vf-pulse-ring{position:absolute;inset:28px;border:1px solid rgba(37,99,235,.32);border-radius:999px;animation:vfPulseScale 2s ease-out infinite}.vf-pulse-ring.vf-d2{animation-delay:.45s}.vf-pulse-ring.vf-d3{animation-delay:.9s}
-.vf-eq{display:flex;align-items:center;gap:5px;height:38px}.vf-eq span{width:6px;border-radius:99px;background:var(--accent);animation:vfEq .9s ease-in-out infinite}.vf-eq span:nth-child(odd){height:24px}.vf-eq span:nth-child(even){height:34px;animation-delay:.16s}
+.vf-eq{display:flex;align-items:center;justify-content:center;gap:5px;height:38px}.vf-eq span{width:6px;border-radius:99px;background:var(--accent);animation:vfEq .9s ease-in-out infinite}.vf-eq span:nth-child(odd){height:24px}.vf-eq span:nth-child(even){height:34px;animation-delay:.16s}
+.vf-eq-lg{height:44px;gap:6px}.vf-eq-lg span{width:7px}.vf-eq-soft{opacity:.5;animation-duration:1.4s}
+.vf-avatar-frame{display:grid;place-items:center;background:linear-gradient(150deg,#eff6ff,#dbeafe);border:1px solid #dbeafe;overflow:hidden}
+.vf-chip{background:#fff;border:1px solid var(--line);box-shadow:0 2px 8px rgba(15,23,42,.05)}
+.vf-hero-visual{position:relative;background:linear-gradient(165deg,#ffffff 0%,#eff6ff 55%,#dbeafe 100%);border:1px solid #dbeafe;box-shadow:0 24px 60px rgba(37,99,235,.14)}
+.vf-hero-visual::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(120px 120px at 30% 22%,rgba(255,255,255,.85),transparent 60%);pointer-events:none}
+.vf-cta{height:56px;border-radius:15px;font-size:15.5px}
+.vf-cta-sec{height:52px;border-radius:14px}
+.vf-tile-orb{transition:transform .18s}.vf-tile:hover .vf-tile-orb{transform:scale(1.06)}
+.vf-tile-arrow{opacity:.75;transition:opacity .18s,transform .18s}.vf-tile:hover .vf-tile-arrow{opacity:1;transform:translateX(2px)}
+.vf-modal-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);animation:vfFadeIn .25s ease}
+.vf-modal{position:relative;width:100%;max-width:400px;border-radius:28px;background:color-mix(in srgb,#ffffff 96%,transparent);border:1px solid #e6eefb;box-shadow:0 30px 80px rgba(15,23,42,.28);padding:26px 24px}
+.vf-modal-in{animation:vfModalIn .34s cubic-bezier(.2,.8,.24,1)}
+.vf-modal-x{position:absolute;top:14px;right:14px;display:grid;place-items:center;height:34px;width:34px;border-radius:12px;color:#94a3b8;background:#f1f5f9;transition:background .15s,color .15s}.vf-modal-x:hover{background:#e2e8f0;color:#0f172a}
+.vf-call-orb{background:linear-gradient(160deg,#eff6ff,#dbeafe);border:1px solid #cfe0ff;box-shadow:inset 0 2px 10px rgba(255,255,255,.8),0 12px 30px rgba(37,99,235,.18)}
+.vf-step{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;color:#94a3b8;background:#f8fafc;border:1px solid transparent;transition:all .2s}
+.vf-step-dot{background:#e2e8f0;color:#94a3b8;flex:none;transition:all .2s}
+.vf-step-active{color:#1d4ed8;background:#eff6ff;border-color:#dbeafe}.vf-step-active .vf-step-dot{background:#dbeafe;color:#1d4ed8}
+.vf-step-done{color:#0f172a}.vf-step-done .vf-step-dot{background:#22c55e;color:#fff}
+.vf-step-spin{height:15px;width:15px;border-radius:999px;border:2px solid #bfdbfe;border-top-color:#2563eb;animation:vfSpin .7s linear infinite}
 @keyframes vfFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes vfReact{0%,100%{transform:translateY(0) rotate(0)}35%{transform:translateY(-6px) rotate(-2deg)}70%{transform:translateY(2px) rotate(2deg)}}@keyframes vfViewIn{from{transform:translateY(12px)}to{transform:none}}@keyframes vfPulseRing{from{transform:scale(.6);opacity:.8}to{transform:scale(2.3);opacity:0}}@keyframes vfTyping{0%,80%,100%{opacity:.35;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}@keyframes vfPulseScale{from{transform:scale(.7);opacity:.7}to{transform:scale(1.35);opacity:0}}@keyframes vfEq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.15)}}
+@keyframes vfSpin{to{transform:rotate(360deg)}}
+@keyframes vfFadeIn{from{opacity:0}to{opacity:1}}
+@keyframes vfModalIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 `;
 

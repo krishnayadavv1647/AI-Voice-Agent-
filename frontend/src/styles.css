@@ -1330,6 +1330,11 @@ button {
   color: #dcff9a;
 }
 
+.agent-card.agent-card-template {
+  min-height: 320px;
+  padding: 82px 20px 84px;
+}
+
 .agent-actions {
   position: absolute;
   right: 10px;
@@ -1383,6 +1388,26 @@ button {
 .agent-actions button:disabled {
   cursor: wait;
   opacity: 0.72;
+}
+
+.agent-card-template .agent-actions {
+  right: 12px;
+  bottom: 14px;
+  left: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-card-template .agent-actions > :first-child {
+  grid-column: auto;
+}
+
+.agent-card-template .agent-actions a,
+.agent-card-template .agent-actions button {
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 12px;
+  padding: 0 10px;
 }
 
 .agent-card-content {
@@ -1448,20 +1473,103 @@ button {
   white-space: nowrap;
 }
 
+.template-modal-shell {
+  align-items: start;
+  overflow-y: auto;
+  padding-block: 24px;
+}
+
+.template-modal-panel {
+  width: min(100%, 48rem);
+  max-height: none;
+  overflow: visible;
+  border-radius: 14px;
+  padding: 22px;
+}
+
+.template-create-modal {
+  width: min(100%, 44rem);
+}
+
+.template-modal-head {
+  margin-bottom: 20px;
+}
+
+.template-modal-head > div {
+  min-width: 0;
+}
+
+.template-modal-head h2 {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.template-modal-head p {
+  overflow-wrap: anywhere;
+}
+
+.template-create-modal .field-grid {
+  gap: 18px 16px;
+}
+
+.template-create-modal .field-label {
+  display: grid;
+  gap: 8px;
+}
+
+.template-create-modal .field-label input,
+.template-create-modal .field-label textarea {
+  margin-top: 0;
+  min-height: 46px;
+}
+
+.template-create-modal .field-label textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.template-modal-actions {
+  gap: 10px;
+}
+
+.template-modal-actions .btn-primary,
+.template-modal-actions .btn-secondary {
+  min-height: 42px;
+  border-radius: 11px;
+  font-size: 13px;
+  padding-inline: 18px;
+}
+
 .template-preview-grid {
   display: grid;
   gap: 12px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: stretch;
 }
 
 .template-preview-block {
+  display: flex;
+  min-width: 0;
+  min-height: 132px;
+  flex-direction: column;
   border: 1px solid var(--border-dark);
   border-radius: 12px;
   background: rgba(184, 213, 119, 0.05);
-  padding: 14px;
+  padding: 16px;
+  grid-column: span 6;
+}
+
+.template-preview-block-full {
+  grid-column: 1 / -1;
+}
+
+.template-preview-block-compact {
+  min-height: 132px;
 }
 
 .template-preview-block h3 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   color: var(--text-hi);
   font-size: 13px;
   font-weight: 700;
@@ -1471,7 +1579,8 @@ button {
 .template-preview-block li {
   color: var(--text-lo);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
 }
 
 .template-preview-block p {
@@ -1483,6 +1592,34 @@ button {
   gap: 6px;
   margin: 0;
   padding-left: 18px;
+}
+
+.template-preview-block-list-grid ul {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 28px;
+}
+
+@media (max-width: 720px) {
+  .template-modal-shell {
+    padding: 12px;
+  }
+
+  .template-modal-panel {
+    padding: 18px;
+  }
+
+  .template-preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .template-preview-block,
+  .template-preview-block-full {
+    grid-column: auto;
+  }
+
+  .template-preview-block-list-grid ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @keyframes agent-card-shimmer {
