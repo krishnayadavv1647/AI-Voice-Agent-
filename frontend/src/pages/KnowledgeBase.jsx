@@ -1,34 +1,30 @@
 ﻿import { Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
 
 export default function KnowledgeBase() {
-  const [entries, setEntries] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: entries = [] } = useQuery({ queryKey: ["knowledge"], queryFn: () => api("/knowledge") });
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
   const [form, setForm] = useState({ title: "", content: "", agentId: "" });
 
-  async function load() {
-    const [knowledge, agentList] = await Promise.all([api("/knowledge"), api("/agents")]);
-    setEntries(knowledge);
-    setAgents(agentList);
+  function reloadKnowledge() {
+    queryClient.invalidateQueries({ queryKey: ["knowledge"] });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function submit(event) {
     event.preventDefault();
     await api("/knowledge", { method: "POST", body: { ...form, agentId: form.agentId || undefined } });
     setForm({ title: "", content: "", agentId: "" });
-    load();
+    reloadKnowledge();
   }
 
   async function remove(id) {
     if (!confirm("Delete this knowledge entry?")) return;
     await api(`/knowledge/${id}`, { method: "DELETE" });
-    load();
+    reloadKnowledge();
   }
 
   return (

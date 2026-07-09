@@ -1,4 +1,5 @@
 ﻿import { Download, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -19,8 +20,9 @@ function rowStatus(row) {
 }
 
 export default function ImportCalls() {
-  const [agents, setAgents] = useState([]);
-  const [runs, setRuns] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
+  const { data: runs = [], error: runsError } = useQuery({ queryKey: ["import-runs"], queryFn: () => api("/import-calls/runs") });
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [file, setFile] = useState(null);
   const [activeRun, setActiveRun] = useState(null);
@@ -30,36 +32,35 @@ export default function ImportCalls() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (runsError ? errorText(runsError) : "");
   const [showScheduleConfirm, setShowScheduleConfirm] = useState(false);
 
   const validCount = useMemo(() => rows.filter((row) => row.status === "valid").length, [rows]);
   const invalidCount = useMemo(() => rows.filter((row) => row.status === "invalid").length, [rows]);
 
-  async function loadBase() {
-    const [agentList, runList] = await Promise.all([api("/agents"), api("/import-calls/runs")]);
-    setAgents(agentList);
-    setRuns(runList);
-    setSelectedAgentId((current) => current || agentList[0]?._id || "");
-  }
-
+  // Default the selected agent once the agents list has loaded.
   useEffect(() => {
-    loadBase().catch((err) => setError(errorText(err)));
-  }, []);
+    setSelectedAgentId((current) => current || agents[0]?._id || "");
+  }, [agents]);
+
+  function reloadRuns() {
+    queryClient.invalidateQueries({ queryKey: ["import-runs"] });
+  }
 
   async function uploadFile() {
     if (!file) {
-      setError("Choose a CSV or XLSX file first.");
+      setActionError("Choose a CSV or XLSX file first.");
       return;
     }
     if (!selectedAgentId) {
-      setError("Select an agent first.");
+      setActionError("Select an agent first.");
       return;
     }
 
     setLoading("upload");
     setNotice("");
-    setError("");
+    setActionError("");
     setSummary(null);
 
     try {
@@ -80,9 +81,9 @@ export default function ImportCalls() {
       setHeaders(payload.headers || []);
       setMapping(payload.mapping || {});
       setNotice("File uploaded. Review mapping, then validate rows.");
-      await loadBase();
+      reloadRuns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -92,15 +93,15 @@ export default function ImportCalls() {
     if (!activeRun?._id) return;
     setLoading("validate");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/import-calls/${activeRun._id}/validate`, { method: "POST", body: { mapping } });
       setActiveRun(result.run);
       setRows(result.rows || []);
       setNotice(`Validated ${result.run.totalRows} rows. ${result.run.validRows} valid, ${result.run.invalidRows} invalid.`);
-      await loadBase();
+      reloadRuns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -111,7 +112,7 @@ export default function ImportCalls() {
     setShowScheduleConfirm(false);
     setLoading("import");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/import-calls/${activeRun._id}/import`, { method: "POST" });
       setSummary(result);
@@ -120,9 +121,9 @@ export default function ImportCalls() {
       const fresh = await api(`/import-calls/${activeRun._id}`);
       setActiveRun(fresh.run);
       setRows(fresh.rows || []);
-      await loadBase();
+      reloadRuns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -130,7 +131,7 @@ export default function ImportCalls() {
 
   function confirmScheduleRows() {
     if (!validCount) {
-      setError("No valid rows available to schedule.");
+      setActionError("No valid rows available to schedule.");
       return;
     }
     setShowScheduleConfirm(true);
@@ -139,7 +140,7 @@ export default function ImportCalls() {
   async function openRun(run) {
     setLoading(`run-${run._id}`);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/import-calls/${run._id}`);
       setActiveRun(result.run);
@@ -148,7 +149,7 @@ export default function ImportCalls() {
       setMapping({});
       setSummary(null);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -170,7 +171,7 @@ export default function ImportCalls() {
       <PageHeader
         title="Import Calls"
         description="Upload call schedules from CSV or Excel, validate rows, and schedule AI calls safely."
-        action={<button className="btn-secondary" onClick={() => loadBase().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>}
+        action={<button className="btn-secondary" onClick={reloadRuns}><RefreshCw size={16} />Refresh</button>}
       />
 
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}

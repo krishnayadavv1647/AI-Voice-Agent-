@@ -1,5 +1,6 @@
 import { Eye, Sparkles, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AgentLikeCard from "../components/AgentLikeCard.jsx";
 import { api } from "../lib/api.js";
@@ -39,30 +40,17 @@ function previewList(value) {
 
 export default function Templates() {
   const navigate = useNavigate();
-  const [templates, setTemplates] = useState([]);
+  const { data: templates = [], error: queryError, isPending } = useQuery({
+    queryKey: ["templates"],
+    queryFn: () => api("/agent-templates")
+  });
+  const loading = isPending;
+  const error = queryError ? errorText(queryError) : "";
   const [selected, setSelected] = useState(null);
   const [preview, setPreview] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [modalError, setModalError] = useState("");
-
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
-  async function loadTemplates() {
-    setLoading(true);
-    setError("");
-    try {
-      setTemplates(await api("/agent-templates"));
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function openTemplate(template) {
     setSelected(template);
@@ -127,6 +115,7 @@ export default function Templates() {
           {templates.map((template) => (
             <AgentLikeCard
               key={template._id || template.slug}
+              className="agent-card-template"
               fallback={initials(template)}
               title={template.name}
               description={template.shortDescription}
@@ -158,9 +147,9 @@ export default function Templates() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={() => !saving && setSelected(null)}>
-          <form className="modal-panel w-full max-w-2xl" onSubmit={createAgent} onMouseDown={(event) => event.stopPropagation()}>
-            <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="template-modal-shell fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={() => !saving && setSelected(null)}>
+          <form className="modal-panel template-modal-panel template-create-modal w-full max-w-2xl" onSubmit={createAgent} onMouseDown={(event) => event.stopPropagation()}>
+            <div className="template-modal-head mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{selected.industry || selected.category}</p>
                 <h2 className="mt-1 text-xl font-semibold text-ink">{selected.name}</h2>
@@ -182,7 +171,7 @@ export default function Templates() {
               <Field label="Working Hours" textarea value={form.workingHours} onChange={(value) => setField("workingHours", value)} />
             </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <div className="template-modal-actions mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <button className="btn-secondary" type="button" disabled={saving} onClick={() => setSelected(null)}>Cancel</button>
               <button className="btn-primary" disabled={saving}>{saving ? "Creating..." : "Create My Agent"}</button>
             </div>
@@ -191,9 +180,9 @@ export default function Templates() {
       )}
 
       {preview && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={() => setPreview(null)}>
-          <div className="modal-panel w-full max-w-3xl" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="template-modal-shell fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm" onMouseDown={() => setPreview(null)}>
+          <div className="modal-panel template-modal-panel template-preview-modal w-full max-w-3xl" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="template-modal-head mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{preview.industry || preview.category}</p>
                 <h2 className="mt-1 text-xl font-semibold text-ink">{preview.name}</h2>
@@ -205,15 +194,15 @@ export default function Templates() {
             </div>
 
             <div className="template-preview-grid">
-              <PreviewBlock title="First Message" value={preview.preview?.firstMessage} />
-              <PreviewBlock title="Prompt Summary" value={preview.preview?.promptSummary || preview.longDescription || preview.shortDescription} />
-              <PreviewBlock title="Best For" value={preview.useCase || preview.preview?.useCase} />
-              <PreviewList title="Workflow Steps" items={previewList(preview.preview?.workflowSteps).map((step) => step.name || step.instruction)} />
-              <PreviewList title="Lead Capture Fields" items={previewList(preview.preview?.leadCaptureFields).map((field) => `${field.label || titleCase(field.key)}${field.required ? " (required)" : ""}`)} />
-              <PreviewList title="Voice Preview" items={[titleCase(preview.preview?.language || "english"), preview.preview?.voiceName || "Default Voice"]} />
+              <PreviewBlock title="Prompt Summary" value={preview.preview?.promptSummary || preview.longDescription || preview.shortDescription} layout="full" />
+              <PreviewBlock title="First Message" value={preview.preview?.firstMessage} layout="half" />
+              <PreviewBlock title="Best For" value={preview.useCase || preview.preview?.useCase} layout="half" />
+              <PreviewList title="Workflow Steps" items={previewList(preview.preview?.workflowSteps).map((step) => step.name || step.instruction)} layout="half" />
+              <PreviewList title="Voice Preview" items={[titleCase(preview.preview?.language || "english"), preview.preview?.voiceName || "Default Voice"]} layout="half compact" />
+              <PreviewList title="Lead Capture Fields" items={previewList(preview.preview?.leadCaptureFields).map((field) => `${field.label || titleCase(field.key)}${field.required ? " (required)" : ""}`)} layout="full list-grid" />
             </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <div className="template-modal-actions mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <button className="btn-secondary" type="button" onClick={() => setPreview(null)}>Close</button>
               <button className="btn-primary" type="button" onClick={() => { setPreview(null); openTemplate(preview); }}>Use Template</button>
             </div>
@@ -237,21 +226,25 @@ function Field({ label, value, onChange, textarea = false, required = false }) {
   );
 }
 
-function PreviewBlock({ title, value }) {
+function previewBlockClass(layout = "") {
+  return ["template-preview-block", ...String(layout).split(/\s+/).filter(Boolean).map((item) => `template-preview-block-${item}`)].join(" ");
+}
+
+function PreviewBlock({ title, value, layout = "" }) {
   if (!value) return null;
   return (
-    <section className="template-preview-block">
+    <section className={previewBlockClass(layout)}>
       <h3>{title}</h3>
       <p>{value}</p>
     </section>
   );
 }
 
-function PreviewList({ title, items }) {
+function PreviewList({ title, items, layout = "" }) {
   const cleanItems = items.filter(Boolean);
   if (!cleanItems.length) return null;
   return (
-    <section className="template-preview-block">
+    <section className={previewBlockClass(layout)}>
       <h3>{title}</h3>
       <ul>
         {cleanItems.map((item) => <li key={item}>{item}</li>)}

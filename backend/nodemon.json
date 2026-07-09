@@ -1,0 +1,19 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules",
+    "frontend",
+    "client",
+    "dist",
+    "build",
+    "uploads",
+    "logs",
+    ".git",
+    "scripts",
+    "src/**/*.test.js",
+    "tests",
+    "*.log"
+  ],
+  "delay": "500"
+}

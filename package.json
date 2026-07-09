@@ -5,10 +5,6 @@
   "description": "Full-stack SaaS app for creating AI voice agents.",
   "scripts": {
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
-    "dev": "node scripts/dev.cjs",
     "start": "npm start --prefix backend"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
   }
 }

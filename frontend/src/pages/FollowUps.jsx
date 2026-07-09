@@ -1,4 +1,5 @@
 import { CalendarClock, Eye, MoreVertical, PhoneCall, RefreshCw, Search, XCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -28,13 +29,18 @@ function triggerLabel(trigger) {
 }
 
 export default function FollowUps() {
-  const [followUps, setFollowUps] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: followUps = [], error: queryError, isPending } = useQuery({
+    queryKey: ["followups"],
+    queryFn: () => api("/followups")
+  });
+  const loading = isPending;
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState("");
   const [openActionsId, setOpenActionsId] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (queryError ? errorText(queryError) : "");
 
   const filteredFollowUps = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,23 +65,14 @@ export default function FollowUps() {
     failed: followUps.filter((item) => item.status === "failed").length
   }), [followUps]);
 
-  async function load() {
-    setLoading(true);
-    setFollowUps(await api("/followups"));
-    setLoading(false);
+  function reloadFollowUps() {
+    queryClient.invalidateQueries({ queryKey: ["followups"] });
   }
-
-  useEffect(() => {
-    load().catch((err) => {
-      setLoading(false);
-      setError(errorText(err));
-    });
-  }, []);
 
   async function action(id, type) {
     setActingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       if (type === "reschedule") {
@@ -93,10 +90,10 @@ export default function FollowUps() {
         setNotice("Follow-up run started.");
       }
 
-      await load();
+      reloadFollowUps();
       setOpenActionsId("");
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -107,7 +104,7 @@ export default function FollowUps() {
       <PageHeader
         title="Follow-ups"
         description="Scheduled follow-up calls created from email outreach and manual lead actions."
-        action={<button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>}
+        action={<button className="btn-secondary" onClick={reloadFollowUps}><RefreshCw size={16} />Refresh</button>}
       />
 
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}

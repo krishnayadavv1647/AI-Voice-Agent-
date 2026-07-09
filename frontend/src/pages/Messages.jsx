@@ -1,16 +1,22 @@
 ﻿import { MessageSquare, RefreshCw, Send } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
 
 export default function Messages() {
-  const [agents, setAgents] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: agents = [], error: queryError } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api("/agents")
+  });
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [threads, setThreads] = useState({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (queryError ? (queryError.response ? `${queryError.message}: ${JSON.stringify(queryError.response)}` : queryError.message) : "");
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent._id === selectedAgentId) || null,
@@ -19,18 +25,11 @@ export default function Messages() {
   const activeMessages = selectedAgentId ? threads[selectedAgentId] || [] : [];
 
   useEffect(() => {
-    loadAgents();
-  }, []);
+    setSelectedAgentId((current) => current || agents[0]?._id || "");
+  }, [agents]);
 
-  async function loadAgents() {
-    setError("");
-    try {
-      const result = await api("/agents");
-      setAgents(result);
-      setSelectedAgentId((current) => current || result[0]?._id || "");
-    } catch (err) {
-      setError(err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message);
-    }
+  function reloadAgents() {
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
   }
 
   function lastMessage(agentId) {
@@ -43,7 +42,7 @@ export default function Messages() {
     const text = message.trim();
     if (!text || !selectedAgentId || loading) return;
 
-    setError("");
+    setActionError("");
     setMessage("");
     setLoading(true);
 
@@ -70,7 +69,7 @@ export default function Messages() {
       }));
     } catch (err) {
       const errorText = err.response ? `${err.message}: ${JSON.stringify(err.response)}` : err.message;
-      setError(errorText);
+      setActionError(errorText);
       setThreads((current) => ({
         ...current,
         [selectedAgentId]: [
@@ -88,7 +87,7 @@ export default function Messages() {
       <PageHeader
         title="Messages"
         description="Review and test AI message conversations using your custom agent runtime."
-        action={<button className="btn-secondary" onClick={loadAgents}><RefreshCw size={16} />Refresh</button>}
+        action={<button className="btn-secondary" onClick={reloadAgents}><RefreshCw size={16} />Refresh</button>}
       />
 
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}

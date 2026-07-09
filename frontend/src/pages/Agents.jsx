@@ -1,5 +1,6 @@
 import { Camera, Edit, Eye, Link2, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
 import AgentLikeCard from "../components/AgentLikeCard.jsx";
@@ -11,9 +12,14 @@ function requestMessage(err, fallback = "Request failed.") {
 }
 
 export default function Agents() {
-  const [agents, setAgents] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: agents = [], error: queryError } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api("/agents")
+  });
   const [search, setSearch] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || queryError?.message || "";
   const [toast, setToast] = useState("");
   const [generatingId, setGeneratingId] = useState("");
   const [copiedId, setCopiedId] = useState(null);
@@ -31,26 +37,18 @@ export default function Agents() {
     );
   }, [agents, search]);
 
-  async function load() {
-    try {
-      setAgents(await api("/agents"));
-    } catch (err) {
-      setError(err.message);
-    }
+  function reloadAgents() {
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function action(id, type) {
     if (type === "delete" && !confirm("Delete this agent?")) return;
-    setError("");
+    setActionError("");
     try {
       await api(type === "delete" ? `/agents/${id}` : `/agents/${id}/${type}`, { method: type === "delete" ? "DELETE" : "POST" });
-      load();
+      reloadAgents();
     } catch (err) {
-      setError(requestMessage(err));
+      setActionError(requestMessage(err));
     }
   }
 
@@ -86,7 +84,7 @@ export default function Agents() {
         body: file,
         headers: { "Content-Type": file.type }
       });
-      await load();
+      reloadAgents();
     } catch (err) {
       setToast(requestMessage(err, "Avatar upload failed."));
       window.setTimeout(() => setToast(""), 4000);
@@ -99,7 +97,7 @@ export default function Agents() {
     setUploadingId(agentId);
     try {
       await api(`/agents/${agentId}/avatar`, { method: "DELETE" });
-      await load();
+      reloadAgents();
     } catch (err) {
       setToast(requestMessage(err, "Failed to remove avatar."));
       window.setTimeout(() => setToast(""), 4000);
@@ -109,7 +107,7 @@ export default function Agents() {
   }
 
   async function regenerateImage(id) {
-    setError("");
+    setActionError("");
     setToast("");
     setGeneratingId(id);
     try {
@@ -118,7 +116,7 @@ export default function Agents() {
         setToast(result.message || "Image generation failed. Default avatar used.");
         window.setTimeout(() => setToast(""), 4000);
       }
-      await load();
+      reloadAgents();
     } catch (err) {
       console.warn(requestMessage(err, "Image generation failed. Default avatar used."));
       setToast("Image generation failed. Default avatar used.");
@@ -225,7 +223,7 @@ export default function Agents() {
               <button
                 type="button"
                 className="agent-card-upload-badge"
-                style={{ right: 10, bottom: 86 }}
+                style={{ right: 10, bottom: 124 }}
                 title="Remove custom avatar"
                 disabled={uploadingId === agent._id}
                 onClick={(e) => { e.preventDefault(); removeAvatar(agent._id); }}

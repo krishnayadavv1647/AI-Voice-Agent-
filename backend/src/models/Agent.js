@@ -135,8 +135,37 @@ const agentSchema = new mongoose.Schema(
       buttonColor: { type: String, default: "#2563EB" },
       cardColor: { type: String, default: "#FFFFFF" },
       accentColor: { type: String, default: "#DBEAFE" },
+      // Extended design tokens (no defaults on purpose: old docs stay undefined and inherit
+      // the selected template preset via resolveBioPage instead of a stale fallback value).
+      mutedColor: { type: String },
+      borderColor: { type: String },
       fontStyle: { type: String, default: "modern" },
       animation: { type: String, default: "fade_in" },
+      // Typography
+      headingFont: { type: String },
+      bodyFont: { type: String },
+      headingWeight: { type: String },
+      headingTracking: { type: String },
+      bodySize: { type: String },
+      // Layout config — these drive the real public-page layout, not just colors.
+      layoutVariant: { type: String },
+      heroVariant: { type: String },
+      contentWidth: { type: String },
+      heroAlignment: { type: String },
+      // Style config
+      borderRadius: { type: String },
+      cardShadow: { type: String },
+      cardBorder: { type: String },
+      buttonRadius: { type: String },
+      backgroundStyle: { type: String },
+      spacingScale: { type: String },
+      // Section order + extra visibility toggles
+      sectionOrder: { type: [String], default: undefined },
+      showTopBar: { type: Boolean },
+      showLogo: { type: Boolean },
+      showAgentImage: { type: Boolean },
+      showCoverImage: { type: Boolean },
+      showQuickTopics: { type: Boolean },
       headline: { type: String, default: "" },
       subheadline: { type: String, default: "" },
       welcomeMessage: { type: String, default: "" },
@@ -200,5 +229,9 @@ const agentSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Agents list (userId + status filter, createdAt sort) and dashboard counts (total + active).
+agentSchema.index({ userId: 1, createdAt: -1 });
+agentSchema.index({ userId: 1, status: 1 });
 
 export default mongoose.model("Agent", agentSchema);

@@ -8,6 +8,13 @@ import { chargeFeatureOrThrow } from "../services/billing/featureBilling.service
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
+// These routes were instrumented with verbose "[Appointment Debug]" logs that fired on every
+// request (including the list route on each page load). Keep them available for debugging but
+// silent by default — only print when DEBUG_LOGS=true.
+function debugLog(...args) {
+  if (process.env.DEBUG_LOGS === "true") console.log(...args);
+}
+
 function filter(req) {
   return ["admin", "super_admin"].includes(req.user.role) ? {} : { userId: req.user._id };
 }
@@ -79,7 +86,7 @@ async function validateAgentLead(req, agentId, leadId) {
 }
 
 export const listAppointments = asyncHandler(async (req, res) => {
-  console.log("[Appointment Debug][Backend] List route hit", {
+  debugLog("[Appointment Debug][Backend] List route hit", {
     userId: req.user?._id?.toString(),
     role: req.user?.role,
     query: req.query
@@ -97,12 +104,17 @@ export const listAppointments = asyncHandler(async (req, res) => {
     .populate("agentId", "agentName businessName")
     .populate("leadId", "name businessName contactName phone email city")
     .sort({ createdAt: -1, startAt: 1 })
-    .limit(300);
-  console.log("[Appointment Debug][Backend] Appointment fetch response", {
-    query,
-    count: appointments.length,
-    appointments: appointments.map(safeAppointmentSummary)
-  });
+    .limit(300)
+    .lean();
+  // This debug dump mapped every appointment on every list load. Gate it behind DEBUG_LOGS so it
+  // neither spams the terminal nor does the extra work during normal use.
+  if (process.env.DEBUG_LOGS === "true") {
+    debugLog("[Appointment Debug][Backend] Appointment fetch response", {
+      query,
+      count: appointments.length,
+      appointments: appointments.map(safeAppointmentSummary)
+    });
+  }
   res.json(appointments);
 });
 
@@ -111,7 +123,7 @@ export const getAppointment = asyncHandler(async (req, res) => {
 });
 
 export const createAppointment = asyncHandler(async (req, res) => {
-  console.log("[Appointment Debug][Backend] Create route hit", {
+  debugLog("[Appointment Debug][Backend] Create route hit", {
     userId: req.user?._id?.toString(),
     role: req.user?.role,
     payload: safeAppointmentPayload(req.body)
@@ -133,7 +145,7 @@ export const createAppointment = asyncHandler(async (req, res) => {
   let lead;
   try {
     ({ agent, lead } = await validateAgentLead(req, agentId, leadId));
-    console.log("[Appointment Debug][Backend] Validation result", {
+    debugLog("[Appointment Debug][Backend] Validation result", {
       ok: true,
       agentId: agent._id?.toString(),
       leadId: lead._id?.toString(),
@@ -141,7 +153,7 @@ export const createAppointment = asyncHandler(async (req, res) => {
       leadEmail: maskEmail(lead.email)
     });
   } catch (error) {
-    console.log("[Appointment Debug][Backend] Validation result", {
+    debugLog("[Appointment Debug][Backend] Validation result", {
       ok: false,
       message: error.message,
       payload: safeAppointmentPayload(req.body)
@@ -173,7 +185,7 @@ export const createAppointment = asyncHandler(async (req, res) => {
     reminderAt
   });
 
-  console.log("[Appointment Debug][Backend] Database create/update result", {
+  debugLog("[Appointment Debug][Backend] Database create/update result", {
     created: result.created,
     appointment: safeAppointmentSummary(result.appointment),
     meta: result.meta
@@ -204,7 +216,7 @@ export const deleteAppointment = asyncHandler(async (req, res) => {
 });
 
 export const rescheduleAppointment = asyncHandler(async (req, res) => {
-  console.log("[Appointment Debug][Backend] Reschedule route hit", {
+  debugLog("[Appointment Debug][Backend] Reschedule route hit", {
     userId: req.user?._id?.toString(),
     appointmentId: req.params.id,
     payload: safeAppointmentPayload(req.body)
@@ -235,7 +247,7 @@ export const rescheduleAppointment = asyncHandler(async (req, res) => {
   await appointment.save();
   const lead = await Lead.findOne({ _id: appointment.leadId, ...filter(req) });
   const meta = await syncAppointmentFollowUps(appointment, lead);
-  console.log("[Appointment Debug][Backend] Database create/update result", {
+  debugLog("[Appointment Debug][Backend] Database create/update result", {
     operation: "reschedule",
     appointment: safeAppointmentSummary(appointment),
     meta

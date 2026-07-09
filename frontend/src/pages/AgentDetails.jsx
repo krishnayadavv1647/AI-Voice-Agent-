@@ -298,7 +298,7 @@ export default function AgentDetails() {
   const connected = Boolean(agent?.providerWorkflowId || agent?.providerAgentId);
 
   return (
-    <div className="page-stack">
+    <div className="page-stack agent-detail-page">
       <PageHeader
         title={agent?.agentName || "Agent Details"}
         description={agent ? `${agent.agentType} for ${agent.businessName}` : "Loading agent..."}
@@ -315,19 +315,20 @@ export default function AgentDetails() {
 
       {agent && (
         <div className="min-w-0">
-          <section className="mx-auto max-w-6xl space-y-6">
-            <div className="card">
-              <div id="test-call" className="mb-4 action-row">
+          <section className="agent-detail-shell">
+            <div className="agent-detail-actions-card">
+              <div id="test-call" className="agent-detail-action-row">
                 <button className="btn-secondary" onClick={() => navigate(`/agents/${id}/edit`)}><Edit size={16} />Edit Agent</button>
                 <Link className="btn-primary" to={`/agents/${id}/bio-page`}><Globe2 size={16} />Customize Bio Page</Link>
                 <button className="btn-secondary" disabled={callLoading} onClick={() => triggerCall("test")}><PhoneCall size={16} />Test Call</button>
                 <button className="btn-secondary" disabled={callLoading} onClick={() => triggerCall("outbound")}><Radio size={16} />Outbound Call</button>
-                <button className="btn-secondary" onClick={() => document.getElementById("scheduled-calls")?.scrollIntoView({ behavior: "smooth", block: "start" })}><CalendarClock size={16} />Schedule Call</button>
                 <button className="btn-secondary" onClick={() => action("publish")}><Play size={16} />Publish</button>
                 <button className="btn-secondary text-rose-600" onClick={removeAgent}><Trash2 size={16} />Delete</button>
               </div>
+            </div>
 
-              <div id="overview" className="grid gap-4 md:grid-cols-2">
+            <div className="card agent-detail-overview-card">
+              <div id="overview" className="agent-detail-overview-grid">
                 <Info label="Business" value={agent.businessName} />
                 <Info label="Category" value={agent.businessCategory} />
                 <Info label="Location" value={agent.businessLocation} />
@@ -336,97 +337,12 @@ export default function AgentDetails() {
               </div>
             </div>
 
-            <div id="voice-settings" className="card">
-              <h2 className="mb-3 font-semibold text-ink">Voice settings</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Info label="Language" value={agent.language} />
-                <Info label="Gender" value={agent.voiceGender} />
-                <Info label="Tone" value={agent.tone} />
-                <Info label="Personality" value={agent.personality} />
-              </div>
-            </div>
-
-            <div id="scheduled-calls" className="card">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-ink">Scheduled Calls</h2>
+            <div id="call-logs" className="card agent-detail-call-logs">
+              <div className="agent-detail-section-header">
+                <div className="agent-detail-section-title">
+                  <PhoneCall size={18} />
+                  <h2>Call Logs</h2>
                 </div>
-                <CalendarClock className="text-brand-700" size={20} />
-              </div>
-
-              <form className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]" onSubmit={scheduleCall}>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Phone Number
-                  <input className="mt-1" required placeholder="+918000000000" value={scheduleForm.phoneNumber} onChange={(event) => setScheduleField("phoneNumber", event.target.value)} />
-                </label>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Date and Time
-                  <input className="mt-1" required type="datetime-local" value={scheduleForm.scheduledForLocal} onChange={(event) => setScheduleField("scheduledForLocal", event.target.value)} />
-                </label>
-                <label className="block text-sm font-medium text-neutral-700">
-                  Timezone
-                  <input className="mt-1" required value={scheduleForm.timezone} onChange={(event) => setScheduleField("timezone", event.target.value)} />
-                </label>
-                <button className="btn-primary self-end" disabled={scheduleLoading || !connected}>
-                  <CalendarClock size={16} />{scheduleLoading ? "Saving..." : "Schedule"}
-                </button>
-              </form>
-
-              <div className="mt-5 grid gap-3">
-                {scheduledCalls.map((schedule) => (
-                  <article key={schedule._id} className="rounded-xl border border-hairline p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-anywhere font-semibold text-ink">{schedule.phoneNumber}</p>
-                        <p className="text-sm text-neutral-500">{formatScheduleTime(schedule)} · {schedule.timezone}</p>
-                        {schedule.lastError && <p className="mt-1 text-xs text-rose-700">{schedule.lastError}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={schedule.status} />
-                        {["pending", "scheduled"].includes(schedule.status) && (
-                          <button className="btn-secondary px-3 py-1.5 text-xs" disabled={scheduleLoading} onClick={() => cancelScheduledCall(schedule._id)}>Cancel</button>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-                {!scheduledCalls.length && <div className="rounded-xl border border-dashed border-hairline p-4 text-center text-sm text-neutral-500">No scheduled calls.</div>}
-              </div>
-            </div>
-
-            <div id="appointments" className="card">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-ink">Appointments</h2>
-                </div>
-                <button className="btn-secondary" onClick={() => navigate(`/appointments?agentId=${id}&open=1`)}><CalendarClock size={16} />Book Appointment</button>
-              </div>
-
-              <div className="grid gap-3">
-                {appointments.map((appointment) => (
-                  <article key={appointment._id} className="rounded-xl border border-hairline p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="break-anywhere font-semibold text-ink">
-                          {appointment.leadId?.businessName || appointment.leadId?.name || appointment.customerName || appointment.customerPhone || "Appointment"}
-                        </p>
-                        <p className="text-sm text-neutral-500">{formatAppointmentTime(appointment)} - {appointment.appointmentType}</p>
-                        {appointment.notes && <p className="mt-1 text-sm text-neutral-600">{appointment.notes}</p>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <StatusBadge status={appointment.status} />
-                        <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => navigate(`/appointments?agentId=${id}&leadId=${appointment.leadId?._id || appointment.leadId}`)}>View</button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-                {!appointments.length && <div className="rounded-xl border border-dashed border-hairline p-4 text-center text-sm text-neutral-500">No appointments for this agent.</div>}
-              </div>
-            </div>
-
-            <div id="call-logs" className="card">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="font-semibold text-ink">Call Logs</h2>
                 <button className="btn-secondary" onClick={load}><RefreshCw size={16} />Refresh</button>
               </div>
               <div className="mobile-card-list">
@@ -459,9 +375,9 @@ export default function AgentDetails() {
                 {!calls.length && <div className="rounded-2xl border border-dashed border-hairline p-5 text-center text-sm text-neutral-500">No calls yet.</div>}
               </div>
               <div className="desktop-table table-wrap">
-                <table className="table w-full min-w-[1120px]">
+                <table className="table agent-detail-call-table w-full min-w-[1120px]">
                   <thead>
-                    <tr><th>Date</th><th>Caller Number</th><th>Calling Number</th><th>Status</th><th>Duration</th><th>Lead</th><th>Pipeline</th><th>Actions</th></tr>
+                    <tr><th>Date & Time</th><th>Caller Number</th><th>Calling Number</th><th>Status</th><th>Duration</th><th>Lead</th><th>Pipeline</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {calls.map((call) => (
@@ -560,9 +476,12 @@ export default function AgentDetails() {
 
 function Info({ label, value }) {
   return (
-    <div className="mb-3">
-      <p className="text-xs font-semibold uppercase text-neutral-500">{label}</p>
-      <p className="break-words text-sm text-neutral-700">{value || "Not provided"}</p>
+    <div className="agent-detail-info-item">
+      <span className="agent-detail-info-icon" aria-hidden="true" />
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase text-neutral-500">{label}</p>
+        <p className="break-words text-sm text-neutral-700">{value || "Not provided"}</p>
+      </div>
     </div>
   );
 }

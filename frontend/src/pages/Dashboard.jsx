@@ -1,5 +1,6 @@
 import { Clock, Plus, TrendingDown, TrendingUp, Users, WalletCards } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import Section from "../components/Section.jsx";
@@ -37,12 +38,11 @@ function DashboardBanner() {
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    api("/dashboard").then(setData).catch((err) => setError(err.message));
-  }, []);
+  const { data, error: queryError } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: () => api("/dashboard")
+  });
+  const error = queryError?.message || "";
 
   const stats = data?.stats || {};
   const activeAgents = stats.activeAgents || 0;

@@ -1,5 +1,6 @@
 import { Coins, CreditCard, RefreshCw, TrendingDown, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -15,25 +16,21 @@ function fmtDate(value) {
 
 export default function Credits() {
   const { refresh } = useCredits();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const { data, error: queryError, isPending, dataUpdatedAt } = useQuery({
+    queryKey: ["credits"],
+    queryFn: () => api("/credits")
+  });
+  const loading = isPending;
+  const error = queryError ? (queryError.response?.message || queryError.message) : "";
 
+  // Keep the global credits badge in sync after each successful fetch.
   useEffect(() => {
-    load();
-  }, []);
+    if (dataUpdatedAt) refresh();
+  }, [dataUpdatedAt]);
 
-  async function load() {
-    setError("");
-    try {
-      const result = await api("/credits");
-      setData(result);
-      refresh();
-    } catch (err) {
-      setError(err.response?.message || err.message);
-    } finally {
-      setLoading(false);
-    }
+  function reloadCredits() {
+    queryClient.invalidateQueries({ queryKey: ["credits"] });
   }
 
   const balance = data?.balance ?? 0;
@@ -60,7 +57,7 @@ export default function Credits() {
             </div>
             <div className="flex flex-col gap-2">
               <Link className="btn-primary" to="/billing"><CreditCard size={16} />Buy credits</Link>
-              <button className="btn-secondary" disabled={loading} onClick={load}><RefreshCw size={16} />Refresh</button>
+              <button className="btn-secondary" disabled={loading} onClick={reloadCredits}><RefreshCw size={16} />Refresh</button>
             </div>
           </div>
         </section>

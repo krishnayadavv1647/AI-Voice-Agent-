@@ -1,4 +1,5 @@
 ﻿import { CalendarClock, Pause, PhoneCall, Play, Plus, RefreshCw, RotateCcw, Square, Upload, Users } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -27,8 +28,9 @@ function leadName(lead) {
 }
 
 export default function Campaigns() {
-  const [campaigns, setCampaigns] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: campaigns = [], error: campaignsError } = useQuery({ queryKey: ["campaigns"], queryFn: () => api("/campaigns") });
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
   const [leads, setLeads] = useState([]);
   const [selected, setSelected] = useState(null);
   const [recipients, setRecipients] = useState([]);
@@ -38,17 +40,15 @@ export default function Campaigns() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (campaignsError ? errorText(campaignsError) : "");
 
   const selectedStats = selected?.stats || {};
   const filteredLeads = useMemo(() => leads.filter((lead) => !form.agentId || lead.agentId === form.agentId || lead.agentId?._id === form.agentId), [leads, form.agentId]);
 
-  async function load() {
-    setError("");
-    const [campaignData, agentData] = await Promise.all([api("/campaigns"), api("/agents")]);
-    setCampaigns(campaignData);
-    setAgents(agentData);
-    setForm((current) => ({ ...current, agentId: current.agentId || agentData[0]?._id || "" }));
+  function reloadCampaigns() {
+    queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
   }
 
   async function loadLeads(agentId) {
@@ -57,7 +57,7 @@ export default function Campaigns() {
 
   async function openCampaign(campaign) {
     setLoading(`open-${campaign._id}`);
-    setError("");
+    setActionError("");
     try {
       const [detail, recipientRows] = await Promise.all([
         api(`/campaigns/${campaign._id}`),
@@ -67,34 +67,35 @@ export default function Campaigns() {
       setRecipients(recipientRows);
       setShowCreate(false);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
   }
 
+  // Default the create-form agent once the agents list has loaded.
   useEffect(() => {
-    load().catch((err) => setError(errorText(err)));
-  }, []);
+    setForm((current) => ({ ...current, agentId: current.agentId || agents[0]?._id || "" }));
+  }, [agents]);
 
   useEffect(() => {
-    if (showCreate || selected) loadLeads(form.agentId || selected?.agentId?._id || selected?.agentId).catch((err) => setError(errorText(err)));
+    if (showCreate || selected) loadLeads(form.agentId || selected?.agentId?._id || selected?.agentId).catch((err) => setActionError(errorText(err)));
   }, [showCreate, form.agentId, selected?._id]);
 
   async function createCampaign(event) {
     event.preventDefault();
     setLoading("create");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const campaign = await api("/campaigns", { method: "POST", body: form });
       setNotice("Campaign created.");
       setShowCreate(false);
       setForm({ ...defaultForm, agentId: agents[0]?._id || "" });
-      await load();
+      reloadCampaigns();
       await openCampaign(campaign);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -104,15 +105,15 @@ export default function Campaigns() {
     if (!selected || !selectedLeadIds.length) return;
     setLoading("add-leads");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/campaigns/${selected._id}/add-leads`, { method: "POST", body: { leadIds: selectedLeadIds } });
       setNotice(`${result.created} recipient${result.created === 1 ? "" : "s"} added.`);
       setSelectedLeadIds([]);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -122,7 +123,7 @@ export default function Campaigns() {
     if (!selected || !file) return;
     setLoading("import");
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const token = getToken();
       const response = await fetch(`${API_URL}/campaigns/${selected._id}/import-recipients?fileName=${encodeURIComponent(file.name)}`, {
@@ -138,9 +139,9 @@ export default function Campaigns() {
       setNotice(`${payload.created} recipient${payload.created === 1 ? "" : "s"} imported. ${payload.skipped || 0} skipped.`);
       setFile(null);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
@@ -151,65 +152,71 @@ export default function Campaigns() {
     if (type === "cancel" && !confirm("Cancel this campaign?")) return;
     setLoading(type);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api(`/campaigns/${selected._id}/${type}`, { method: "POST" });
       setNotice(type === "retry-failed" ? `${result.queued || 0} recipients queued for retry.` : `Campaign ${type.replace("-", " ")} complete.`);
       await openCampaign(selected);
-      await load();
+      reloadCampaigns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setLoading("");
     }
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack campaign-page">
       <PageHeader
         title="Campaigns"
         description="Create bulk AI calling campaigns using your agents and leads."
-        action={<div className="action-row"><button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button><button className="btn-primary" onClick={() => { setShowCreate(true); setSelected(null); }}><Plus size={16} />Create Campaign</button></div>}
+        action={<div className="action-row campaign-page-actions"><button className="btn-secondary" onClick={reloadCampaigns}><RefreshCw size={16} />Refresh</button><button className="btn-primary" onClick={() => { setShowCreate(true); setSelected(null); }}><Plus size={16} />Create Campaign</button></div>}
       />
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
-      <div className="grid gap-4 xl:grid-cols-[24rem_minmax(0,1fr)]">
-        <section className="card p-0">
-          <div className="border-b border-hairline p-4">
-            <h2 className="font-semibold text-ink">Call Campaigns</h2>
+      <div className="campaign-layout">
+        <section className="card campaign-list-card">
+          <div className="campaign-card-header">
+            <h2>Call Campaigns</h2>
+            <span>{campaigns.length}</span>
           </div>
           {!campaigns.length ? (
             <div className="p-5"><EmptyState title="No campaigns yet" description="Create a campaign to call leads in controlled batches." /></div>
           ) : (
-            <div className="divide-y divide-hairline">
+            <div className="campaign-list-stack">
               {campaigns.map((campaign) => (
-                <button key={campaign._id} className={`campaign-list-item block w-full p-4 text-left transition ${selected?._id === campaign._id ? "campaign-list-item-selected" : ""}`} onClick={() => openCampaign(campaign)}>
+                <button key={campaign._id} className={`campaign-list-item ${selected?._id === campaign._id ? "campaign-list-item-selected" : ""}`} onClick={() => openCampaign(campaign)}>
                   <div className="min-w-0">
-                    <h3 className="break-anywhere font-semibold text-ink">{campaign.name}</h3>
+                    <h3>{campaign.name}</h3>
+                    <p>{campaign.agentId?.agentName || "No agent selected"}</p>
                   </div>
+                  <StatusBadge status={campaign.status} />
                 </button>
               ))}
             </div>
           )}
         </section>
 
-        <main className="min-w-0">
+        <main className="campaign-detail-column">
           {showCreate && (
-            <section className="card mb-4">
-              <h2 className="mb-4 text-lg font-semibold text-ink">Create Campaign</h2>
-              <form className="grid gap-4 md:grid-cols-2" onSubmit={createCampaign}>
-                <label className="text-sm font-semibold text-neutral-700">Campaign Name<input className="mt-1" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
-                <label className="text-sm font-semibold text-neutral-700">Agent<select className="mt-1" value={form.agentId} onChange={(event) => setForm({ ...form, agentId: event.target.value })}>{agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName}</option>)}</select></label>
-                <label className="text-sm font-semibold text-neutral-700">Start Date & Time<input className="mt-1" type="datetime-local" value={form.startAt} onChange={(event) => setForm({ ...form, startAt: event.target.value })} /></label>
-                <label className="text-sm font-semibold text-neutral-700">Timezone<input className="mt-1" value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} /></label>
+            <section className="card campaign-create-card">
+              <div className="campaign-section-heading">
+                <h2>Create Campaign</h2>
+                <p>Set the agent, schedule, retry rules, and calling speed.</p>
+              </div>
+              <form className="campaign-form-grid" onSubmit={createCampaign}>
+                <label className="campaign-field">Campaign Name<input className="mt-1" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></label>
+                <label className="campaign-field">Agent<select className="mt-1" value={form.agentId} onChange={(event) => setForm({ ...form, agentId: event.target.value })}>{agents.map((agent) => <option key={agent._id} value={agent._id}>{agent.agentName}</option>)}</select></label>
+                <label className="campaign-field">Start Date & Time<input className="mt-1" type="datetime-local" value={form.startAt} onChange={(event) => setForm({ ...form, startAt: event.target.value })} /></label>
+                <label className="campaign-field">Timezone<input className="mt-1" value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })} /></label>
                 <NumberField label="Batch Size" value={form.callingSpeed.batchSize} onChange={(value) => setForm({ ...form, callingSpeed: { ...form.callingSpeed, batchSize: value } })} />
                 <NumberField label="Delay Seconds" value={form.callingSpeed.delaySeconds} onChange={(value) => setForm({ ...form, callingSpeed: { ...form.callingSpeed, delaySeconds: value } })} />
                 <NumberField label="Max Parallel Calls" value={form.callingSpeed.maxParallelCalls} onChange={(value) => setForm({ ...form, callingSpeed: { ...form.callingSpeed, maxParallelCalls: value } })} />
                 <NumberField label="Max Attempts" value={form.retryRules.maxAttempts} onChange={(value) => setForm({ ...form, retryRules: { ...form.retryRules, maxAttempts: value } })} />
                 <NumberField label="Retry Delay Minutes" value={form.retryRules.retryDelayMinutes} onChange={(value) => setForm({ ...form, retryRules: { ...form.retryRules, retryDelayMinutes: value } })} />
-                <label className="flex items-center gap-2 text-sm font-semibold text-neutral-700"><input type="checkbox" checked={form.retryRules.enabled} onChange={(event) => setForm({ ...form, retryRules: { ...form.retryRules, enabled: event.target.checked } })} />Enable retries</label>
-                <div className="md:col-span-2 action-row">
+                <label className="campaign-toggle"><input type="checkbox" checked={form.retryRules.enabled} onChange={(event) => setForm({ ...form, retryRules: { ...form.retryRules, enabled: event.target.checked } })} />Enable retries</label>
+                <div className="campaign-form-actions">
                   <button type="button" className="btn-secondary" onClick={() => setShowCreate(false)}>Cancel</button>
                   <button className="btn-primary" disabled={loading === "create"}><Plus size={16} />{loading === "create" ? "Creating..." : "Create Campaign"}</button>
                 </div>
@@ -221,22 +228,22 @@ export default function Campaigns() {
 
           {selected && (
             <>
-              <section className="card mb-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <section className="card campaign-summary-card">
+                <div className="campaign-summary-head">
                   <div>
-                    <h2 className="text-xl font-semibold text-ink">{selected.name}</h2>
-                    <p className="text-sm text-neutral-500">{selected.agentId?.agentName || "Agent"} · Starts {fmt(selected.startAt)}</p>
+                    <h2>{selected.name}</h2>
+                    <p>{selected.agentId?.agentName || "Agent"} · Starts {fmt(selected.startAt)}</p>
                   </div>
                   <StatusBadge status={selected.status} />
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="campaign-stat-grid">
                   <Stat label="Total" value={selectedStats.totalRecipients || 0} icon={Users} />
                   <Stat label="Queued" value={selectedStats.queued || 0} icon={CalendarClock} />
                   <Stat label="Calling" value={selectedStats.running || 0} icon={PhoneCall} />
                   <Stat label="Answered" value={selectedStats.answered || 0} icon={PhoneCall} />
                   <Stat label="Failed" value={(selectedStats.failed || 0) + (selectedStats.noAnswer || 0) + (selectedStats.busy || 0) + (selectedStats.declined || 0)} icon={RotateCcw} />
                 </div>
-                <div className="mt-4 action-row">
+                <div className="campaign-control-row">
                   <button className="btn-primary" disabled={loading === "start" || !["draft", "paused", "scheduled"].includes(selected.status)} onClick={() => campaignAction("start")}><Play size={16} />Start</button>
                   <button className="btn-secondary" disabled={loading === "pause" || !["scheduled", "running"].includes(selected.status)} onClick={() => campaignAction("pause")}><Pause size={16} />Pause</button>
                   <button className="btn-secondary" disabled={loading === "resume" || selected.status !== "paused"} onClick={() => campaignAction("resume")}><Play size={16} />Resume</button>
@@ -246,14 +253,17 @@ export default function Campaigns() {
               </section>
 
               {selected.status === "draft" && (
-                <section className="card mb-4">
-                  <h2 className="font-semibold text-ink">Recipients</h2>
-                  <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <section className="card campaign-recipients-setup">
+                  <div className="campaign-section-heading">
+                    <h2>Recipients</h2>
+                    <p>Add saved leads or import a file before starting this campaign.</p>
+                  </div>
+                  <div className="campaign-recipient-tools">
                     <div>
-                      <p className="mb-2 text-sm font-semibold text-neutral-700">Select leads</p>
-                      <div className="max-h-72 space-y-2 overflow-y-auto rounded-2xl border border-hairline p-3">
+                      <p className="campaign-subtitle">Select leads</p>
+                      <div className="campaign-lead-list">
                         {filteredLeads.map((lead) => (
-                          <label key={lead._id} className="flex items-center gap-3 rounded-xl p-2 text-sm hover:bg-neutral-50">
+                          <label key={lead._id} className="campaign-lead-row">
                             <input type="checkbox" checked={selectedLeadIds.includes(lead._id)} onChange={(event) => setSelectedLeadIds((current) => event.target.checked ? [...current, lead._id] : current.filter((id) => id !== lead._id))} />
                             <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-ink">{leadName(lead)}</span><span className="block truncate text-xs text-neutral-500">{lead.phone || lead.email || "-"}</span></span>
                           </label>
@@ -263,8 +273,8 @@ export default function Campaigns() {
                       <button className="btn-secondary mt-3" disabled={!selectedLeadIds.length || loading === "add-leads"} onClick={addSelectedLeads}><Users size={16} />Add Selected Leads</button>
                     </div>
                     <div>
-                      <p className="mb-2 text-sm font-semibold text-neutral-700">Import CSV/XLSX recipients</p>
-                      <div className="rounded-2xl border border-dashed border-neutral-300 p-4">
+                      <p className="campaign-subtitle">Import CSV/XLSX recipients</p>
+                      <div className="campaign-import-box">
                         <input type="file" accept=".csv,.xlsx" onChange={(event) => setFile(event.target.files?.[0] || null)} />
                         <p className="mt-2 text-xs text-neutral-500">Columns: name, phone, email, city, scheduledAt, notes</p>
                         <button className="btn-secondary mt-3" disabled={!file || loading === "import"} onClick={importRecipients}><Upload size={16} />Import Recipients</button>
@@ -274,10 +284,10 @@ export default function Campaigns() {
                 </section>
               )}
 
-              <section className="card overflow-hidden p-0">
-                <div className="border-b border-hairline p-4"><h2 className="font-semibold text-ink">Campaign Recipients</h2></div>
+              <section className="card campaign-table-card">
+                <div className="campaign-card-header"><h2>Campaign Recipients</h2><span>{recipients.length}</span></div>
                 <div className="table-wrap">
-                  <table className="table w-full min-w-[1100px]">
+                  <table className="table campaign-table w-full min-w-[1100px]">
                     <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Scheduled At</th><th>Attempts</th><th>Last Outcome</th><th>Last Error</th><th>Provider Call ID</th></tr></thead>
                     <tbody>
                       {recipients.map((recipient) => (
@@ -308,9 +318,9 @@ export default function Campaigns() {
 }
 
 function Stat({ label, value, icon: Icon }) {
-  return <article className="rounded-2xl border border-hairline bg-neutral-50 p-3"><Icon className="mb-2 text-brand-700" size={18} /><p className="text-xs font-semibold uppercase text-neutral-500">{label}</p><p className="text-2xl font-semibold text-ink">{value}</p></article>;
+  return <article className="campaign-stat-card"><Icon size={18} /><p>{label}</p><strong>{value}</strong></article>;
 }
 
 function NumberField({ label, value, onChange }) {
-  return <label className="text-sm font-semibold text-neutral-700">{label}<input className="mt-1" type="number" min="1" value={value} onChange={(event) => onChange(Number(event.target.value) || 1)} /></label>;
+  return <label className="campaign-field">{label}<input className="mt-1" type="number" min="1" value={value} onChange={(event) => onChange(Number(event.target.value) || 1)} /></label>;
 }

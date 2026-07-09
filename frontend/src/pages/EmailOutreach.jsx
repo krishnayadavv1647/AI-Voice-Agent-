@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, Mail, RefreshCw, Save, Send, Sparkles } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -31,14 +32,15 @@ function isUnsubscribed(lead) {
 }
 
 export default function EmailOutreach() {
-  const [agents, setAgents] = useState([]);
-  const [leads, setLeads] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [providers, setProviders] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: agents = [], error: agentsError } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
+  const { data: leads = [], error: leadsError, isPending: leadsPending } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
+  const { data: campaigns = [], error: campaignsError } = useQuery({ queryKey: ["email-campaigns"], queryFn: () => api("/email/campaigns") });
+  const { data: logs = [], error: logsError } = useQuery({ queryKey: ["email-logs"], queryFn: () => api("/email/logs") });
+  const { data: providers = [], error: providersError } = useQuery({ queryKey: ["email-providers"], queryFn: () => api("/email/providers") });
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [form, setForm] = useState(initialForm);
-  const [loading, setLoading] = useState(true);
+  const loading = leadsPending;
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -46,7 +48,9 @@ export default function EmailOutreach() {
   const [campaignResult, setCampaignResult] = useState(null);
   const [showHistory, setShowHistory] = useState(true);
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const loadError = agentsError || leadsError || campaignsError || logsError || providersError;
+  const error = actionError || (loadError ? errorText(loadError) : "");
 
   const emailLeads = useMemo(() => {
     const seenEmails = new Set();
@@ -62,30 +66,18 @@ export default function EmailOutreach() {
   const selectedCount = selectedLeadIds.length;
   const providerSummary = providers.map((provider) => `${provider.label}${provider.configured ? "" : " not configured"}`).join(", ");
 
-  async function load() {
-    setLoading(true);
-    const [agentList, leadList, campaignList, logList, providerList] = await Promise.all([
-      api("/agents"),
-      api("/leads"),
-      api("/email/campaigns"),
-      api("/email/logs"),
-      api("/email/providers")
-    ]);
-    setAgents(agentList);
-    setLeads(leadList);
-    setCampaigns(campaignList);
-    setLogs(logList);
-    setProviders(providerList);
-    setForm((current) => ({ ...current, agentId: current.agentId || agentList[0]?._id || "" }));
-    setLoading(false);
-  }
-
+  // Default the campaign agent once the agents list has loaded.
   useEffect(() => {
-    load().catch((err) => {
-      setLoading(false);
-      setError(errorText(err));
-    });
-  }, []);
+    setForm((current) => ({ ...current, agentId: current.agentId || agents[0]?._id || "" }));
+  }, [agents]);
+
+  function reloadAll() {
+    queryClient.invalidateQueries({ queryKey: ["agents"] });
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+    queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
+    queryClient.invalidateQueries({ queryKey: ["email-logs"] });
+    queryClient.invalidateQueries({ queryKey: ["email-providers"] });
+  }
 
   function setField(field, value) {
     if (field === "agentId") setSelectedLeadIds([]);
@@ -103,7 +95,7 @@ export default function EmailOutreach() {
   async function generateEmail() {
     setGenerating(true);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api("/email/generate", {
         method: "POST",
@@ -118,7 +110,7 @@ export default function EmailOutreach() {
       setForm((current) => ({ ...current, subject: result.subject || "", body: result.body || "" }));
       setNotice(result.warning || "Email subject and body generated.");
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setGenerating(false);
     }
@@ -126,13 +118,13 @@ export default function EmailOutreach() {
 
   async function saveDraft() {
     if (!selectedLeadIds.length) {
-      setError("Select at least one lead with an email address.");
+      setActionError("Select at least one lead with an email address.");
       return null;
     }
 
     setSaving(true);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const campaign = await api("/email/campaigns", {
         method: "POST",
@@ -145,10 +137,10 @@ export default function EmailOutreach() {
         }
       });
       setNotice("Campaign draft saved.");
-      setCampaigns(await api("/email/campaigns"));
+      queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
       return campaign;
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
       return null;
     } finally {
       setSaving(false);
@@ -158,7 +150,7 @@ export default function EmailOutreach() {
   async function sendTestEmail() {
     setTesting(true);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const result = await api("/email/test", {
         method: "POST",
@@ -174,7 +166,7 @@ export default function EmailOutreach() {
         : `Test email sent to ${result.toEmail} through ${result.provider}.`
       );
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setTesting(false);
     }
@@ -183,7 +175,7 @@ export default function EmailOutreach() {
   async function sendCampaign(campaignId) {
     setSending(true);
     setNotice("");
-    setError("");
+    setActionError("");
     setCampaignResult(null);
     try {
       const campaign = campaignId ? { _id: campaignId } : await saveDraft();
@@ -192,11 +184,10 @@ export default function EmailOutreach() {
       const result = await api(`/email/campaigns/${campaign._id}/send`, { method: "POST" });
       setCampaignResult(result);
       setNotice(`${result.sentCount} sent, ${result.failedCount} failed, ${result.skippedCount} skipped.`);
-      const [campaignList, logList] = await Promise.all([api("/email/campaigns"), api("/email/logs")]);
-      setCampaigns(campaignList);
-      setLogs(logList);
+      queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["email-logs"] });
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setSending(false);
     }
@@ -207,7 +198,7 @@ export default function EmailOutreach() {
       <PageHeader
         title="Email Outreach"
         description="Create personalized campaigns for saved leads, send tests, and track email logs."
-        action={<button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>}
+        action={<button className="btn-secondary" onClick={reloadAll}><RefreshCw size={16} />Refresh</button>}
       />
 
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}

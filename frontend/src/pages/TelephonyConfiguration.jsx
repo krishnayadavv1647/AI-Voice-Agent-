@@ -9,7 +9,8 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -107,10 +108,16 @@ function toastClass(type) {
 export default function TelephonyConfiguration() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const [configs, setConfigs] = useState([]);
-  const [agents, setAgents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const { data: configsData, error: configsError, isFetching } = useQuery({
+    queryKey: ["telephony"],
+    queryFn: () => api("/telephony-configs")
+  });
+  const { data: agentsData } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
+  const configs = Array.isArray(configsData) ? configsData : [];
+  const agents = Array.isArray(agentsData) ? agentsData : [];
+  const loading = isFetching;
+  const error = configsError ? formatApiError(configsError) : "";
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState("");
   const [configModal, setConfigModal] = useState(null);
@@ -124,30 +131,13 @@ export default function TelephonyConfiguration() {
     [configs, id]
   );
 
-  useEffect(() => {
-    load();
-  }, []);
+  function reloadTelephony() {
+    return queryClient.invalidateQueries({ queryKey: ["telephony"] });
+  }
 
   function showToast(message, type = "success") {
     setToast({ message, type });
     window.setTimeout(() => setToast(null), 3600);
-  }
-
-  async function load() {
-    setLoading(true);
-    setError("");
-    try {
-      const [telephonyConfigs, agentList] = await Promise.all([
-        api("/telephony-configs"),
-        api("/agents")
-      ]);
-      setConfigs(Array.isArray(telephonyConfigs) ? telephonyConfigs : []);
-      setAgents(Array.isArray(agentList) ? agentList : []);
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setLoading(false);
-    }
   }
 
   function openAddModal() {
@@ -216,7 +206,7 @@ export default function TelephonyConfiguration() {
       setConfigForm(emptyConfigForm);
       setConfigModal(null);
       showToast(isEdit ? "Credentials updated." : "Telephony configuration created.");
-      await load();
+      await reloadTelephony();
       navigate(`/telephony-configuration/${saved._id || saved.id}`);
     } catch (err) {
       showToast(formatApiError(err), "error");
@@ -247,7 +237,7 @@ export default function TelephonyConfiguration() {
       });
       setPhoneModal(false);
       showToast("Phone number updated.");
-      await load();
+      await reloadTelephony();
     } catch (err) {
       showToast(formatApiError(err), "error");
     } finally {
@@ -262,7 +252,7 @@ export default function TelephonyConfiguration() {
       await api(`/telephony-configs/${config._id}`, { method: "DELETE" });
       showToast("Telephony configuration deleted.");
       if (id) navigate("/telephony-configuration");
-      await load();
+      await reloadTelephony();
     } catch (err) {
       showToast(formatApiError(err), "error");
     } finally {
@@ -279,7 +269,7 @@ export default function TelephonyConfiguration() {
         body: { status: "inactive", inboundEnabled: false, outboundEnabled: false }
       });
       showToast("Phone number deactivated.");
-      await load();
+      await reloadTelephony();
     } catch (err) {
       showToast(formatApiError(err), "error");
     } finally {
@@ -306,7 +296,7 @@ export default function TelephonyConfiguration() {
           agents={agents}
           loading={loading}
           error={error}
-          onRetry={load}
+          onRetry={reloadTelephony}
           onBack={() => navigate("/telephony-configuration")}
           onCopy={copyText}
           onEdit={openEditModal}
@@ -320,7 +310,7 @@ export default function TelephonyConfiguration() {
           configs={configs}
           loading={loading}
           error={error}
-          onRetry={load}
+          onRetry={reloadTelephony}
           onAdd={openAddModal}
           onEdit={openEditModal}
           onDelete={deleteConfig}

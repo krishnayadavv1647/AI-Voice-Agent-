@@ -1,4 +1,5 @@
 import { CalendarClock, CheckCircle, Eye, MoreVertical, Plus, RefreshCw, Search, X, XCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -81,9 +82,21 @@ function schedulingNotice(result, fallback) {
 
 export default function Appointments() {
   const location = useLocation();
-  const [appointments, setAppointments] = useState([]);
-  const [agents, setAgents] = useState([]);
-  const [leads, setLeads] = useState([]);
+  const queryClient = useQueryClient();
+  const params = new URLSearchParams(location.search);
+  const requestedAgentId = params.get("agentId") || "";
+  const requestedLeadId = params.get("leadId") || "";
+  const appointmentParams = new URLSearchParams();
+  if (requestedAgentId) appointmentParams.set("agentId", requestedAgentId);
+  if (requestedLeadId) appointmentParams.set("leadId", requestedLeadId);
+  const appointmentPath = `/appointments${appointmentParams.toString() ? `?${appointmentParams.toString()}` : ""}`;
+
+  const { data: appointments = [], error: appointmentsError } = useQuery({
+    queryKey: ["appointments", requestedAgentId, requestedLeadId],
+    queryFn: () => api(appointmentPath)
+  });
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
+  const { data: leads = [] } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState(null);
   const [actingId, setActingId] = useState("");
@@ -100,7 +113,8 @@ export default function Appointments() {
   });
   const [search, setSearch] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (appointmentsError ? errorText(appointmentsError) : "");
 
   const filteredAppointments = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -129,48 +143,25 @@ export default function Appointments() {
     };
   }, [appointments]);
 
-  async function load() {
-    const params = new URLSearchParams(location.search);
-    const requestedAgentId = params.get("agentId") || "";
-    const requestedLeadId = params.get("leadId") || "";
-    const appointmentParams = new URLSearchParams();
-    if (requestedAgentId) appointmentParams.set("agentId", requestedAgentId);
-    if (requestedLeadId) appointmentParams.set("leadId", requestedLeadId);
-    const appointmentPath = `/appointments${appointmentParams.toString() ? `?${appointmentParams.toString()}` : ""}`;
-    console.log("[Appointment Debug][Frontend] Fetch endpoint", {
-      endpoint: appointmentPath,
-      requestedAgentId,
-      requestedLeadId
-    });
-    const [appointmentList, agentList, leadList] = await Promise.all([
-      api(appointmentPath),
-      api("/agents"),
-      api("/leads")
-    ]);
-    console.log("[Appointment Debug][Frontend] Appointment fetch response", {
-      count: appointmentList.length,
-      appointments: debugAppointmentList(appointmentList)
-    });
-    setAppointments(appointmentList);
-    console.log("[Appointment Debug][Frontend] Appointment list data after fetch", {
-      count: appointmentList.length,
-      appointments: debugAppointmentList(appointmentList)
-    });
-    setAgents(agentList);
-    setLeads(leadList);
+  function reloadAppointments() {
+    queryClient.invalidateQueries({ queryKey: ["appointments"] });
+  }
+
+  // Seed the create/reschedule form defaults from query params and loaded data.
+  useEffect(() => {
     setForm((current) => ({
       ...current,
-      agentId: requestedAgentId || current.agentId || agentList[0]?._id || "",
-      leadId: requestedLeadId || current.leadId || leadList[0]?._id || ""
+      agentId: requestedAgentId || current.agentId || agents[0]?._id || "",
+      leadId: requestedLeadId || current.leadId || leads[0]?._id || ""
     }));
+  }, [agents, leads, requestedAgentId, requestedLeadId]);
+
+  // Open the booking modal when navigated to with ?open=1.
+  useEffect(() => {
     if (params.get("open") === "1") {
       setSelected(null);
       setModalOpen(true);
     }
-  }
-
-  useEffect(() => {
-    load().catch((err) => setError(errorText(err)));
   }, [location.search]);
 
   function setField(field, value) {
@@ -186,7 +177,7 @@ export default function Appointments() {
   async function submit(event) {
     event.preventDefault();
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       if (selected) {
@@ -213,16 +204,16 @@ export default function Appointments() {
         setNotice(schedulingNotice(result, "Appointment booked."));
       }
       setModalOpen(false);
-      await load();
+      reloadAppointments();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     }
   }
 
   async function action(appointment, type) {
     setActingId(appointment._id);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       if (type === "view") {
@@ -242,15 +233,15 @@ export default function Appointments() {
         if (!confirm("Cancel this appointment?")) return;
         await api(`/appointments/${appointment._id}/cancel`, { method: "POST" });
         setNotice("Appointment cancelled.");
-        await load();
+        reloadAppointments();
       } else if (type === "complete") {
         await api(`/appointments/${appointment._id}/complete`, { method: "POST" });
         setNotice("Appointment marked completed.");
-        await load();
+        reloadAppointments();
       }
       setOpenActionsId("");
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -287,7 +278,7 @@ export default function Appointments() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}><RefreshCw size={16} />Refresh</button>
+          <button className="btn-secondary" onClick={reloadAppointments}><RefreshCw size={16} />Refresh</button>
         </div>
         {!appointments.length ? (
           <div className="p-6"><EmptyState title="No appointments yet" description="Book an appointment manually or let AI calls create appointments automatically." /></div>

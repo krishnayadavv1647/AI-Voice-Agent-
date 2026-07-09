@@ -14,6 +14,7 @@ import {
   Trash2,
   XCircle
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
@@ -50,9 +51,18 @@ function providerLogoUrl(provider) {
 }
 
 export default function Integrations() {
-  const [voiceIntegrations, setVoiceIntegrations] = useState([]);
-  const [llmIntegrations, setLlmIntegrations] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: voiceData, error: voiceError, isFetching: voiceFetching } = useQuery({
+    queryKey: ["integrations", "voice"],
+    queryFn: () => api("/integrations/voice")
+  });
+  const { data: llmData, error: llmError, isFetching: llmFetching } = useQuery({
+    queryKey: ["integrations", "llm"],
+    queryFn: () => api("/integrations/llm")
+  });
+  const voiceIntegrations = voiceData || [];
+  const llmIntegrations = llmData?.integrations || [];
+  const loading = voiceFetching || llmFetching;
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -78,20 +88,14 @@ export default function Integrations() {
     return map;
   }, [llmIntegrations]);
 
-  useEffect(() => { loadAll(); }, []);
+  // Surface load errors through the shared error banner.
+  useEffect(() => {
+    const loadError = voiceError || llmError;
+    if (loadError) setError(loadError.message);
+  }, [voiceError, llmError]);
 
-  async function loadAll() {
-    setLoading(true);
-    setError("");
-    try {
-      const [voice, llm] = await Promise.all([api("/integrations/voice"), api("/integrations/llm")]);
-      setVoiceIntegrations(voice || []);
-      setLlmIntegrations(llm?.integrations || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  function reloadAll() {
+    queryClient.invalidateQueries({ queryKey: ["integrations"] });
   }
 
   function isConnected(provider) {
@@ -133,7 +137,7 @@ export default function Integrations() {
       setNotice(`${voiceModal.name} connected and validated successfully.`);
       setVoiceModal(null);
       setVoiceApiKey("");
-      await loadAll();
+      reloadAll();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -148,10 +152,10 @@ export default function Integrations() {
     try {
       await api(`/integrations/voice/${provider.id}/test`, { method: "POST" });
       setNotice(`${provider.name} connection is valid.`);
-      await loadAll();
+      reloadAll();
     } catch (err) {
       setError(err.message);
-      await loadAll();
+      reloadAll();
     } finally {
       setWorking("");
     }
@@ -166,7 +170,7 @@ export default function Integrations() {
       await api(`/integrations/voice/${provider.id}`, { method: "DELETE" });
       setNotice(`${provider.name} disconnected.`);
       setVoiceModal(null);
-      await loadAll();
+      reloadAll();
     } catch (err) {
       const affected = err.response?.affectedAgents || [];
       const suffix = affected.length ? ` Affected agents: ${affected.map((item) => item.name).join(", ")}.` : "";
@@ -218,7 +222,7 @@ export default function Integrations() {
       setNotice(`${provider.name} connection saved and validated.`);
       setEditingIntegration(null);
       setLlmForm(emptyLlmForm(provider.id));
-      await loadAll();
+      reloadAll();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -233,10 +237,10 @@ export default function Integrations() {
     try {
       await api(`/integrations/llm/${integration.id}/test`, { method: "POST" });
       setNotice(`${integration.connectionName} is valid.`);
-      await loadAll();
+      reloadAll();
     } catch (err) {
       setError(err.message);
-      await loadAll();
+      reloadAll();
     } finally {
       setWorking("");
     }
@@ -250,7 +254,7 @@ export default function Integrations() {
     try {
       await api(`/integrations/llm/${integration.id}`, { method: "DELETE" });
       setNotice(`${integration.connectionName} disconnected.`);
-      await loadAll();
+      reloadAll();
     } catch (err) {
       const affected = err.response?.affectedAgents || [];
       const suffix = affected.length ? ` Affected agents: ${affected.map((item) => item.name).join(", ")}.` : "";
@@ -282,7 +286,7 @@ export default function Integrations() {
             </button>
             <button
               className="btn-primary"
-              onClick={loadAll}
+              onClick={reloadAll}
               disabled={loading}
             >
               {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}

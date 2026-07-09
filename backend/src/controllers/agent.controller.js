@@ -24,7 +24,31 @@ import {
   upsertAgentLLMConfiguration,
   validateLLMConfigurationOwnership
 } from "../services/agentLLMConfiguration.service.js";
-import { BIO_PAGE_TEMPLATES, DEFAULT_QUICK_TOPICS, defaultBioPage, templateDefaults } from "../services/bioPageTemplates.js";
+import {
+  BIO_PAGE_TEMPLATES,
+  DEFAULT_QUICK_TOPICS,
+  defaultBioPage,
+  templateDefaults,
+  resolveBioPage,
+  isValidTemplateId,
+  normalizeTemplateId,
+  LAYOUT_VARIANTS,
+  HERO_VARIANTS,
+  CONTENT_WIDTHS,
+  HERO_ALIGNMENTS,
+  BACKGROUND_STYLES,
+  SPACING_SCALES,
+  CARD_SHADOWS,
+  CARD_BORDERS,
+  RADIUS_TOKENS,
+  FONT_FAMILIES,
+  HEADING_WEIGHTS,
+  HEADING_TRACKINGS,
+  BODY_SIZES,
+  KNOWN_SECTIONS,
+  FONT_STYLES,
+  ANIMATIONS
+} from "../services/bioPageTemplates.js";
 import { applyGeneratedAgentImage, shouldGenerateAgentImage } from "../services/agentImage.service.js";
 
 function userFilter(req) {
@@ -32,20 +56,36 @@ function userFilter(req) {
 }
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const BIO_COLOR_FIELDS = ["primaryColor", "backgroundColor", "textColor", "buttonColor", "cardColor", "accentColor", "mutedColor", "borderColor"];
 const BIO_TEXT_FIELDS = ["headline", "subheadline", "welcomeMessage", "ctaText", "primaryCtaText", "secondaryCtaText", "voiceCallCtaText"];
+// Constrained-value string fields: value is only accepted if it is in the allowed list,
+// otherwise the field is silently dropped so an old/misbehaving client can't corrupt a page.
+const BIO_ENUM_FIELDS = {
+  fontStyle: FONT_STYLES,
+  animation: ANIMATIONS,
+  layoutVariant: LAYOUT_VARIANTS,
+  heroVariant: HERO_VARIANTS,
+  contentWidth: CONTENT_WIDTHS,
+  heroAlignment: HERO_ALIGNMENTS,
+  backgroundStyle: BACKGROUND_STYLES,
+  spacingScale: SPACING_SCALES,
+  cardShadow: CARD_SHADOWS,
+  cardBorder: CARD_BORDERS,
+  borderRadius: RADIUS_TOKENS,
+  buttonRadius: RADIUS_TOKENS,
+  headingFont: FONT_FAMILIES,
+  bodyFont: FONT_FAMILIES,
+  headingWeight: HEADING_WEIGHTS,
+  headingTracking: HEADING_TRACKINGS,
+  bodySize: BODY_SIZES
+};
 const BIO_STRING_FIELDS = [
   "template",
   "logoUrl",
   "coverImageUrl",
   "agentImageUrl",
-  "primaryColor",
-  "backgroundColor",
-  "textColor",
-  "buttonColor",
-  "cardColor",
-  "accentColor",
-  "fontStyle",
-  "animation",
+  ...BIO_COLOR_FIELDS,
+  ...Object.keys(BIO_ENUM_FIELDS),
   ...BIO_TEXT_FIELDS
 ];
 const BIO_BOOL_FIELDS = [
@@ -57,14 +97,17 @@ const BIO_BOOL_FIELDS = [
   "showBusinessInfo",
   "showSocialLinks",
   "showVoiceCallButton",
+  "showTopBar",
+  "showLogo",
+  "showAgentImage",
+  "showCoverImage",
+  "showQuickTopics",
   "isPublished"
 ];
 const BIO_NESTED_TEXT_FIELDS = {
   businessInfo: ["businessName", "category", "location", "availability", "responseTime"],
   socialLinks: ["website", "instagram", "facebook", "whatsapp", "linkedin"]
 };
-const FONT_STYLES = ["modern", "professional", "friendly", "bold", "elegant"];
-const ANIMATIONS = ["none", "fade_in", "slide_up", "zoom_in", "floating_cards", "gradient_motion", "pulse_button"];
 const TOPIC_ICON_TYPES = ["lucide", "emoji", "image"];
 const WORKFLOW_LINKED_FIELDS = [
   "agentName",
@@ -152,24 +195,11 @@ function workflowLinkedFieldsChanged(before, after) {
   return WORKFLOW_LINKED_FIELDS.some((field) => comparableJson(before?.[field]) !== comparableJson(after?.[field]));
 }
 
+// Merges the saved bioPage with the selected template preset and shared defaults so the
+// object is always complete (old pages saved before the template overhaul inherit real
+// layout/typography values from their template rather than crashing on missing fields).
 function ensureBioPage(agent) {
-  const current = agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {};
-  const defaults = defaultBioPage(agent);
-  return {
-    ...defaults,
-    ...current,
-    primaryCtaText: current.primaryCtaText || current.ctaText || defaults.primaryCtaText,
-    ctaText: current.ctaText || current.primaryCtaText || defaults.ctaText,
-    showWebCallButton: current.showWebCallButton ?? current.showWebCall ?? defaults.showWebCallButton,
-    showWebCall: current.showWebCall ?? current.showWebCallButton ?? defaults.showWebCall,
-    showAppointmentButton: current.showAppointmentButton ?? current.showAppointment ?? defaults.showAppointmentButton,
-    showAppointment: current.showAppointment ?? current.showAppointmentButton ?? defaults.showAppointment,
-    businessInfo: { ...defaults.businessInfo, ...(current.businessInfo || {}) },
-    socialLinks: { ...defaults.socialLinks, ...(current.socialLinks || {}) },
-    quickTopics: Array.isArray(current.quickTopics) && current.quickTopics.length
-      ? current.quickTopics
-      : DEFAULT_QUICK_TOPICS.map((topic) => ({ ...topic }))
-  };
+  return resolveBioPage(agent);
 }
 
 function sanitizeQuickTopics(value) {
@@ -196,19 +226,47 @@ function sanitizeQuickTopics(value) {
   });
 }
 
+function sanitizeSectionOrder(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new ApiError(400, "sectionOrder must be a list.");
+  const seen = new Set();
+  const cleaned = [];
+  for (const raw of value) {
+    const id = String(raw || "").trim();
+    if (KNOWN_SECTIONS.includes(id) && !seen.has(id)) {
+      seen.add(id);
+      cleaned.push(id);
+    }
+  }
+  // Always keep the hero and actions present so a bad order can't produce a blank page.
+  if (!cleaned.includes("hero")) cleaned.unshift("hero");
+  if (!cleaned.includes("actions")) cleaned.push("actions");
+  return cleaned;
+}
+
 function sanitizeBioPagePatch(body = {}) {
   const patch = {};
   for (const field of BIO_STRING_FIELDS) {
     if (body[field] === undefined) continue;
-    if (BIO_TEXT_FIELDS.includes(field)) patch[field] = sanitizeText(body[field]);
-    else patch[field] = String(body[field] || "").trim().slice(0, 500);
+    if (BIO_TEXT_FIELDS.includes(field)) {
+      patch[field] = sanitizeText(body[field]);
+    } else if (BIO_ENUM_FIELDS[field]) {
+      // Constrained token: accept only known values, otherwise silently ignore.
+      const value = String(body[field] || "").trim();
+      if (BIO_ENUM_FIELDS[field].includes(value)) patch[field] = value;
+    } else {
+      patch[field] = String(body[field] || "").trim().slice(0, 500);
+    }
   }
-  for (const field of ["primaryColor", "backgroundColor", "textColor", "buttonColor", "cardColor", "accentColor"]) {
+  for (const field of BIO_COLOR_FIELDS) {
     if (patch[field] !== undefined && !HEX_COLOR.test(patch[field])) throw new ApiError(400, `${field} must be a safe hex color.`);
   }
-  if (patch.template && !BIO_PAGE_TEMPLATES.some((item) => item.templateId === patch.template)) throw new ApiError(400, "Bio page template is not valid.");
-  if (patch.fontStyle && !FONT_STYLES.includes(patch.fontStyle)) throw new ApiError(400, "Font style is not valid.");
-  if (patch.animation && !ANIMATIONS.includes(patch.animation)) throw new ApiError(400, "Animation is not valid.");
+  if (patch.template) {
+    if (!isValidTemplateId(patch.template)) throw new ApiError(400, "Bio page template is not valid.");
+    patch.template = normalizeTemplateId(patch.template);
+  }
+  const sectionOrder = sanitizeSectionOrder(body.sectionOrder);
+  if (sectionOrder) patch.sectionOrder = sectionOrder;
   for (const field of BIO_BOOL_FIELDS) {
     if (body[field] !== undefined) patch[field] = Boolean(body[field]);
   }
@@ -225,6 +283,14 @@ function sanitizeBioPagePatch(body = {}) {
   if (patch.ctaText !== undefined && patch.primaryCtaText === undefined) patch.primaryCtaText = patch.ctaText;
   if (patch.showWebCallButton !== undefined && patch.showWebCall === undefined) patch.showWebCall = patch.showWebCallButton;
   if (patch.showWebCall !== undefined && patch.showWebCallButton === undefined) patch.showWebCallButton = patch.showWebCall;
+  // Keep the voice-call toggle in sync across its three historical field names so the
+  // public page and web-call gating all agree regardless of which one was sent.
+  const voiceToggle = patch.showVoiceCallButton ?? patch.showWebCallButton ?? patch.showWebCall;
+  if (voiceToggle !== undefined) {
+    if (patch.showVoiceCallButton === undefined) patch.showVoiceCallButton = voiceToggle;
+    if (patch.showWebCallButton === undefined) patch.showWebCallButton = voiceToggle;
+    if (patch.showWebCall === undefined) patch.showWebCall = voiceToggle;
+  }
   if (patch.showAppointmentButton !== undefined && patch.showAppointment === undefined) patch.showAppointment = patch.showAppointmentButton;
   if (patch.showAppointment !== undefined && patch.showAppointmentButton === undefined) patch.showAppointmentButton = patch.showAppointment;
   patch.updatedAt = new Date();
@@ -666,7 +732,7 @@ export const listAgents = asyncHandler(async (req, res) => {
   const agents = await Agent.find({
     ...userFilter(req),
     status: { $ne: "archived" }
-  }).sort({ createdAt: -1 });
+  }).sort({ createdAt: -1 }).lean();
   res.json(agents);
 });
 
@@ -688,7 +754,11 @@ export const updateBioPage = asyncHandler(async (req, res) => {
   const agent = await getOwnedAgent(req);
   const current = ensureBioPage(agent);
   const patch = sanitizeBioPagePatch(req.body);
-  const templatePatch = patch.template ? templateDefaults(patch.template) : {};
+  // Applying a template only re-applies the full preset (layout, typography, spacing, card
+  // & button style, section order, CTA defaults, colors) when the template actually changes.
+  // A normal save (same template) keeps the user's customizations instead of resetting them.
+  const templateChanged = patch.template && patch.template !== current.template;
+  const templatePatch = templateChanged ? templateDefaults(patch.template) : {};
   agent.bioPage = {
     ...current,
     ...templatePatch,

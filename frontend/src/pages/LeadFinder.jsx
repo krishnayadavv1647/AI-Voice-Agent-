@@ -1,4 +1,5 @@
 import { ExternalLink, History, MailSearch, MapPin, MoreVertical, RefreshCw, Save, Search, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -21,9 +22,10 @@ function errorText(err) {
 }
 
 export default function LeadFinder() {
-  const [agents, setAgents] = useState([]);
-  const [providers, setProviders] = useState([]);
-  const [runs, setRuns] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: () => api("/agents") });
+  const { data: providers = [] } = useQuery({ queryKey: ["lead-finder-providers"], queryFn: () => api("/lead-finder/providers") });
+  const { data: runs = [], error: runsError } = useQuery({ queryKey: ["lead-finder-runs"], queryFn: () => api("/lead-finder/runs") });
   const [form, setForm] = useState(initialForm);
   const [currentRunId, setCurrentRunId] = useState("");
   const [leadsPreview, setLeadsPreview] = useState([]);
@@ -34,32 +36,26 @@ export default function LeadFinder() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [openActionsId, setOpenActionsId] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || (runsError ? errorText(runsError) : "");
 
   const selectedProvider = useMemo(
     () => providers.find((provider) => provider.key === form.provider),
     [providers, form.provider]
   );
 
-  async function load() {
-    const [agentList, providerList, runList] = await Promise.all([
-      api("/agents"),
-      api("/lead-finder/providers"),
-      api("/lead-finder/runs")
-    ]);
-    setAgents(agentList);
-    setProviders(providerList);
-    setRuns(runList);
+  // Default the form agent/provider once the option lists have loaded.
+  useEffect(() => {
     setForm((current) => ({
       ...current,
-      agentId: current.agentId || agentList[0]?._id || "",
-      provider: current.provider || providerList[0]?.key || "mock"
+      agentId: current.agentId || agents[0]?._id || "",
+      provider: current.provider || providers[0]?.key || "mock"
     }));
-  }
+  }, [agents, providers]);
 
-  useEffect(() => {
-    load().catch((err) => setError(errorText(err)));
-  }, []);
+  function reloadRuns() {
+    queryClient.invalidateQueries({ queryKey: ["lead-finder-runs"] });
+  }
 
   function setField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -77,7 +73,7 @@ export default function LeadFinder() {
     event.preventDefault();
     setSearching(true);
     setNotice("");
-    setError("");
+    setActionError("");
     setSelectedIds([]);
 
     try {
@@ -86,10 +82,9 @@ export default function LeadFinder() {
       setLeadsPreview(result.leadsPreview || []);
       setSelectedIds((result.leadsPreview || []).map((lead) => lead._id));
       setNotice(result.totalFound ? `${result.totalFound} leads found.` : "No leads found.");
-      const runList = await api("/lead-finder/runs");
-      setRuns(runList);
+      reloadRuns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setSearching(false);
     }
@@ -97,7 +92,7 @@ export default function LeadFinder() {
 
   async function loadRun(runId) {
     setNotice("");
-    setError("");
+    setActionError("");
     setHistoryOpen(false);
     try {
       const run = await api(`/lead-finder/runs/${runId}`);
@@ -116,7 +111,7 @@ export default function LeadFinder() {
         enrichEmails: false
       }));
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     }
   }
 
@@ -124,13 +119,13 @@ export default function LeadFinder() {
     if (!currentRunId) return;
     const ids = leadIds || selectedIds;
     if (!ids.length) {
-      setError("Select at least one lead to save.");
+      setActionError("Select at least one lead to save.");
       return;
     }
 
     setSaving(true);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       const result = await api(`/lead-finder/runs/${currentRunId}/save`, { method: "POST", body: { leadIds: ids } });
@@ -138,9 +133,9 @@ export default function LeadFinder() {
       const run = await api(`/lead-finder/runs/${currentRunId}`);
       setLeadsPreview(run.leadsPreview || []);
       setSelectedIds([]);
-      setRuns(await api("/lead-finder/runs"));
+      reloadRuns();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setSaving(false);
     }
@@ -148,7 +143,7 @@ export default function LeadFinder() {
 
   async function enrichEmails(leadIds) {
     if (!currentRunId) {
-      setError("Run a lead search before finding emails.");
+      setActionError("Run a lead search before finding emails.");
       return;
     }
 
@@ -157,7 +152,7 @@ export default function LeadFinder() {
 
     setEnrichingIds(ids);
     setNotice("");
-    setError("");
+    setActionError("");
 
     try {
       const result = await api("/lead-finder/enrich-emails", {
@@ -168,7 +163,7 @@ export default function LeadFinder() {
       const found = (result.leadsPreview || []).filter((lead) => ids.includes(lead._id) && lead.emailEnrichmentStatus === "found").length;
       setNotice(`${found} leads enriched with email addresses.`);
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setEnrichingIds([]);
     }
@@ -332,7 +327,7 @@ export default function LeadFinder() {
                 <p className="text-[13px] text-neutral-500">Recent provider runs</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button className="btn-secondary" onClick={() => load().catch((err) => setError(errorText(err)))}>
+                <button className="btn-secondary" onClick={reloadRuns}>
                   <RefreshCw size={16} />Refresh
                 </button>
                 <button

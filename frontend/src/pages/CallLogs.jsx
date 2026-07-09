@@ -1,5 +1,7 @@
 ﻿import { Download, FileText, MoreVertical, PhoneCall, PlayCircle, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
@@ -23,13 +25,18 @@ function callPhone(call) {
 }
 
 export default function CallLogs() {
-  const [calls, setCalls] = useState([]);
+  const queryClient = useQueryClient();
+  const { data: calls = [], error: queryError } = useQuery({
+    queryKey: ["calls"],
+    queryFn: () => api("/calls")
+  });
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
   const [actingId, setActingId] = useState("");
   const [openOptionsId, setOpenOptionsId] = useState("");
   const [notice, setNotice] = useState("");
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const error = actionError || queryError?.message || "";
 
   const filteredCalls = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -41,36 +48,28 @@ export default function CallLogs() {
     );
   }, [calls, search]);
 
-  async function load() {
-    try {
-      setCalls(await api("/calls"));
-    } catch (err) {
-      setError(err.message);
-    }
+  function reloadCalls() {
+    queryClient.invalidateQueries({ queryKey: ["calls"] });
   }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   async function remove(id) {
     if (!confirm("Delete this call log?")) return;
     await api(`/calls/${id}`, { method: "DELETE" });
     setOpenOptionsId("");
-    load();
+    reloadCalls();
   }
 
   async function sync(id) {
     setActingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       await api(`/calls/${id}/sync`, { method: "POST" });
       setNotice("Call synced.");
       setOpenOptionsId("");
-      await load();
+      reloadCalls();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -79,14 +78,14 @@ export default function CallLogs() {
   async function retry(id) {
     setActingId(id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       await api(`/calls/${id}/retry`, { method: "POST" });
       setNotice("Retry call started.");
       setOpenOptionsId("");
-      await load();
+      reloadCalls();
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -95,7 +94,7 @@ export default function CallLogs() {
   async function downloadRecording(call) {
     setActingId(call._id);
     setNotice("");
-    setError("");
+    setActionError("");
     try {
       const { blob, contentType } = await apiBlob(`/calls/${call._id}/recording`);
       const extension = contentType.includes("wav") ? "wav" : contentType.includes("ogg") ? "ogg" : "mp3";
@@ -108,7 +107,7 @@ export default function CallLogs() {
       setNotice("Recording download started.");
       setOpenOptionsId("");
     } catch (err) {
-      setError(errorText(err));
+      setActionError(errorText(err));
     } finally {
       setActingId("");
     }
@@ -171,8 +170,8 @@ export default function CallLogs() {
                       <td className="text-right">
                         <CallOptionsMenu
                           call={call}
-                          isOpen={openOptionsId === call._id}
-                          setOpen={(open) => setOpenOptionsId(open ? call._id : "")}
+                          isOpen={openOptionsId === `desktop:${call._id}`}
+                          setOpen={(open) => setOpenOptionsId(open ? `desktop:${call._id}` : "")}
                           setSelected={setSelected}
                           sync={sync}
                           retry={retry}
@@ -213,8 +212,8 @@ function CallCard({ call, setSelected, sync, retry, remove, downloadRecording, a
       <div className="mt-4 flex justify-end">
         <CallOptionsMenu
           call={call}
-          isOpen={openOptionsId === call._id}
-          setOpen={(open) => setOpenOptionsId(open ? call._id : "")}
+          isOpen={openOptionsId === `mobile:${call._id}`}
+          setOpen={(open) => setOpenOptionsId(open ? `mobile:${call._id}` : "")}
           setSelected={setSelected}
           sync={sync}
           retry={retry}
@@ -282,6 +281,53 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
     action();
   }
 
+  const menu = (
+    <div
+      ref={menuRef}
+      className="call-options-menu fixed z-[9999] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
+      style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
+      role="menu"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="px-2 pb-2 pt-1">
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">Recording</p>
+        {hasRecording ? (
+          <div className="space-y-2">
+            <audio className="w-full" controls src={call.recordingUrl} />
+            <MenuButton icon={PlayCircle} onClick={() => run(() => setSelected(call))}>
+              Play Recording
+            </MenuButton>
+            <MenuButton icon={Download} disabled={actingId === call._id} onClick={() => run(() => downloadRecording(call))}>
+              Download Recording
+            </MenuButton>
+          </div>
+        ) : (
+          <p className="rounded-xl bg-neutral-50 px-3 py-2 text-sm text-neutral-500">No recording available</p>
+        )}
+      </div>
+
+      <div className="mt-1 border-t border-hairline px-2 py-2">
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">Actions</p>
+        <MenuButton icon={FileText} onClick={() => run(() => setSelected(call))}>
+          View Transcript / Details
+        </MenuButton>
+        <MenuButton icon={RefreshCw} disabled={actingId === call._id || !canSync} title={!canSync ? "Provider call ID is missing for this call log." : ""} onClick={() => run(() => sync(call._id))}>
+          Retry Sync
+        </MenuButton>
+        <MenuButton icon={PhoneCall} disabled={actingId === call._id || !canCallAgain} title={!canCallAgain ? "This call log needs an agent and phone number before calling again." : ""} onClick={() => run(() => retry(call._id))}>
+          Call Again
+        </MenuButton>
+      </div>
+
+      <div className="mt-1 border-t border-hairline px-2 pt-2">
+        <MenuButton danger icon={Trash2} onClick={() => run(() => remove(call._id))}>
+          Delete
+        </MenuButton>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <button
@@ -303,50 +349,7 @@ function CallOptionsMenu({ call, isOpen, setOpen, setSelected, sync, retry, remo
         <MoreVertical size={18} />
       </button>
 
-      {isOpen && (
-        <div
-          ref={menuRef}
-          className="fixed z-[9999] w-[min(20rem,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-hairline bg-white p-2 text-left shadow-pop"
-          style={{ top: position.top, left: position.left, maxHeight: position.maxHeight }}
-          role="menu"
-        >
-          <div className="px-2 pb-2 pt-1">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">Recording</p>
-            {hasRecording ? (
-              <div className="space-y-2">
-                <audio className="w-full" controls src={call.recordingUrl} />
-                <MenuButton icon={PlayCircle} onClick={() => run(() => setSelected(call))}>
-                  Play Recording
-                </MenuButton>
-                <MenuButton icon={Download} disabled={actingId === call._id} onClick={() => run(() => downloadRecording(call))}>
-                  Download Recording
-                </MenuButton>
-              </div>
-            ) : (
-              <p className="rounded-xl bg-neutral-50 px-3 py-2 text-sm text-neutral-500">No recording available</p>
-            )}
-          </div>
-
-          <div className="mt-1 border-t border-hairline px-2 py-2">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">Actions</p>
-            <MenuButton icon={FileText} onClick={() => run(() => setSelected(call))}>
-              View Transcript / Details
-            </MenuButton>
-            <MenuButton icon={RefreshCw} disabled={actingId === call._id || !canSync} title={!canSync ? "Provider call ID is missing for this call log." : ""} onClick={() => run(() => sync(call._id))}>
-              Retry Sync
-            </MenuButton>
-            <MenuButton icon={PhoneCall} disabled={actingId === call._id || !canCallAgain} title={!canCallAgain ? "This call log needs an agent and phone number before calling again." : ""} onClick={() => run(() => retry(call._id))}>
-              Call Again
-            </MenuButton>
-          </div>
-
-          <div className="mt-1 border-t border-hairline px-2 pt-2">
-            <MenuButton danger icon={Trash2} onClick={() => run(() => remove(call._id))}>
-              Delete
-            </MenuButton>
-          </div>
-        </div>
-      )}
+      {isOpen && typeof document !== "undefined" ? createPortal(menu, document.body) : null}
     </>
   );
 }
@@ -359,7 +362,11 @@ function MenuButton({ children, icon: Icon, danger = false, disabled = false, on
         danger ? "text-rose-700 hover:bg-rose-50" : "text-neutral-700 hover:bg-neutral-50 hover:text-ink"
       } disabled:cursor-not-allowed disabled:opacity-50`}
       disabled={disabled}
-      onClick={onClick}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!disabled) onClick?.(event);
+      }}
       role="menuitem"
       title={title}
     >

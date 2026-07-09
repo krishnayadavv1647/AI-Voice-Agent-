@@ -9,7 +9,15 @@ function filter(req) {
 }
 
 export const listLeads = asyncHandler(async (req, res) => {
-  const leads = await Lead.find(filter(req)).populate("agentId", "agentName providerWorkflowId providerAgentId callerIdNumber").populate("callLogId").sort({ createdAt: -1 });
+  // Trimming the callLogId populate is a big win: a full CallLog carries the transcript and several
+  // Mixed raw-payload blobs (providerPayload/rawWebhookPayload/rawRunDetails/leadData) that the leads
+  // list never uses (it only reads callLogId.transcriptUrl). Exclude just those heavy fields so all
+  // normal fields still come through. .lean() then skips Mongoose hydration on the whole list.
+  const leads = await Lead.find(filter(req))
+    .populate("agentId", "agentName providerWorkflowId providerAgentId callerIdNumber")
+    .populate("callLogId", "-transcript -providerPayload -rawWebhookPayload -rawRunDetails -leadData")
+    .sort({ createdAt: -1 })
+    .lean();
   res.json(leads);
 });
 

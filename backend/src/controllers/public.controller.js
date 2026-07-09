@@ -6,7 +6,7 @@ import { createAppointmentRecord } from "../services/appointment.service.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
-import { defaultBioPage } from "../services/bioPageTemplates.js";
+import { resolveBioPage } from "../services/bioPageTemplates.js";
 
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
 const PUBLIC_AGENT_FILTER = {
@@ -54,7 +54,7 @@ async function enforceCallbackLimits({ phoneNumber, ip }) {
 }
 
 function publicAgentResponse(agent) {
-  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  const bioPage = resolveBioPage(agent);
   const publicWebCallEnabled = Boolean(bioPageAllowsWebCall(bioPage) && agentWebCallReady(agent));
 
   return {
@@ -89,7 +89,7 @@ async function getPublicAgentByIdOrSlug(idOrSlug) {
 
 export const getPublicAgent = asyncHandler(async (req, res) => {
   const agent = await getPublicAgentByIdOrSlug(req.params.publicSlug);
-  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  const bioPage = resolveBioPage(agent);
   if (bioPage.isPublished === false) throw new ApiError(403, "This agent page is currently unavailable.");
   res.json(publicAgentResponse(agent));
 });
@@ -121,7 +121,7 @@ export const getPublicAgentBioPage = asyncHandler(async (req, res) => {
   const agent = await Agent.findOne(query);
   if (!agent) throw new ApiError(404, "Public agent not found");
 
-  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  const bioPage = resolveBioPage(agent);
   if (bioPage.isPublished === false) throw new ApiError(403, "This page is not published.");
 
   res.json({
@@ -238,7 +238,7 @@ export const createPublicAppointment = asyncHandler(async (req, res) => {
   const agent = await Agent.findById(req.params.agentId);
 
   if (!agent) throw new ApiError(404, "Agent not found");
-  const bioPage = { ...defaultBioPage(agent), ...(agent.bioPage?.toObject ? agent.bioPage.toObject() : agent.bioPage || {}) };
+  const bioPage = resolveBioPage(agent);
   if (!agent.isPublic || agent.status === "archived" || bioPage.isPublished === false) {
     throw new ApiError(403, "This agent page is currently unavailable.");
   }
