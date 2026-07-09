@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
-import VoiceConfigurationPanel, { defaultVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
+import VoiceConfigurationPanel, { defaultVoiceConfiguration, normalizeVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
 import { agentTypes, defaultLeadQuestions, languages, personalities, templateOptions, templates, tones } from "../lib/options.js";
 
@@ -36,8 +36,8 @@ const initialForm = {
   voiceConfiguration: defaultVoiceConfiguration,
   llmConfiguration: defaultLLMConfiguration,
   language: "english",
-  sttProvider: "deepgram",
-  ttsProvider: "elevenlabs",
+  sttProvider: "platform_default",
+  ttsProvider: "platform_default",
   voiceId: "",
   firstMessage: "",
   telephonyConfigId: "",
@@ -131,7 +131,7 @@ export default function CreateAgent() {
     }
     setLoading(true);
     try {
-      const payload = { ...form };
+      const payload = { ...form, voiceConfiguration: normalizeVoiceConfiguration(form.voiceConfiguration) };
       if (!payload.telephonyConfigId) delete payload.telephonyConfigId;
       if (payload.imageMode !== "upload_custom") delete payload.imageUrl;
       const result = await api("/agents", { method: "POST", body: payload });
