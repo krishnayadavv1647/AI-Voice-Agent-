@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
-import VoiceConfigurationPanel, { defaultVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
+import VoiceConfigurationPanel, { defaultVoiceConfiguration, normalizeVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
 import { agentTypes, languages, tones, personalities } from "../lib/options.js";
 
@@ -96,7 +96,7 @@ export default function EditAgent() {
     next.workflowVersion = agent.workflowVersion || 0;
     next.provider = agent.provider || "vapi";
     next.providerWorkflowId = agent.providerWorkflowId || "";
-    next.voiceConfiguration = {
+    next.voiceConfiguration = normalizeVoiceConfiguration({
       ...defaultVoiceConfiguration,
       ...(result.voiceConfiguration || {}),
       sttSettings: {
@@ -107,7 +107,7 @@ export default function EditAgent() {
         ...defaultVoiceConfiguration.ttsSettings,
         ...(result.voiceConfiguration?.ttsSettings || {})
       }
-    };
+    });
     next.llmConfiguration = {
       ...defaultLLMConfiguration,
       ...(result.llmConfiguration || {}),
@@ -126,8 +126,8 @@ export default function EditAgent() {
     if (field === "callMode") return "outbound";
     if (field === "responseStyle") return "short_clear";
     if (field === "voiceProvider") return "Default Voice";
-    if (field === "sttProvider") return "deepgram";
-    if (field === "ttsProvider") return "elevenlabs";
+    if (field === "sttProvider") return "platform_default";
+    if (field === "ttsProvider") return "platform_default";
     if (field === "voiceSpeed") return "Normal";
     return "";
   }
@@ -157,6 +157,7 @@ export default function EditAgent() {
     try {
       const payload = {
         ...form,
+        voiceConfiguration: normalizeVoiceConfiguration(form.voiceConfiguration),
         telephonyConfigId: form.telephonyConfigId || null
       };
       const result = await api(`/agents/${id}`, { method: "PUT", body: payload });
@@ -172,7 +173,7 @@ export default function EditAgent() {
         workflowVersion: saved.workflowVersion || 0,
         provider: saved.provider || form.provider,
         providerWorkflowId: saved.providerWorkflowId || form.providerWorkflowId,
-        voiceConfiguration: result.voiceConfiguration || form.voiceConfiguration,
+        voiceConfiguration: normalizeVoiceConfiguration(result.voiceConfiguration || form.voiceConfiguration),
         llmConfiguration: result.llmConfiguration || form.llmConfiguration
       };
       setForm(next);

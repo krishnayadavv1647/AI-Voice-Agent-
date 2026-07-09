@@ -4,7 +4,7 @@ import { api, apiBlob } from "../lib/api.js";
 
 export const defaultVoiceConfiguration = {
   sttIntegrationId: null,
-  sttProvider: "deepgram",
+  sttProvider: "platform_default",
   sttModel: "",
   sttLanguage: "en",
   sttSettings: {
@@ -15,7 +15,7 @@ export const defaultVoiceConfiguration = {
     silenceTimeout: 1000
   },
   ttsIntegrationId: null,
-  ttsProvider: "elevenlabs",
+  ttsProvider: "platform_default",
   ttsModel: "",
   ttsVoiceId: "",
   ttsLanguage: "en",
@@ -32,6 +32,21 @@ export const defaultVoiceConfiguration = {
 
 function integrationFor(integrations, provider) {
   return integrations.find((item) => item.provider === provider && item.credentialStatus === "connected");
+}
+
+export function normalizeVoiceConfiguration(value = {}) {
+  const merged = {
+    ...defaultVoiceConfiguration,
+    ...(value || {}),
+    sttSettings: { ...defaultVoiceConfiguration.sttSettings, ...(value?.sttSettings || {}) },
+    ttsSettings: { ...defaultVoiceConfiguration.ttsSettings, ...(value?.ttsSettings || {}) }
+  };
+
+  return {
+    ...merged,
+    sttProvider: merged.sttProvider !== "platform_default" && !merged.sttIntegrationId ? "platform_default" : merged.sttProvider,
+    ttsProvider: merged.ttsProvider !== "platform_default" && !merged.ttsIntegrationId ? "platform_default" : merged.ttsProvider
+  };
 }
 
 function optionName(item) {
@@ -57,12 +72,7 @@ function Toggle({ label, checked, onChange }) {
 }
 
 export default function VoiceConfigurationPanel({ value, onChange, section = "all", compact = false }) {
-  const config = {
-    ...defaultVoiceConfiguration,
-    ...(value || {}),
-    sttSettings: { ...defaultVoiceConfiguration.sttSettings, ...(value?.sttSettings || {}) },
-    ttsSettings: { ...defaultVoiceConfiguration.ttsSettings, ...(value?.ttsSettings || {}) }
-  };
+  const config = normalizeVoiceConfiguration(value);
   const [integrations, setIntegrations] = useState([]);
   const [sttModels, setSttModels] = useState([]);
   const [ttsModels, setTtsModels] = useState([]);
@@ -120,7 +130,7 @@ export default function VoiceConfigurationPanel({ value, onChange, section = "al
   }, [voices, config.ttsVoiceId]);
 
   const sttOptions = useMemo(() => {
-    const options = [{ value: "deepgram", label: "Deepgram" }];
+    const options = [{ value: "platform_default", label: "Platform Default (Deepgram)" }];
     for (const integration of integrations) {
       if (integration.credentialStatus !== "connected" || !integration.capabilities?.stt) continue;
       options.push({ value: integration.provider, label: integration.provider === "deepgram" ? "Deepgram" : "Cartesia" });
@@ -129,7 +139,7 @@ export default function VoiceConfigurationPanel({ value, onChange, section = "al
   }, [integrations]);
 
   const ttsOptions = useMemo(() => {
-    const options = [{ value: "elevenlabs", label: "ElevenLabs" }];
+    const options = [{ value: "platform_default", label: "Platform Default (ElevenLabs)" }];
     for (const integration of integrations) {
       if (integration.credentialStatus !== "connected" || !integration.capabilities?.tts) continue;
       const name = integration.provider === "elevenlabs" ? "ElevenLabs" : integration.provider[0].toUpperCase() + integration.provider.slice(1);
