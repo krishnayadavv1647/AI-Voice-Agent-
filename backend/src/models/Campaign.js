@@ -48,5 +48,8 @@ const campaignSchema = new mongoose.Schema(
 );
 
 campaignSchema.index({ userId: 1, status: 1, createdAt: -1 });
+// Campaigns list filters by userId and sorts by createdAt desc (no status filter), which the
+// status-first compound above can't serve for the sort.
+campaignSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model("Campaign", campaignSchema);

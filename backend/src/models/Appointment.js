@@ -34,5 +34,7 @@ const appointmentSchema = new mongoose.Schema(
 );
 
 appointmentSchema.index({ userId: 1, agentId: 1, leadId: 1, startAt: 1 });
+// Appointments list filters by userId and sorts by createdAt desc.
+appointmentSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model("Appointment", appointmentSchema);

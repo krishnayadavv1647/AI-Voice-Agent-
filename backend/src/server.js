@@ -20,13 +20,23 @@ connectDB()
   .then(async () => {
     console.log("Database connected");
     await Promise.all([refreshPlanConfig(), refreshCreditPricing()]);
+    // Keeping the Gemini connection warm makes a real external API call on startup and every 4 min.
+    // That's worth it in production (shaves voice TTFT) but only wastes quota and slows startup in
+    // local dev. Default: ON in production, OFF everywhere else. Opt in locally with
+    // ENABLE_GEMINI_KEEPWARM=true; opt out in prod with ENABLE_GEMINI_KEEPWARM=false.
+    const shouldWarmGemini =
+      process.env.ENABLE_GEMINI_KEEPWARM === "true" ||
+      (process.env.NODE_ENV === "production" && process.env.ENABLE_GEMINI_KEEPWARM !== "false");
+
     const server = app.listen(PORT, () => {
       console.log(`AI Voice Agent API running on port ${PORT}`);
-      warmGeminiConnection();
-      if (process.env.ENABLE_GEMINI_KEEPWARM !== "false") {
+      if (shouldWarmGemini) {
+        warmGeminiConnection();
         setInterval(() => {
           warmGeminiConnection();
         }, 4 * 60 * 1000).unref();
+      } else {
+        console.log("[server] Gemini keep-warm disabled (set ENABLE_GEMINI_KEEPWARM=true to enable locally).");
       }
     });
 

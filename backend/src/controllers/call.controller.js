@@ -15,7 +15,9 @@ function filter(req) {
 }
 
 export const listCalls = asyncHandler(async (req, res) => {
-  const calls = await CallLog.find(filter(req)).populate("agentId", "agentName").sort({ createdAt: -1 });
+  // .lean() returns plain objects (no Mongoose hydration) — the response shape is identical, but a
+  // large call history serializes much faster. The .filter/.map below still work on plain objects.
+  const calls = await CallLog.find(filter(req)).populate("agentId", "agentName").sort({ createdAt: -1 }).lean();
   res.json(calls);
   // Fire-and-forget: catch up any incomplete calls visible on this page load (no lead yet),
   // including terminal-status calls whose transcript/lead never got generated automatically.

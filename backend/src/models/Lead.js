@@ -75,5 +75,7 @@ const leadSchema = new mongoose.Schema(
 leadSchema.index({ userId: 1, phone: 1 });
 leadSchema.index({ userId: 1, email: 1 });
 leadSchema.index({ userId: 1, website: 1 });
+// Leads list + dashboard "recent leads" both filter by userId and sort by createdAt desc.
+leadSchema.index({ userId: 1, createdAt: -1 });
 
 export default mongoose.model("Lead", leadSchema);

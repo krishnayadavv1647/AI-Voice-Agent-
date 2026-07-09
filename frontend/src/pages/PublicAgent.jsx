@@ -9,12 +9,16 @@
   Check,
   Clock,
   DollarSign,
+  Facebook,
+  Globe,
   GraduationCap,
   Headphones,
   HeartPulse,
   HelpCircle,
   Home,
+  Instagram,
   Landmark,
+  Linkedin,
   MapPin,
   MessageCircle,
   PhoneOff,
@@ -121,6 +125,60 @@ function assetUrl(value) {
   return `${API_URL.replace(/\/api$/, "")}${value}`;
 }
 
+// --- Design-token helpers -------------------------------------------------
+// The public page is fully theme-driven: colors, radii and fonts all come from the
+// saved bioPage so selecting a template changes real structure + styling, not defaults.
+const FONT_STACKS = {
+  Inter: '"App Body Inter", Inter, ui-sans-serif, system-ui, sans-serif',
+  Manrope: '"App Body Manrope", Manrope, "App Body Inter", ui-sans-serif, system-ui, sans-serif',
+  "Rethink Sans": '"App Body Rethink Sans", "Rethink Sans", "App Body Inter", ui-sans-serif, system-ui, sans-serif',
+  Roboto: '"App Heading Roboto", Roboto, "App Body Inter", ui-sans-serif, system-ui, sans-serif',
+  "Stack Sans": '"App Body Stack Sans", "App Body Inter", ui-sans-serif, system-ui, sans-serif'
+};
+const FONT_STYLE_FALLBACK = {
+  modern: { heading: "Manrope", body: "Inter" },
+  professional: { heading: "Manrope", body: "Inter" },
+  friendly: { heading: "Rethink Sans", body: "Inter" },
+  bold: { heading: "Stack Sans", body: "Inter" },
+  elegant: { heading: "Roboto", body: "Inter" }
+};
+const RADIUS_PX = { sm: "10px", md: "14px", lg: "18px", xl: "24px", "2xl": "30px", pill: "999px" };
+const TRACKING_EM = { tight: "-0.02em", normal: "0em", wide: "0.03em" };
+const BODY_PX = { sm: "14px", md: "15.5px", lg: "17px" };
+const CONTENT_MAX = { narrow: "760px", standard: "1080px", wide: "1200px", full: "1320px" };
+
+function fontStack(name) {
+  return FONT_STACKS[name] || FONT_STACKS.Inter;
+}
+
+function clampHex(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+}
+
+function hexToRgb(hex) {
+  const clean = String(hex || "").replace("#", "");
+  if (clean.length !== 6) return { r: 37, g: 99, b: 235 };
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16)
+  };
+}
+
+function shade(hex, amount) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = (c) => {
+    const next = amount < 0 ? c * (1 + amount) : c + (255 - c) * amount;
+    return Math.max(0, Math.min(255, Math.round(next)));
+  };
+  return `#${[mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function rgba(hex, alpha) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function triggerRobotReaction() {
   document.querySelectorAll(".vf-robot-img").forEach((el) => {
     el.classList.remove("vf-robot-react");
@@ -165,13 +223,22 @@ export default function PublicAgent() {
 
   const bio = agent?.bioPage || {};
   const businessInfo = bio.businessInfo || {};
+  const socialLinks = bio.socialLinks || {};
   const showAppointment = (bio.showAppointmentButton ?? bio.showAppointment) !== false;
   const showVoiceCall = (bio.showVoiceCallButton ?? bio.showWebCallButton ?? bio.showWebCall) !== false && Boolean(agent?.publicWebCallEnabled);
+  const showBusinessInfo = bio.showBusinessInfo !== false;
+  const showSocialLinks = bio.showSocialLinks === true;
+  const showQuickTopics = bio.showQuickTopics === true;
+  const showTopBar = bio.showTopBar !== false;
+  const showAgentImage = bio.showAgentImage !== false;
+  const showLogo = bio.showLogo !== false;
+  const layoutVariant = bio.layoutVariant || "centered_minimal";
   const primaryCta = text(bio.primaryCtaText || bio.ctaText, "Talk to AI Agent");
   const quickTopics = (Array.isArray(bio.quickTopics) && bio.quickTopics.length ? bio.quickTopics : defaultQuickTopics)
     .filter((topic) => topic.isVisible !== false)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     .slice(0, 8);
+  const coverImageUrl = assetUrl(bio.coverImageUrl);
   const profile = {
     title: text(bio.headline || agent?.publicTitle || agent?.agentName || agent?.name, "Coaching Center AI"),
     subtitle: publicText(
@@ -191,18 +258,58 @@ export default function PublicAgent() {
     secondaryCta: text(bio.secondaryCtaText, "Book Appointment"),
     voiceCta: text(bio.voiceCallCtaText, "Voice Call"),
     logoUrl: assetUrl(bio.logoUrl),
-    agentImageUrl: assetUrl(bio.agentImageUrl || bio.logoUrl)
+    agentImageUrl: assetUrl(bio.agentImageUrl || bio.logoUrl),
+    coverImageUrl,
+    socialLinks
   };
+
+  // Build the CSS-variable theme entirely from the saved bioPage tokens.
+  const primaryColor = clampHex(bio.primaryColor, "#2563EB");
+  const buttonColor = clampHex(bio.buttonColor, primaryColor);
+  const backgroundColor = clampHex(bio.backgroundColor, "#F8FAFC");
+  const cardColor = clampHex(bio.cardColor, "#FFFFFF");
+  const textColor = clampHex(bio.textColor, "#0F172A");
+  const accentColor = clampHex(bio.accentColor, "#DBEAFE");
+  const mutedColor = clampHex(bio.mutedColor, "#64748B");
+  const borderColor = clampHex(bio.borderColor, "#E2E8F0");
+  const fontFallback = FONT_STYLE_FALLBACK[bio.fontStyle] || FONT_STYLE_FALLBACK.modern;
   const pageStyle = {
-    "--accent": "#2563EB",
-    "--accent-d": "#1D4ED8",
-    "--accent-soft": "#DBEAFE",
-    "--accent-tint": "rgba(37,99,235,.14)",
-    "--bg": "#F8FAFC",
-    "--panel": "#FFFFFF",
-    "--line": "#D8E4F5",
-    "--text": "#0F172A",
-    "--muted": "#64748B"
+    "--accent": primaryColor,
+    "--accent-d": shade(primaryColor, -0.18),
+    "--accent-soft": accentColor,
+    "--accent-tint": rgba(primaryColor, 0.14),
+    "--btn": buttonColor,
+    "--btn-d": shade(buttonColor, -0.14),
+    "--btn-ink": "#FFFFFF",
+    "--bg": backgroundColor,
+    "--bg-2": shade(backgroundColor, -0.04),
+    "--panel": cardColor,
+    "--panel-soft": rgba(primaryColor, 0.05),
+    "--line": borderColor,
+    "--text": textColor,
+    "--muted": mutedColor,
+    "--radius": RADIUS_PX[bio.borderRadius] || "18px",
+    "--button-radius": RADIUS_PX[bio.buttonRadius] || "14px",
+    "--heading-font": fontStack(bio.headingFont || fontFallback.heading),
+    "--body-font": fontStack(bio.bodyFont || fontFallback.body),
+    "--heading-weight": bio.headingWeight || "800",
+    "--heading-tracking": TRACKING_EM[bio.headingTracking] || "-0.02em",
+    "--body-size": BODY_PX[bio.bodySize] || "15.5px",
+    "--content-max": CONTENT_MAX[bio.contentWidth] || "1080px"
+  };
+  const landingProps = {
+    bio,
+    profile,
+    layoutVariant,
+    showBusinessInfo,
+    showSocialLinks,
+    showQuickTopics,
+    showAppointment,
+    showVoiceCall,
+    showAgentImage,
+    showLogo,
+    quickTopics,
+    coverImageUrl
   };
 
   useEffect(() => {
@@ -329,17 +436,16 @@ export default function PublicAgent() {
   }
 
   return (
-    <main className={`vf-theme vf-template-${bio.template || "coaching_education"} vf-anim-${bio.animation || "fade_in"} min-h-screen text-[#0f172a]`} style={pageStyle}>
+    <main
+      className={`vf-theme vf-template-${bio.template || "coaching_education"} vf-layout-${layoutVariant} vf-bg-${bio.backgroundStyle || "soft_gradient"} vf-space-${bio.spacingScale || "comfortable"} vf-shadow-${bio.cardShadow || "soft"} vf-border-${bio.cardBorder || "subtle"} vf-anim-${bio.animation || "fade_in"} min-h-screen`}
+      style={pageStyle}
+    >
       <style>{themeCss}</style>
-      <TopBar profile={profile} view={view} onHome={() => setView("landing")} />
+      {showTopBar && <TopBar profile={profile} view={view} showLogo={showLogo} onHome={() => setView("landing")} />}
 
       {view === "landing" && (
-        <Landing
-          profile={profile}
-          showBusinessInfo={bio.showBusinessInfo !== false}
-          showAppointment={showAppointment}
-          showVoiceCall={showVoiceCall}
-          quickTopics={quickTopics}
+        <LandingRenderer
+          {...landingProps}
           onStart={() => openChat()}
           onCall={launchVoiceCall}
           onBook={() => setView("booking")}
@@ -389,19 +495,21 @@ export default function PublicAgent() {
   );
 }
 
-function TopBar({ profile, view, onHome }) {
+function TopBar({ profile, view, showLogo = true, onHome }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-[#d8e4f5] bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-[66px] max-w-[1200px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+    <header className="vf-topbar sticky top-0 z-30">
+      <div className="vf-landing flex h-[66px] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <button onClick={onHome} className="flex min-w-0 items-center gap-3 text-left" aria-label="Home">
-          <span className="vf-avatar-frame h-10 w-10 flex-none rounded-xl">
-            <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
-          </span>
+          {showLogo && (
+            <span className="vf-avatar-frame h-10 w-10 flex-none rounded-xl">
+              <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
+            </span>
+          )}
           <span className="min-w-0 leading-tight">
             <span className="block truncate text-[14.5px] font-extrabold">{profile.title}</span>
-            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-[#64748b]">
+            <span className="vf-muted flex min-w-0 items-center gap-1.5 text-[11.5px]">
               <span className="truncate">{profile.category}</span>
-              <span className="text-[#cbd5e1]">·</span>
+              <span className="opacity-50">·</span>
               <span className="hidden truncate sm:inline">{profile.availability}</span>
             </span>
           </span>
@@ -422,73 +530,26 @@ function TopBar({ profile, view, onHome }) {
   );
 }
 
-function Landing({ profile, showBusinessInfo, showAppointment, showVoiceCall, quickTopics, onStart, onBook, onCall, onTile }) {
-  return (
-    <div className="vf-enter mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
-      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,.82fr)]">
-        <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-          <AiPill />
-          <div className="vf-hero-visual mt-6 grid w-full max-w-[440px] place-items-center rounded-[24px] p-6 sm:p-8">
-            <Robot size={248} src={profile.agentImageUrl} glow float />
-          </div>
-          <h1 className="mt-6 text-[clamp(34px,5.4vw,58px)] font-black leading-[1.04] tracking-tight">{profile.title}</h1>
-          <p className="mt-4 max-w-[500px] text-[15px] leading-relaxed text-[#64748b] sm:text-[17px]">{profile.subtitle}</p>
-          <TrustChips showVoiceCall={showVoiceCall} />
-        </section>
-
-        <section className="flex w-full flex-col gap-5">
-          {showBusinessInfo && (
-            <div className="vf-glass rounded-[24px] p-2 sm:p-3">
-              <InfoRow icon={Building2} label="Business" value={profile.businessName} first />
-              <InfoRow icon={BookOpen} label="Category" value={profile.category} />
-              <InfoRow icon={MapPin} label="Location" value={profile.location} />
-              <InfoRow icon={Sparkles} label="Availability" value={profile.availability} dot />
-              <InfoRow icon={Zap} label="Response Time" value={profile.responseTime} />
-            </div>
-          )}
-          <div className="flex w-full flex-col gap-3">
-            <button className="vf-btn vf-btn-primary vf-cta w-full px-5" onClick={onStart}>
-              <MessageCircle size={19} /> {profile.cta} <ArrowRight size={18} className="ml-auto" />
-            </button>
-            {(showVoiceCall || showAppointment) && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {showVoiceCall && (
-                  <button className="vf-btn vf-btn-soft vf-cta-sec px-4" onClick={onCall} title="Start a voice call">
-                    <Headphones size={18} /> {profile.voiceCta}
-                  </button>
-                )}
-                {showAppointment && (
-                  <button className="vf-btn vf-btn-ghost vf-cta-sec px-4" onClick={onBook}>
-                    <CalendarDays size={18} /> {profile.secondaryCta}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <section className="mt-12 sm:mt-14">
-        <div className="mb-4 flex items-end justify-between">
-          <div>
-            <h2 className="text-[13px] font-extrabold uppercase tracking-[.12em] text-[#94a3b8]">Quick topics</h2>
-            <p className="mt-0.5 text-[15px] font-bold text-[#0f172a]">Popular things people ask</p>
-          </div>
-          <span className="inline-flex items-center gap-1 text-[13px] font-bold text-[#2563eb]">
-            Tap to ask <ArrowRight size={15} />
-          </span>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {quickTopics.map((cat, index) => (
-            <CategoryTile key={cat.id || index} cat={cat} onClick={onTile} />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+// ---------------------------------------------------------------------------
+// LandingRenderer — switches the WHOLE page structure on layoutVariant so each
+// template renders a genuinely different landing page, not just a recolor.
+// ---------------------------------------------------------------------------
+function LandingRenderer(props) {
+  switch (props.layoutVariant) {
+    case "split_saas": return <SplitSaasLanding {...props} />;
+    case "cover_service": return <CoverServiceLanding {...props} />;
+    case "education_advisor": return <EducationAdvisorLanding {...props} />;
+    case "clinic_trust": return <ClinicTrustLanding {...props} />;
+    case "real_estate_cover": return <RealEstateCoverLanding {...props} />;
+    case "booking_first": return <BookingFirstLanding {...props} />;
+    case "finance_trust": return <FinanceTrustLanding {...props} />;
+    case "centered_minimal":
+    default: return <CenteredMinimalLanding {...props} />;
+  }
 }
 
-function TrustChips({ showVoiceCall }) {
+// ---- Shared landing building blocks ---------------------------------------
+function TrustChips({ showVoiceCall, align = "center" }) {
   const chips = [
     { icon: "dot", label: "Online now" },
     { Icon: Zap, label: "Fast response" },
@@ -497,13 +558,416 @@ function TrustChips({ showVoiceCall }) {
   if (showVoiceCall) chips.push({ Icon: Headphones, label: "Voice enabled" });
 
   return (
-    <div className="mt-6 flex flex-wrap justify-center gap-2 lg:justify-start">
+    <div className={`mt-6 flex flex-wrap gap-2 ${align === "left" ? "justify-center lg:justify-start" : "justify-center"}`}>
       {chips.map(({ Icon, label, icon }) => (
-        <span key={label} className="vf-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-bold text-[#475569]">
-          {icon === "dot" ? <GreenDot /> : <Icon size={14} className="text-[#2563eb]" />}
+        <span key={label} className="vf-chip inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-bold">
+          {icon === "dot" ? <GreenDot /> : <Icon size={14} className="vf-accent-ink" />}
           {label}
         </span>
       ))}
+    </div>
+  );
+}
+
+// Primary + secondary calls to action. bookingPrimary promotes the appointment
+// button to the hero position (used by booking-first / appointment-first layouts).
+function Actions({ profile, showVoiceCall, showAppointment, onStart, onCall, onBook, bookingPrimary = false }) {
+  const bookAsPrimary = bookingPrimary && showAppointment;
+
+  const primary = bookAsPrimary ? (
+    <button className="vf-btn vf-btn-primary vf-cta w-full" onClick={onBook}>
+      <CalendarDays size={19} /> {profile.secondaryCta} <ArrowRight size={18} className="ml-auto" />
+    </button>
+  ) : (
+    <button className="vf-btn vf-btn-primary vf-cta w-full" onClick={onStart}>
+      <MessageCircle size={19} /> {profile.cta} <ArrowRight size={18} className="ml-auto" />
+    </button>
+  );
+
+  const secondary = [];
+  if (bookAsPrimary) {
+    secondary.push(
+      <button key="chat" className="vf-btn vf-btn-ghost vf-cta-sec" onClick={onStart}>
+        <MessageCircle size={18} /> {profile.cta}
+      </button>
+    );
+  } else if (showAppointment) {
+    secondary.push(
+      <button key="book" className="vf-btn vf-btn-ghost vf-cta-sec" onClick={onBook}>
+        <CalendarDays size={18} /> {profile.secondaryCta}
+      </button>
+    );
+  }
+  if (showVoiceCall) {
+    secondary.push(
+      <button key="call" className="vf-btn vf-btn-soft vf-cta-sec" onClick={onCall} title="Start a voice call">
+        <Headphones size={18} /> {profile.voiceCta}
+      </button>
+    );
+  }
+
+  return (
+    <div className="vf-actions flex w-full flex-col gap-3">
+      {primary}
+      {secondary.length > 0 && (
+        <div className={`grid gap-3 ${secondary.length > 1 ? "sm:grid-cols-2" : ""}`}>{secondary}</div>
+      )}
+    </div>
+  );
+}
+
+function BusinessInfoCard({ profile, flat = false }) {
+  return (
+    <div className={`${flat ? "vf-info-flat" : "vf-glass"} vf-info-card rounded-[var(--radius)] p-2 sm:p-3`}>
+      <InfoRow icon={Building2} label="Business" value={profile.businessName} first />
+      <InfoRow icon={BookOpen} label="Category" value={profile.category} />
+      <InfoRow icon={MapPin} label="Location" value={profile.location} />
+      <InfoRow icon={Sparkles} label="Availability" value={profile.availability} dot />
+      <InfoRow icon={Zap} label="Response Time" value={profile.responseTime} />
+    </div>
+  );
+}
+
+// Business details shown as trust badges (clinic / finance layouts).
+function TrustBadges({ profile }) {
+  const badges = [
+    { Icon: ShieldCheck, label: "Verified", value: profile.businessName },
+    { Icon: MapPin, label: "Location", value: profile.location },
+    { Icon: Clock, label: "Availability", value: profile.availability },
+    { Icon: Zap, label: "Response", value: profile.responseTime }
+  ];
+  return (
+    <div className="vf-badges grid w-full gap-3 sm:grid-cols-2">
+      {badges.map(({ Icon, label, value }) => (
+        <div key={label} className="vf-badge flex items-center gap-3 rounded-[var(--radius)] p-3.5 text-left">
+          <span className="vf-icon-orb h-[38px] w-[38px] flex-none rounded-xl"><Icon size={18} /></span>
+          <span className="min-w-0">
+            <span className="vf-muted block text-[11.5px] font-bold uppercase tracking-wide">{label}</span>
+            <span className="block truncate text-[14px] font-extrabold">{value}</span>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SocialRow({ socialLinks }) {
+  const items = [
+    { key: "website", Icon: Globe, href: socialLinks.website },
+    { key: "instagram", Icon: Instagram, href: socialLinks.instagram },
+    { key: "facebook", Icon: Facebook, href: socialLinks.facebook },
+    { key: "whatsapp", Icon: MessageCircle, href: socialLinks.whatsapp },
+    { key: "linkedin", Icon: Linkedin, href: socialLinks.linkedin }
+  ].filter((item) => item.href && String(item.href).trim());
+
+  if (!items.length) return null;
+  return (
+    <div className="vf-social flex flex-wrap items-center justify-center gap-2.5">
+      {items.map(({ key, Icon, href }) => (
+        <a
+          key={key}
+          href={/^https?:\/\//i.test(href) ? href : `https://${href}`}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="vf-social-btn grid h-11 w-11 place-items-center rounded-full"
+          aria-label={key}
+        >
+          <Icon size={18} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// Optional "Action Cards" (formerly Quick Topics). Only ever rendered when the
+// user explicitly enables showQuickTopics — off by default to keep pages clean.
+function ActionCards({ quickTopics, onTile }) {
+  if (!quickTopics.length) return null;
+  return (
+    <section className="vf-actioncards mt-10 w-full sm:mt-12">
+      <div className="mb-4">
+        <h2 className="vf-muted text-[12.5px] font-extrabold uppercase tracking-[.12em]">Quick actions</h2>
+        <p className="mt-0.5 text-[15px] font-bold">How can we help?</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {quickTopics.map((cat, index) => (
+          <CategoryTile key={cat.id || index} cat={cat} onClick={onTile} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HeroHeadline({ profile, size = "default", onLight = false }) {
+  return (
+    <>
+      <h1 className={`vf-h1 ${size === "large" ? "vf-h1-lg" : ""} ${onLight ? "text-white" : ""}`}>{profile.title}</h1>
+      <p className={`vf-sub mt-4 ${onLight ? "text-white/85" : ""}`}>{profile.subtitle}</p>
+    </>
+  );
+}
+
+// 1) Minimal Professional — narrow, centered, airy. Small avatar, two clean CTAs,
+//    business info collapsed to one compact inline row.
+function CenteredMinimalLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-landing-narrow vf-enter flex flex-col items-center px-4 py-10 text-center sm:px-6 sm:py-16">
+      {showAgentImage && (
+        <span className="vf-avatar-frame mb-6 grid h-[92px] w-[92px] place-items-center rounded-2xl">
+          <Robot size={72} src={profile.agentImageUrl} glow={false} float={false} />
+        </span>
+      )}
+      <AiPill />
+      <div className="mt-5">
+        <HeroHeadline profile={profile} />
+      </div>
+      <div className="mt-8 w-full max-w-[420px]">
+        <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+      </div>
+      {showBusinessInfo && (
+        <div className="vf-inline-stats mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+          <span className="vf-inline-stat"><BookOpen size={14} /> {profile.category}</span>
+          <span className="vf-inline-dot" />
+          <span className="vf-inline-stat"><MapPin size={14} /> {profile.location}</span>
+          <span className="vf-inline-dot" />
+          <span className="vf-inline-stat"><Zap size={14} /> {profile.responseTime}</span>
+        </div>
+      )}
+      {showSocialLinks && <div className="mt-7"><SocialRow socialLinks={profile.socialLinks} /></div>}
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 2) Modern SaaS — split hero: content left, glassy AI agent card right.
+function SplitSaasLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-enter px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_.95fr]">
+        <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
+          <AiPill />
+          <div className="mt-6">
+            <HeroHeadline profile={profile} size="large" />
+          </div>
+          <TrustChips showVoiceCall={showVoiceCall} align="left" />
+          <div className="mt-8 w-full max-w-[440px]">
+            <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+          </div>
+          {showSocialLinks && <div className="mt-7 w-full"><SocialRow socialLinks={profile.socialLinks} /></div>}
+        </section>
+
+        <section className="w-full">
+          <div className="vf-glass vf-agent-card rounded-[var(--radius)] p-5 sm:p-6">
+            {showAgentImage && (
+              <div className="vf-hero-visual grid place-items-center rounded-[var(--radius)] p-6">
+                <Robot size={190} src={profile.agentImageUrl} glow float />
+              </div>
+            )}
+            <div className="mt-4 flex items-center gap-2 px-1">
+              <GreenDot /><span className="text-[13px] font-bold">{profile.availability}</span>
+            </div>
+            {showBusinessInfo && <div className="mt-3"><BusinessInfoCard profile={profile} flat /></div>}
+          </div>
+        </section>
+      </div>
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 3) Local Service Business — cover banner hero, business info card + actions below.
+function CoverServiceLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, coverImageUrl, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-enter px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <div className="vf-cover-banner rounded-[var(--radius)]" style={coverImageUrl ? { backgroundImage: `url(${coverImageUrl})` } : undefined}>
+        <div className="vf-cover-banner-body">
+          {showAgentImage && (
+            <span className="vf-avatar-frame grid h-[74px] w-[74px] flex-none place-items-center rounded-2xl">
+              <Robot size={58} src={profile.agentImageUrl} glow={false} float={false} />
+            </span>
+          )}
+          <div className="min-w-0">
+            <h1 className="vf-h1 vf-cover-title">{profile.title}</h1>
+            <p className="vf-cover-sub mt-1.5">{profile.category} · {profile.location}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.82fr]">
+        <section className="flex flex-col gap-5">
+          <p className="vf-sub">{profile.subtitle}</p>
+          <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+          {showSocialLinks && <SocialRow socialLinks={profile.socialLinks} />}
+        </section>
+        {showBusinessInfo && (
+          <section><BusinessInfoCard profile={profile} /></section>
+        )}
+      </div>
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 4) Coaching & Admissions — prominent advisor image, warm, appointment CTA visible.
+function EducationAdvisorLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-enter px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      <div className="grid items-center gap-10 lg:grid-cols-[.85fr_1.15fr]">
+        {showAgentImage && (
+          <section className="order-1 flex justify-center lg:order-none">
+            <div className="vf-advisor-visual grid place-items-center rounded-[var(--radius)] p-6 sm:p-8">
+              <Robot size={240} src={profile.agentImageUrl} glow float />
+            </div>
+          </section>
+        )}
+        <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
+          <AiPill />
+          <div className="mt-5">
+            <HeroHeadline profile={profile} size="large" />
+          </div>
+          <TrustChips showVoiceCall={showVoiceCall} align="left" />
+          <div className="mt-8 w-full max-w-[460px]">
+            <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+          </div>
+          {showBusinessInfo && (
+            <div className="vf-inline-stats mt-7 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="vf-inline-stat"><BookOpen size={14} /> {profile.category}</span>
+              <span className="vf-inline-dot" />
+              <span className="vf-inline-stat"><MapPin size={14} /> {profile.location}</span>
+            </div>
+          )}
+          {showSocialLinks && <div className="mt-6"><SocialRow socialLinks={profile.socialLinks} /></div>}
+        </section>
+      </div>
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 5) Clinic — calm, centered trust card, appointment-first CTA, trust badges.
+function ClinicTrustLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-landing-mid vf-enter flex flex-col items-center px-4 py-10 sm:px-6 sm:py-14">
+      <div className="vf-glass vf-trust-card w-full rounded-[var(--radius)] p-6 text-center sm:p-9">
+        {showAgentImage && (
+          <div className="mb-2 flex justify-center">
+            <Robot size={124} src={profile.agentImageUrl} glow float />
+          </div>
+        )}
+        <HeroHeadline profile={profile} />
+        <div className="mx-auto mt-7 w-full max-w-[440px]">
+          <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} bookingPrimary />
+        </div>
+      </div>
+      {showBusinessInfo && <div className="mt-6 w-full"><TrustBadges profile={profile} /></div>}
+      {showSocialLinks && <div className="mt-7"><SocialRow socialLinks={profile.socialLinks} /></div>}
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 6) Real Estate — premium full-width cover hero with overlay + gold CTA.
+function RealEstateCoverLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, quickTopics, coverImageUrl, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-enter px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <div className="vf-cover-hero rounded-[var(--radius)]" style={coverImageUrl ? { backgroundImage: `url(${coverImageUrl})` } : undefined}>
+        <div className="vf-cover-hero-inner">
+          <AiPill onDark />
+          <div className="mt-5 max-w-[620px]">
+            <HeroHeadline profile={profile} size="large" onLight />
+          </div>
+          <div className="mt-8 w-full max-w-[460px]">
+            <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+          </div>
+        </div>
+      </div>
+      {(showBusinessInfo || showSocialLinks) && (
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_.7fr]">
+          {showBusinessInfo && <BusinessInfoCard profile={profile} />}
+          {showSocialLinks && (
+            <div className="flex items-center justify-center lg:justify-start">
+              <SocialRow socialLinks={profile.socialLinks} />
+            </div>
+          )}
+        </div>
+      )}
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 7) Restaurant — warm, booking-first with a highlighted reservation panel.
+function BookingFirstLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  return (
+    <div className="vf-landing vf-landing-mid vf-enter flex flex-col items-center px-4 py-10 text-center sm:px-6 sm:py-14">
+      {showAgentImage && <Robot size={128} src={profile.agentImageUrl} glow float />}
+      <div className="mt-3">
+        <HeroHeadline profile={profile} />
+      </div>
+      <div className="vf-reserve-panel mt-8 w-full rounded-[var(--radius)] p-4 sm:p-5">
+        <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} bookingPrimary />
+        <div className="vf-reserve-meta mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5">
+          <span className="vf-inline-stat"><Clock size={14} /> {profile.availability}</span>
+          <span className="vf-inline-stat"><MapPin size={14} /> {profile.location}</span>
+        </div>
+      </div>
+      {showBusinessInfo && (
+        <div className="mt-6 grid w-full gap-3 sm:grid-cols-2">
+          <div className="vf-soft-tile rounded-[var(--radius)] p-4 text-left">
+            <MapPin size={18} className="vf-accent-ink" />
+            <p className="mt-2 text-[12px] font-bold uppercase tracking-wide vf-muted">Find us</p>
+            <p className="text-[14.5px] font-extrabold">{profile.location}</p>
+          </div>
+          <div className="vf-soft-tile rounded-[var(--radius)] p-4 text-left">
+            <Clock size={18} className="vf-accent-ink" />
+            <p className="mt-2 text-[12px] font-bold uppercase tracking-wide vf-muted">Timings</p>
+            <p className="text-[14.5px] font-extrabold">{profile.availability}</p>
+          </div>
+        </div>
+      )}
+      {showSocialLinks && <div className="mt-7"><SocialRow socialLinks={profile.socialLinks} /></div>}
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
+    </div>
+  );
+}
+
+// 8) Finance — conservative, left-aligned, trust points panel + trust badges.
+function FinanceTrustLanding({ profile, showBusinessInfo, showSocialLinks, showQuickTopics, showAppointment, showVoiceCall, showAgentImage, quickTopics, onStart, onCall, onBook, onTile }) {
+  const points = ["Clear, jargon-free guidance", "Your details stay private", "Fast eligibility answers"];
+  return (
+    <div className="vf-landing vf-enter px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+      <div className="grid items-stretch gap-8 lg:grid-cols-[1.1fr_.9fr]">
+        <section className="flex flex-col justify-center text-center lg:text-left">
+          <div className="flex justify-center lg:justify-start"><AiPill /></div>
+          <div className="mt-5">
+            <HeroHeadline profile={profile} size="large" />
+          </div>
+          <div className="mt-8 w-full max-w-[460px] self-center lg:self-start">
+            <Actions profile={profile} showAppointment={showAppointment} showVoiceCall={showVoiceCall} onStart={onStart} onCall={onCall} onBook={onBook} />
+          </div>
+          {showSocialLinks && <div className="mt-6 flex justify-center lg:justify-start"><SocialRow socialLinks={profile.socialLinks} /></div>}
+        </section>
+
+        <section className="vf-glass vf-finance-panel flex flex-col rounded-[var(--radius)] p-6 sm:p-7">
+          <div className="flex items-center gap-3">
+            {showAgentImage && <Robot size={64} src={profile.agentImageUrl} glow={false} float={false} />}
+            <div className="min-w-0">
+              <p className="text-[15px] font-extrabold">{profile.businessName}</p>
+              <p className="vf-muted text-[13px] font-semibold">{profile.category}</p>
+            </div>
+          </div>
+          <ul className="vf-trust-points mt-5 flex flex-col gap-3">
+            {points.map((point) => (
+              <li key={point} className="flex items-start gap-2.5 text-[14px] font-semibold">
+                <span className="vf-check grid h-5 w-5 flex-none place-items-center rounded-full"><Check size={13} strokeWidth={3} /></span>
+                {point}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+      {showBusinessInfo && <div className="mt-6"><TrustBadges profile={profile} /></div>}
+      {showQuickTopics && <ActionCards quickTopics={quickTopics} onTile={onTile} />}
     </div>
   );
 }
@@ -884,7 +1348,7 @@ function CategoryTile({ cat, onClick }) {
         <TopicIcon topic={cat} size={23} />
       </span>
       <span className="text-[16px] font-extrabold leading-tight tracking-tight">{cat.title}</span>
-      <span className="mt-1.5 text-[13px] leading-snug text-[#64748b]">{cat.description}</span>
+      <span className="vf-muted mt-1.5 text-[13px] leading-snug">{cat.description}</span>
       <span className="vf-tile-arrow mt-auto inline-flex items-center gap-1 pt-4 text-[13px] font-bold" style={{ color: accent }}>
         Ask <ArrowRight size={15} />
       </span>
@@ -905,10 +1369,10 @@ function TopicIcon({ topic, size = 20 }) {
 
 function InfoRow({ icon: Icon, label, value, dot, first }) {
   return (
-    <div className={`flex items-center gap-3.5 px-3 py-3 ${first ? "" : "border-t border-[#e6eefb]"}`}>
+    <div className={`vf-info-row flex items-center gap-3.5 px-3 py-3 ${first ? "" : "vf-info-row-div"}`}>
       <span className="vf-icon-orb h-[38px] w-[38px] flex-none rounded-xl">{dot ? <GreenDot /> : <Icon size={18} />}</span>
-      <span className="text-[14px] font-medium text-[#64748b]">{label}</span>
-      <span className="ml-auto text-right text-[14.5px] font-bold text-[#0f172a]">{value}</span>
+      <span className="vf-muted text-[14px] font-medium">{label}</span>
+      <span className="ml-auto text-right text-[14.5px] font-bold">{value}</span>
     </div>
   );
 }
@@ -960,10 +1424,10 @@ function Field({ label, value, onChange, placeholder }) {
   );
 }
 
-function AiPill() {
+function AiPill({ onDark = false }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[#d8e4f5] bg-[#ffffff]/85 px-3.5 py-2 text-[12.5px] font-extrabold text-[#1d4ed8] shadow-[0_6px_18px_rgba(15,23,42,.06)]">
-      <span className="grid h-6 w-6 place-items-center rounded-full bg-[#dbeafe]"><Sparkles size={15} /></span>
+    <span className={`vf-ai-pill ${onDark ? "vf-ai-pill-dark" : ""} inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px] font-extrabold`}>
+      <span className="vf-ai-pill-orb grid h-6 w-6 place-items-center rounded-full"><Sparkles size={15} /></span>
       AI Assistant
     </span>
   );
@@ -1002,50 +1466,106 @@ function Robot({ size = 240, src = "", head = false, glow = true, float = true }
 }
 
 const themeCss = `
-.vf-theme{--accent:#2563eb;--accent-d:#1d4ed8;--accent-soft:#dbeafe;--accent-tint:rgba(37,99,235,.14);--bg:#f8fafc;--panel:#ffffff;--line:#d8e4f5;--text:#0f172a;--muted:#64748b;font-family:"App Body Stack Sans","App Body Inter","App Body Manrope","App Body Rethink Sans",ui-sans-serif,system-ui,sans-serif;background:radial-gradient(circle at 6% -4%,rgba(37,99,235,.08),transparent 30%),radial-gradient(circle at 98% 0%,rgba(14,165,233,.08),transparent 34%),var(--bg);overflow-x:hidden}
-.vf-theme h1,.vf-theme h2,.vf-theme h3,.vf-theme h4,.vf-theme h5,.vf-theme h6{font-family:"App Heading Roboto","App Body Stack Sans",ui-sans-serif,system-ui,sans-serif}
+.vf-theme{--accent:#2563eb;--accent-d:#1d4ed8;--accent-soft:#dbeafe;--accent-tint:rgba(37,99,235,.14);--btn:#2563eb;--btn-d:#1d4ed8;--btn-ink:#fff;--bg:#f8fafc;--bg-2:#eef2f8;--panel:#ffffff;--panel-soft:rgba(37,99,235,.05);--line:#e2e8f0;--text:#0f172a;--muted:#64748b;--radius:18px;--button-radius:14px;--heading-font:"App Body Manrope","App Body Inter",ui-sans-serif,system-ui,sans-serif;--body-font:"App Body Inter",ui-sans-serif,system-ui,sans-serif;--heading-weight:800;--heading-tracking:-0.02em;--body-size:15.5px;--content-max:1080px;--shadow:0 12px 32px rgba(15,23,42,.08);--cardline:var(--line);font-family:var(--body-font);font-size:var(--body-size);color:var(--text);background:var(--bg);overflow-x:hidden}
+.vf-theme h1,.vf-theme h2,.vf-theme h3,.vf-theme h4,.vf-theme h5,.vf-theme h6{font-family:var(--heading-font);font-weight:var(--heading-weight);letter-spacing:var(--heading-tracking)}
 .vf-theme *{overflow-wrap:anywhere}
-.vf-glass{background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid color-mix(in srgb,var(--line) 82%,white);box-shadow:0 14px 40px rgba(15,23,42,.08);backdrop-filter:blur(18px)}
-.vf-card-solid{background:var(--panel);border:1px solid var(--line);box-shadow:0 6px 18px rgba(15,23,42,.06)}
-.vf-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;font-weight:800;white-space:nowrap;transition:transform .1s,background .15s,box-shadow .2s,border-color .15s,color .15s}
+.vf-muted{color:var(--muted)}
+.vf-accent-ink{color:var(--accent-d)}
+/* Background treatments (one wins per template via the extra class on .vf-theme) */
+.vf-theme.vf-bg-clean_white,.vf-theme.vf-bg-solid,.vf-theme.vf-bg-cover_image{background:var(--bg)}
+.vf-theme.vf-bg-soft_gradient{background:radial-gradient(circle at 6% -4%,var(--accent-tint),transparent 30%),radial-gradient(circle at 98% 0%,var(--accent-tint),transparent 34%),var(--bg)}
+.vf-theme.vf-bg-gradient_mesh{background:radial-gradient(42% 42% at 10% 6%,var(--accent-tint),transparent 60%),radial-gradient(46% 46% at 94% 0%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 62%),radial-gradient(44% 52% at 80% 104%,var(--accent-tint),transparent 60%),var(--bg)}
+.vf-theme.vf-bg-warm_gradient{background:radial-gradient(66% 52% at 50% -12%,color-mix(in srgb,var(--accent) 18%,transparent),transparent 62%),var(--bg)}
+.vf-theme.vf-bg-radial_glow{background:radial-gradient(60% 48% at 50% 0%,var(--accent-tint),transparent 60%),var(--bg)}
+/* Card shadow + border scales */
+.vf-shadow-none{--shadow:none}.vf-shadow-soft{--shadow:0 8px 24px rgba(15,23,42,.07)}.vf-shadow-medium{--shadow:0 12px 32px rgba(15,23,42,.10)}.vf-shadow-elevated{--shadow:0 22px 50px rgba(15,23,42,.16)}.vf-shadow-glow{--shadow:0 18px 44px var(--accent-tint)}
+.vf-border-none{--cardline:transparent}.vf-border-subtle{--cardline:var(--line)}.vf-border-strong{--cardline:color-mix(in srgb,var(--text) 18%,transparent)}
+/* Spacing scale — uniform vertical rhythm for the landing block */
+.vf-space-compact .vf-landing{padding-block:28px}.vf-space-cozy .vf-landing{padding-block:40px}.vf-space-comfortable .vf-landing{padding-block:52px}.vf-space-spacious .vf-landing{padding-block:68px}
+.vf-landing{width:100%;max-width:var(--content-max);margin-inline:auto}
+.vf-landing-narrow{max-width:min(var(--content-max),720px)}
+.vf-landing-mid{max-width:min(var(--content-max),720px)}
+.vf-h1{font-size:clamp(30px,5vw,50px);line-height:1.06}
+.vf-h1-lg{font-size:clamp(34px,5.6vw,58px)}
+.vf-sub{color:var(--muted);font-size:clamp(15px,2.2vw,17px);line-height:1.6;max-width:58ch}
+.vf-glass{background:color-mix(in srgb,var(--panel) 90%,transparent);border:1px solid color-mix(in srgb,var(--cardline) 82%,white);box-shadow:var(--shadow);backdrop-filter:blur(16px)}
+.vf-card-solid{background:var(--panel);border:1px solid var(--cardline);box-shadow:var(--shadow)}
+.vf-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--button-radius);font-weight:800;white-space:nowrap;transition:transform .1s,background .15s,box-shadow .2s,border-color .15s,color .15s}
 .vf-btn:active{transform:translateY(1px)}.vf-btn:disabled{opacity:.5;cursor:not-allowed}
-.vf-btn-primary{background:var(--accent);color:white;box-shadow:0 10px 24px rgba(37,99,235,.20)}.vf-btn-primary:hover{background:var(--accent-d)}
+.vf-btn-primary{background:var(--btn);color:var(--btn-ink);box-shadow:0 10px 24px var(--accent-tint)}.vf-btn-primary:hover{background:var(--btn-d)}
 .vf-btn-ghost{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:0 6px 18px rgba(15,23,42,.06)}.vf-btn-ghost:hover{border-color:var(--accent);color:var(--accent-d)}
-.vf-btn-soft{background:var(--accent-soft);color:#1d4ed8;border:1px solid #bfdbfe}.vf-btn-soft:hover{background:#bfdbfe}
-.vf-icon-orb{display:grid;place-items:center;background:var(--accent-soft);color:#1d4ed8;flex:none}
-.vf-tile{transition:transform .16s,box-shadow .2s,border-color .16s}.vf-tile:hover{transform:translateY(-2px);box-shadow:0 14px 40px rgba(15,23,42,.08);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
+.vf-btn-soft{background:var(--accent-soft);color:var(--accent-d);border:1px solid color-mix(in srgb,var(--accent) 28%,var(--accent-soft))}.vf-btn-soft:hover{background:color-mix(in srgb,var(--accent) 18%,var(--accent-soft))}
+.vf-icon-orb{display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-d);flex:none}
+.vf-tile{transition:transform .16s,box-shadow .2s,border-color .16s}.vf-tile:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:color-mix(in srgb,var(--accent) 40%,var(--line))}
 .vf-slot{transition:transform .1s,box-shadow .18s,border-color .15s}.vf-slot:active{transform:translateY(1px)}
-.vf-input{width:100%;border-radius:13px;border:1px solid var(--line);background:#f8fafc;padding:12px 14px;font-size:15px;color:var(--text);outline:none}.vf-input::placeholder{color:#94a3b8}.vf-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-tint)}
+.vf-input{width:100%;border-radius:13px;border:1px solid var(--line);background:color-mix(in srgb,var(--bg) 70%,var(--panel));padding:12px 14px;font-size:15px;color:var(--text);outline:none}.vf-input::placeholder{color:var(--muted)}.vf-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-tint)}
 .vf-robot-wrap{position:relative;display:grid;place-items:center;flex:none}.vf-robot-glow{position:absolute;inset:12%;border-radius:999px;background:radial-gradient(circle,var(--accent-tint),transparent 62%);filter:blur(6px)}
-.vf-robot-img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;user-select:none;filter:drop-shadow(0 18px 28px rgba(37,99,235,.16))}
+.vf-robot-img{position:relative;z-index:1;width:100%;height:100%;object-fit:contain;user-select:none;filter:drop-shadow(0 18px 28px var(--accent-tint))}
 .vf-robot-float{animation:vfFloat 4s ease-in-out infinite}.vf-robot-react{animation:vfReact .55s ease}
 .vf-enter{animation:vfViewIn .4s cubic-bezier(.2,.75,.25,1)}
-.vf-scroll{scrollbar-width:thin;scrollbar-color:#bfdbfe transparent}.vf-scroll::-webkit-scrollbar{width:9px}.vf-scroll::-webkit-scrollbar-thumb{background:#bfdbfe;border-radius:99px}
-.vf-typing span{width:6px;height:6px;border-radius:999px;background:#2563eb;animation:vfTyping 1s infinite}.vf-typing span:nth-child(2){animation-delay:.14s}.vf-typing span:nth-child(3){animation-delay:.28s}
-.vf-pulse-ring{position:absolute;inset:28px;border:1px solid rgba(37,99,235,.32);border-radius:999px;animation:vfPulseScale 2s ease-out infinite}.vf-pulse-ring.vf-d2{animation-delay:.45s}.vf-pulse-ring.vf-d3{animation-delay:.9s}
+.vf-topbar{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel) 82%,transparent);backdrop-filter:blur(14px)}
+.vf-scroll{scrollbar-width:thin;scrollbar-color:var(--accent-soft) transparent}.vf-scroll::-webkit-scrollbar{width:9px}.vf-scroll::-webkit-scrollbar-thumb{background:var(--accent-soft);border-radius:99px}
+.vf-typing span{width:6px;height:6px;border-radius:999px;background:var(--accent);animation:vfTyping 1s infinite}.vf-typing span:nth-child(2){animation-delay:.14s}.vf-typing span:nth-child(3){animation-delay:.28s}
+.vf-pulse-ring{position:absolute;inset:28px;border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);border-radius:999px;animation:vfPulseScale 2s ease-out infinite}.vf-pulse-ring.vf-d2{animation-delay:.45s}.vf-pulse-ring.vf-d3{animation-delay:.9s}
 .vf-eq{display:flex;align-items:center;justify-content:center;gap:5px;height:38px}.vf-eq span{width:6px;border-radius:99px;background:var(--accent);animation:vfEq .9s ease-in-out infinite}.vf-eq span:nth-child(odd){height:24px}.vf-eq span:nth-child(even){height:34px;animation-delay:.16s}
 .vf-eq-lg{height:44px;gap:6px}.vf-eq-lg span{width:7px}.vf-eq-soft{opacity:.5;animation-duration:1.4s}
-.vf-avatar-frame{display:grid;place-items:center;background:linear-gradient(150deg,#eff6ff,#dbeafe);border:1px solid #dbeafe;overflow:hidden}
-.vf-chip{background:#fff;border:1px solid var(--line);box-shadow:0 2px 8px rgba(15,23,42,.05)}
-.vf-hero-visual{position:relative;background:linear-gradient(165deg,#ffffff 0%,#eff6ff 55%,#dbeafe 100%);border:1px solid #dbeafe;box-shadow:0 24px 60px rgba(37,99,235,.14)}
-.vf-hero-visual::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(120px 120px at 30% 22%,rgba(255,255,255,.85),transparent 60%);pointer-events:none}
-.vf-cta{height:56px;border-radius:15px;font-size:15.5px}
-.vf-cta-sec{height:52px;border-radius:14px}
+.vf-avatar-frame{display:grid;place-items:center;background:linear-gradient(150deg,color-mix(in srgb,var(--accent) 12%,var(--panel)),var(--accent-soft));border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line));overflow:hidden}
+.vf-chip{background:var(--panel);border:1px solid var(--line);color:var(--muted);box-shadow:0 2px 8px rgba(15,23,42,.05)}
+.vf-ai-pill{background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);color:var(--accent-d);box-shadow:0 6px 18px rgba(15,23,42,.06)}
+.vf-ai-pill-orb{display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-d)}
+.vf-ai-pill-dark{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);color:#fff}.vf-ai-pill-dark .vf-ai-pill-orb{background:rgba(255,255,255,.22);color:#fff}
+.vf-hero-visual{position:relative;background:linear-gradient(165deg,var(--panel),color-mix(in srgb,var(--accent) 12%,var(--panel)) 60%,var(--accent-soft));border:1px solid color-mix(in srgb,var(--accent) 20%,var(--line));box-shadow:var(--shadow)}
+.vf-hero-visual::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(120px 120px at 30% 22%,color-mix(in srgb,var(--panel) 80%,transparent),transparent 60%);pointer-events:none}
+.vf-advisor-visual{position:relative;background:radial-gradient(circle at 50% 28%,var(--accent-soft),transparent 62%),linear-gradient(165deg,var(--panel),color-mix(in srgb,var(--accent) 10%,var(--panel)));border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line));box-shadow:var(--shadow)}
+.vf-agent-card{overflow:hidden}
+.vf-info-flat{background:color-mix(in srgb,var(--panel) 55%,transparent);border:1px solid var(--line)}
+.vf-info-row-div{border-top:1px solid color-mix(in srgb,var(--line) 72%,transparent)}
+.vf-inline-stat{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13.5px;font-weight:700}.vf-inline-stat svg{color:var(--accent-d)}
+.vf-inline-dot{width:4px;height:4px;border-radius:999px;background:var(--muted);opacity:.5}
+.vf-badge{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+.vf-social-btn{background:var(--panel);border:1px solid var(--line);color:var(--accent-d);box-shadow:0 4px 12px rgba(15,23,42,.06);transition:transform .15s,border-color .15s,background .15s}.vf-social-btn:hover{transform:translateY(-2px);border-color:var(--accent);background:var(--accent-soft)}
+.vf-cover-banner{position:relative;min-height:180px;display:flex;align-items:flex-end;background-size:cover;background-position:center;background-color:color-mix(in srgb,var(--accent) 22%,var(--panel));border:1px solid var(--line);overflow:hidden}
+.vf-cover-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,14,25,.05),rgba(10,14,25,.55))}
+.vf-cover-banner-body{position:relative;z-index:1;display:flex;align-items:center;gap:14px;padding:18px 20px;width:100%}
+.vf-cover-title{color:#fff;font-size:clamp(22px,3.4vw,32px);line-height:1.1}
+.vf-cover-sub{color:rgba(255,255,255,.86);font-size:13.5px;font-weight:700}
+.vf-cover-hero{position:relative;min-height:clamp(360px,52vh,460px);display:flex;align-items:center;background-size:cover;background-position:center;background-color:#1a2436;border:1px solid var(--line);overflow:hidden}
+.vf-cover-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,rgba(6,10,20,.84),rgba(6,10,20,.32))}
+.vf-cover-hero-inner{position:relative;z-index:1;width:100%;padding:clamp(24px,5vw,56px)}
+.vf-reserve-panel{background:color-mix(in srgb,var(--accent) 8%,var(--panel));border:1px dashed color-mix(in srgb,var(--accent) 42%,var(--line));box-shadow:var(--shadow)}
+.vf-reserve-meta{color:var(--muted)}
+.vf-soft-tile{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+.vf-finance-panel{overflow:hidden}
+.vf-check{background:color-mix(in srgb,var(--btn) 16%,var(--panel));color:var(--btn)}
+.vf-cta{height:56px;border-radius:var(--button-radius);font-size:15.5px;padding-inline:20px}
+.vf-cta-sec{height:52px;border-radius:var(--button-radius);padding-inline:16px}
 .vf-tile-orb{transition:transform .18s}.vf-tile:hover .vf-tile-orb{transform:scale(1.06)}
 .vf-tile-arrow{opacity:.75;transition:opacity .18s,transform .18s}.vf-tile:hover .vf-tile-arrow{opacity:1;transform:translateX(2px)}
 .vf-modal-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:rgba(15,23,42,.55);backdrop-filter:blur(6px);animation:vfFadeIn .25s ease}
-.vf-modal{position:relative;width:100%;max-width:400px;border-radius:28px;background:color-mix(in srgb,#ffffff 96%,transparent);border:1px solid #e6eefb;box-shadow:0 30px 80px rgba(15,23,42,.28);padding:26px 24px}
+.vf-modal{position:relative;width:100%;max-width:400px;border-radius:28px;background:color-mix(in srgb,var(--panel) 98%,transparent);border:1px solid var(--line);box-shadow:0 30px 80px rgba(15,23,42,.28);padding:26px 24px;color:var(--text)}
 .vf-modal-in{animation:vfModalIn .34s cubic-bezier(.2,.8,.24,1)}
-.vf-modal-x{position:absolute;top:14px;right:14px;display:grid;place-items:center;height:34px;width:34px;border-radius:12px;color:#94a3b8;background:#f1f5f9;transition:background .15s,color .15s}.vf-modal-x:hover{background:#e2e8f0;color:#0f172a}
-.vf-call-orb{background:linear-gradient(160deg,#eff6ff,#dbeafe);border:1px solid #cfe0ff;box-shadow:inset 0 2px 10px rgba(255,255,255,.8),0 12px 30px rgba(37,99,235,.18)}
-.vf-step{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;color:#94a3b8;background:#f8fafc;border:1px solid transparent;transition:all .2s}
-.vf-step-dot{background:#e2e8f0;color:#94a3b8;flex:none;transition:all .2s}
-.vf-step-active{color:#1d4ed8;background:#eff6ff;border-color:#dbeafe}.vf-step-active .vf-step-dot{background:#dbeafe;color:#1d4ed8}
-.vf-step-done{color:#0f172a}.vf-step-done .vf-step-dot{background:#22c55e;color:#fff}
-.vf-step-spin{height:15px;width:15px;border-radius:999px;border:2px solid #bfdbfe;border-top-color:#2563eb;animation:vfSpin .7s linear infinite}
-@keyframes vfFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes vfReact{0%,100%{transform:translateY(0) rotate(0)}35%{transform:translateY(-6px) rotate(-2deg)}70%{transform:translateY(2px) rotate(2deg)}}@keyframes vfViewIn{from{transform:translateY(12px)}to{transform:none}}@keyframes vfPulseRing{from{transform:scale(.6);opacity:.8}to{transform:scale(2.3);opacity:0}}@keyframes vfTyping{0%,80%,100%{opacity:.35;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}@keyframes vfPulseScale{from{transform:scale(.7);opacity:.7}to{transform:scale(1.35);opacity:0}}@keyframes vfEq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.15)}}
+.vf-modal-x{position:absolute;top:14px;right:14px;display:grid;place-items:center;height:34px;width:34px;border-radius:12px;color:var(--muted);background:color-mix(in srgb,var(--bg) 70%,var(--panel));transition:background .15s,color .15s}.vf-modal-x:hover{background:var(--bg-2);color:var(--text)}
+.vf-call-orb{background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 10%,var(--panel)),var(--accent-soft));border:1px solid color-mix(in srgb,var(--accent) 24%,var(--line));box-shadow:inset 0 2px 10px rgba(255,255,255,.7),0 12px 30px var(--accent-tint)}
+.vf-step{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;color:var(--muted);background:color-mix(in srgb,var(--bg) 70%,var(--panel));border:1px solid transparent;transition:all .2s}
+.vf-step-dot{background:var(--bg-2);color:var(--muted);flex:none;transition:all .2s}
+.vf-step-active{color:var(--accent-d);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 26%,var(--line))}.vf-step-active .vf-step-dot{background:var(--accent-soft);color:var(--accent-d)}
+.vf-step-done{color:var(--text)}.vf-step-done .vf-step-dot{background:#22c55e;color:#fff}
+.vf-step-spin{height:15px;width:15px;border-radius:999px;border:2px solid var(--accent-soft);border-top-color:var(--accent);animation:vfSpin .7s linear infinite}
+/* Entrance / motion tokens (more specific selector wins over .vf-enter default) */
+.vf-anim-none .vf-enter{animation:none}
+.vf-anim-fade_in .vf-enter{animation:vfFadeIn .5s ease}
+.vf-anim-slide_up .vf-enter{animation:vfViewIn .45s cubic-bezier(.2,.75,.25,1)}
+.vf-anim-zoom_in .vf-enter{animation:vfZoomIn .45s cubic-bezier(.2,.8,.24,1)}
+.vf-anim-floating_cards .vf-enter{animation:vfFadeIn .5s ease}.vf-anim-floating_cards .vf-tile,.vf-anim-floating_cards .vf-badge{animation:vfFloat 5s ease-in-out infinite}
+.vf-anim-pulse_button .vf-btn-primary{animation:vfPulseBtn 2.6s ease-in-out infinite}
+.vf-anim-gradient_motion .vf-hero-visual,.vf-anim-gradient_motion .vf-advisor-visual{background-size:180% 180%;animation:vfGradientShift 9s ease infinite}
+@keyframes vfFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}@keyframes vfReact{0%,100%{transform:translateY(0) rotate(0)}35%{transform:translateY(-6px) rotate(-2deg)}70%{transform:translateY(2px) rotate(2deg)}}@keyframes vfViewIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}@keyframes vfZoomIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}@keyframes vfPulseRing{from{transform:scale(.6);opacity:.8}to{transform:scale(2.3);opacity:0}}@keyframes vfTyping{0%,80%,100%{opacity:.35;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}@keyframes vfPulseScale{from{transform:scale(.7);opacity:.7}to{transform:scale(1.35);opacity:0}}@keyframes vfEq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1.15)}}
+@keyframes vfPulseBtn{0%,100%{box-shadow:0 10px 24px var(--accent-tint)}50%{box-shadow:0 12px 30px color-mix(in srgb,var(--accent) 40%,transparent)}}
+@keyframes vfGradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 @keyframes vfSpin{to{transform:rotate(360deg)}}
 @keyframes vfFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes vfModalIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media (max-width:640px){.vf-cover-hero{min-height:340px}}
+@media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge{animation:none!important}}
 `;
 

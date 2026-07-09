@@ -53,7 +53,8 @@ export const listCampaigns = asyncHandler(async (req, res) => {
   const campaigns = await Campaign.find(userFilter(req))
     .populate("agentId", "agentName businessName")
     .sort({ createdAt: -1 })
-    .limit(200);
+    .limit(200)
+    .lean();
   res.json(campaigns);
 });
 

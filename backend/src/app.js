@@ -65,7 +65,21 @@ app.post("/api/billing/webhook/:provider", express.raw({ type: "*/*" }), handleB
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(morgan(process.env.NODE_ENV === "production" ? "tiny" : "dev"));
+
+// Request logging. Production keeps concise access logs. Local dev is SILENT by default so the
+// terminal isn't flooded on every poll/request — opt in with DEBUG_LOGS=true to get lightweight
+// per-request timing (useful for spotting slow routes).
+if (process.env.NODE_ENV === "production") {
+  app.use(morgan("tiny"));
+} else if (process.env.DEBUG_LOGS === "true") {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on("finish", () => {
+      console.log(`${req.method} ${req.originalUrl} ${res.statusCode} - ${Date.now() - start}ms`);
+    });
+    next();
+  });
+}
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
 app.use((req, res, next) => {
   // Real-time voice path (custom LLM + webhooks) must never be throttled.

@@ -62,4 +62,9 @@ const callLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Every list/dashboard read is "this user's calls, newest first". A compound index on
+// (userId, createdAt) serves both the userId match and the createdAt sort from the index,
+// instead of matching on userId and then sorting the whole set in memory.
+callLogSchema.index({ userId: 1, createdAt: -1 });
+
 export default mongoose.model("CallLog", callLogSchema);

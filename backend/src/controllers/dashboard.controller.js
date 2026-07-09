@@ -41,9 +41,9 @@ export async function getDashboard(user) {
     Agent.countDocuments({ ...filter, status: { $in: ["Active", "active", "Connected"] } }),
     CallLog.countDocuments(filter),
     Lead.countDocuments(filter),
-    Agent.find(filter).sort({ createdAt: -1 }).limit(5),
-    CallLog.find(filter).populate("agentId", "agentName").sort({ createdAt: -1 }).limit(5),
-    Lead.find(filter).populate("agentId", "agentName").sort({ createdAt: -1 }).limit(5),
+    Agent.find(filter).sort({ createdAt: -1 }).limit(5).lean(),
+    CallLog.find(filter).populate("agentId", "agentName").sort({ createdAt: -1 }).limit(5).lean(),
+    Lead.find(filter).populate("agentId", "agentName").sort({ createdAt: -1 }).limit(5).lean(),
     CallLog.aggregate([
       { $match: outboundFilter },
       {
