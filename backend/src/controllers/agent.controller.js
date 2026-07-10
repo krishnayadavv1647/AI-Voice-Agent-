@@ -3,6 +3,8 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import fs from "fs/promises";
 import path from "path";
 import Agent from "../models/Agent.js";
+import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
+import AgentVoiceConfiguration from "../models/AgentVoiceConfiguration.js";
 import CallLog from "../models/CallLog.js";
 import Lead from "../models/Lead.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
@@ -11,6 +13,7 @@ import { generateSystemPrompt } from "../services/promptGenerator.js";
 import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
+import { normalizeApiKeyMode } from "../services/apiKeyMode.service.js";
 import {
   applyVoiceConfigurationToAgent,
   getAgentVoiceConfiguration,
@@ -149,6 +152,7 @@ const WORKFLOW_LINKED_FIELDS = [
   "voiceId",
   "llmProvider",
   "llmModel",
+  "apiKeyMode",
   "sttProvider",
   "ttsProvider",
   "firstMessage",
@@ -603,6 +607,20 @@ export const createAgent = asyncHandler(async (req, res) => {
     publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
 
+  agent.apiKeyMode = normalizeApiKeyMode(req.body.apiKeyMode);
+  if (agent.apiKeyMode === "default_system") {
+    // DEFAULT SYSTEM: force platform_default everywhere and ignore any BYOK inputs.
+    agent.llmProvider = "google_gemini"; // engine env fallback targets this
+    agent.llmModel = "";                  // env GEMINI_MODEL is used
+    agent.sttProvider = "platform_default";
+    agent.ttsProvider = "platform_default";
+    agent.voiceProvider = "Platform Default";
+  } else if (!llmConfigurationInput || llmConfigurationInput.provider === "platform_default" || !llmConfigurationInput.integrationId) {
+    // BYOK requires a real connected LLM account — block obviously-unconfigured setups here for
+    // earlier, clearer feedback. The outbound pre-flight is the ultimate no-silent-fallback guard.
+    throw new ApiError(400, "BYOK mode selected but no connected LLM account was chosen. Select an account or switch to Default System.", { code: "BYOK_NOT_CONFIGURED" });
+  }
+
   agent.publicSlug = await generateUniquePublicSlug(agent.agentName || agent.name || agent.businessName);
 
   if (!agent.systemPrompt) {
@@ -627,11 +645,12 @@ export const createAgent = asyncHandler(async (req, res) => {
 
   agent.telephonyConfigId = telephonyConfigId || null;
   await validateTelephonyConfigForAgent(agent, agent.telephonyConfigId);
-  if (voiceConfigurationInput) {
+  // A default_system agent never attaches BYOK voice/LLM integrations.
+  if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
     const cleanVoiceConfiguration = sanitizeVoiceConfiguration(voiceConfigurationInput, agent);
     applyVoiceConfigurationToAgent(agent, cleanVoiceConfiguration);
   }
-  if (llmConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && llmConfigurationInput) {
     const cleanLLMConfiguration = sanitizeLLMConfiguration(llmConfigurationInput, agent);
     await validateLLMConfigurationOwnership({ userId: agent.userId, config: cleanLLMConfiguration });
     applyLLMConfigurationToAgent(agent, cleanLLMConfiguration);
@@ -643,11 +662,11 @@ export const createAgent = asyncHandler(async (req, res) => {
 
   if (agent.provider === "vapi") {
     await agent.save();
-    if (voiceConfigurationInput) {
+    if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
       voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
       await agent.save();
     }
-    if (llmConfigurationInput) {
+    if (agent.apiKeyMode !== "default_system" && llmConfigurationInput) {
       llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
       await agent.save();
     }
@@ -683,11 +702,11 @@ export const createAgent = asyncHandler(async (req, res) => {
   }
 
   await agent.save();
-  if (voiceConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
     voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
     await agent.save();
   }
-  if (llmConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && llmConfigurationInput) {
     llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
     await agent.save();
   }
@@ -928,6 +947,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
     "voiceId",
     "llmProvider",
     "llmModel",
+    "apiKeyMode",
     "sttProvider",
     "sttModel",
     "sttLanguage",
@@ -963,6 +983,31 @@ export const updateAgent = asyncHandler(async (req, res) => {
     if (body[field] !== undefined) agent[field] = body[field];
   }
 
+  // -- API KEY MODE (re-resolved at every save) -----------------------------------
+  agent.apiKeyMode = normalizeApiKeyMode(agent.apiKeyMode);
+  if (agent.apiKeyMode === "default_system") {
+    // Force platform_default everywhere, detach BYOK integrations, and reset any saved
+    // voice/LLM configuration back to the platform default (integrationId: null).
+    agent.llmProvider = "google_gemini";
+    agent.llmModel = "";
+    agent.sttProvider = "platform_default";
+    agent.ttsProvider = "platform_default";
+    agent.voiceProvider = "Platform Default";
+    await AgentLLMConfiguration.updateOne(
+      { agentId: agent._id, userId: agent.userId },
+      { $set: { provider: "platform_default", integrationId: null, model: "" } }
+    );
+    await AgentVoiceConfiguration.updateOne(
+      { agentId: agent._id, userId: agent.userId },
+      { $set: { sttProvider: "platform_default", ttsProvider: "platform_default", sttIntegrationId: null, ttsIntegrationId: null } }
+    );
+  } else if (llmConfigurationInput && (llmConfigurationInput.provider === "platform_default" || !llmConfigurationInput.integrationId)) {
+    // BYOK requires a real connected LLM account. The outbound pre-flight is the ultimate guard;
+    // this gives earlier, clearer feedback at save time (no silent fallback).
+    throw new ApiError(400, "BYOK mode selected but no connected LLM account was chosen. Select an account or switch to Default System.", { code: "BYOK_NOT_CONFIGURED" });
+  }
+  // -------------------------------------------------------------------------------
+
   // Enforce bio max-length server-side even if client skips it
   if (agent.bio && agent.bio.length > 500) {
     throw new ApiError(400, "Bio must be 500 characters or fewer.");
@@ -979,12 +1024,12 @@ export const updateAgent = asyncHandler(async (req, res) => {
   }
 
   let voiceConfiguration = null;
-  if (voiceConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
     const cleanVoiceConfiguration = sanitizeVoiceConfiguration(voiceConfigurationInput, agent);
     applyVoiceConfigurationToAgent(agent, cleanVoiceConfiguration);
   }
   let llmConfiguration = null;
-  if (llmConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && llmConfigurationInput) {
     const cleanLLMConfiguration = sanitizeLLMConfiguration(llmConfigurationInput, agent);
     await validateLLMConfigurationOwnership({ userId: agent.userId, config: cleanLLMConfiguration });
     applyLLMConfigurationToAgent(agent, cleanLLMConfiguration);
@@ -999,11 +1044,11 @@ export const updateAgent = asyncHandler(async (req, res) => {
 
   let providerResult = null;
 
-  if (voiceConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
     voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
     await agent.save();
   }
-  if (llmConfigurationInput) {
+  if (agent.apiKeyMode !== "default_system" && llmConfigurationInput) {
     llmConfiguration = await upsertAgentLLMConfiguration({ userId: agent.userId, agent, input: llmConfigurationInput });
     await agent.save();
   }

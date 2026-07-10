@@ -2,6 +2,7 @@ import { ArrowLeft, Bot, Mic, RefreshCw, Save, Volume2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import ApiKeyModeToggle from "../components/ApiKeyModeToggle.jsx";
 import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import VoiceConfigurationPanel, { defaultVoiceConfiguration, normalizeVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
@@ -23,7 +24,7 @@ const editableFields = [
   "language", "responseStyle", "callMode", "allowInterruption", "fastReplyMode", "leadCaptureEnabled",
   "voiceGender", "voiceStyle", "voiceProvider", "voiceId", "sttProvider", "sttModel", "sttLanguage", "sttSettings", "ttsProvider", "ttsModel", "ttsLanguage", "ttsSettings", "firstMessage", "telephonyConfigId",
   "voiceSpeed", "tone", "speakingSpeed", "personality",
-  "provider", "vapiPhoneNumberId", "bio"
+  "provider", "vapiPhoneNumberId", "bio", "apiKeyMode"
 ];
 
 function formatApiError(error) {
@@ -128,6 +129,7 @@ export default function EditAgent() {
     if (field === "voiceProvider") return "Default Voice";
     if (field === "sttProvider") return "platform_default";
     if (field === "ttsProvider") return "platform_default";
+    if (field === "apiKeyMode") return "default_system";
     if (field === "voiceSpeed") return "Normal";
     return "";
   }
@@ -160,6 +162,10 @@ export default function EditAgent() {
         voiceConfiguration: normalizeVoiceConfiguration(form.voiceConfiguration),
         telephonyConfigId: form.telephonyConfigId || null
       };
+      if (payload.apiKeyMode === "default_system") {
+        delete payload.llmConfiguration;
+        delete payload.voiceConfiguration;
+      }
       const result = await api(`/agents/${id}`, { method: "PUT", body: payload });
       const saved = result.agent || result;
       if (saved._id && saved._id !== id) {
@@ -447,6 +453,7 @@ export default function EditAgent() {
 
 function VoiceLanguageEditor({ form, setField, activeSection, setActiveSection, onSyncRuntime, syncingRuntime }) {
   const active = voiceSections.find((item) => item.id === activeSection) || voiceSections[0];
+  const byok = form.apiKeyMode === "byok";
 
   return (
     <div className="edit-voice-workspace">
@@ -456,53 +463,66 @@ function VoiceLanguageEditor({ form, setField, activeSection, setActiveSection, 
         <Field label="Personality" name="personality" value={form.personality} setField={setField} options={personalities} />
       </div>
 
-      <div className="edit-voice-mobile-nav">
-        {voiceSections.map(({ id, label, Icon }) => (
-          <button
-            key={id}
-            type="button"
-            className={activeSection === id ? "is-active" : ""}
-            onClick={() => setActiveSection(id)}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
+      <ApiKeyModeToggle value={form.apiKeyMode} onChange={(value) => setField("apiKeyMode", value)} />
 
-      <section className="edit-voice-panel">
-        <div className="edit-voice-panel-header">
-          <div>
-            <p className="edit-voice-kicker">Integration Settings</p>
-            <h3>{active.label}</h3>
-            <p>{active.description}. Choose the provider model, then save the agent.</p>
-          </div>
+      {!byok ? (
+        <div className="rounded-xl border border-hairline bg-brand-50 p-4 text-sm text-brand-700">
+          Inbuilt system active. LLM and voice use the platform defaults. Just Save and you can start calling. Each call's credits are deducted from your wallet.
         </div>
+      ) : (
+        <>
+          <div className="edit-voice-mobile-nav">
+            {voiceSections.map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={activeSection === id ? "is-active" : ""}
+                onClick={() => setActiveSection(id)}
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
 
-        {activeSection === "llm" && (
-          <LLMConfigurationPanel compact value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
-        )}
-        {activeSection === "stt" && (
-          <VoiceConfigurationPanel
-            compact
-            section="stt"
-            value={form.voiceConfiguration}
-            onChange={(value) => setField("voiceConfiguration", value)}
-            onSyncRuntime={onSyncRuntime}
-            syncingRuntime={syncingRuntime}
-          />
-        )}
-        {activeSection === "tts" && (
-          <VoiceConfigurationPanel
-            compact
-            section="tts"
-            value={form.voiceConfiguration}
-            onChange={(value) => setField("voiceConfiguration", value)}
-            onSyncRuntime={onSyncRuntime}
-            syncingRuntime={syncingRuntime}
-          />
-        )}
-      </section>
+          <section className="edit-voice-panel">
+            <div className="edit-voice-panel-header">
+              <div>
+                <p className="edit-voice-kicker">Integration Settings</p>
+                <h3>{active.label}</h3>
+                <p>{active.description}. Choose the provider model, then save the agent.</p>
+              </div>
+            </div>
+
+            {activeSection === "llm" && (
+              <LLMConfigurationPanel compact value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
+            )}
+            {activeSection === "stt" && (
+              <VoiceConfigurationPanel
+                compact
+                section="stt"
+                value={form.voiceConfiguration}
+                onChange={(value) => setField("voiceConfiguration", value)}
+                onSyncRuntime={onSyncRuntime}
+                syncingRuntime={syncingRuntime}
+              />
+            )}
+            {activeSection === "tts" && (
+              <VoiceConfigurationPanel
+                compact
+                section="tts"
+                value={form.voiceConfiguration}
+                onChange={(value) => setField("voiceConfiguration", value)}
+                onSyncRuntime={onSyncRuntime}
+                syncingRuntime={syncingRuntime}
+              />
+            )}
+            <p className="mt-3 text-xs text-neutral-500">
+              Voice runs on the platform Vapi account; only the LLM uses your key. If your key is missing or invalid, the call will not start and no credits will be used.
+            </p>
+          </section>
+        </>
+      )}
     </div>
   );
 }

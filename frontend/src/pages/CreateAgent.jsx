@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import ApiKeyModeToggle from "../components/ApiKeyModeToggle.jsx";
 import LLMConfigurationPanel, { defaultLLMConfiguration } from "../components/LLMConfigurationPanel.jsx";
 import VoiceConfigurationPanel, { defaultVoiceConfiguration, normalizeVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
@@ -33,6 +34,7 @@ const initialForm = {
   leadQuestions: defaultLeadQuestions,
   templateType: "",
   provider: "vapi",
+  apiKeyMode: "default_system",
   voiceConfiguration: defaultVoiceConfiguration,
   llmConfiguration: defaultLLMConfiguration,
   language: "english",
@@ -134,6 +136,10 @@ export default function CreateAgent() {
       const payload = { ...form, voiceConfiguration: normalizeVoiceConfiguration(form.voiceConfiguration) };
       if (!payload.telephonyConfigId) delete payload.telephonyConfigId;
       if (payload.imageMode !== "upload_custom") delete payload.imageUrl;
+      if (payload.apiKeyMode === "default_system") {
+        delete payload.llmConfiguration;
+        delete payload.voiceConfiguration;
+      }
       const result = await api("/agents", { method: "POST", body: payload });
       const agent = result.agent || result;
       navigate(`/agents/${agent._id}`, {
@@ -268,10 +274,23 @@ export default function CreateAgent() {
         {step === 4 && (
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Conversation Language" name="language" value={form.language} onChange={setField} options={languages} />
-            <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
             <Field label="Tone" name="tone" value={form.tone} onChange={setField} options={tones} />
             <Field label="Personality" name="personality" value={form.personality} onChange={setField} options={personalities} />
-            <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} />
+            <div className="md:col-span-2">
+              <ApiKeyModeToggle value={form.apiKeyMode} onChange={(value) => setField("apiKeyMode", value)} />
+            </div>
+            {form.apiKeyMode === "default_system" ? (
+              <div className="md:col-span-2 rounded-xl border border-hairline bg-brand-50 p-4 text-sm text-brand-700">
+                Inbuilt system active. LLM and voice use the platform defaults. Just Save and you can start calling. Each call's credits are deducted from your wallet.
+              </div>
+            ) : (
+              <>
+                <LLMConfigurationPanel value={form.llmConfiguration} onChange={(value) => setField("llmConfiguration", value)} />
+                <p className="md:col-span-2 text-xs text-neutral-500">Voice runs on the platform Vapi account; only the LLM uses your key.</p>
+                <VoiceConfigurationPanel value={form.voiceConfiguration} onChange={(value) => setField("voiceConfiguration", value)} />
+                <p className="md:col-span-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-700">If your key is missing or invalid, the call will not start and no credits will be used.</p>
+              </>
+            )}
           </div>
         )}
 
