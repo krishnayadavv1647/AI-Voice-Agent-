@@ -7,6 +7,7 @@ import AgentLLMConfiguration from "../models/AgentLLMConfiguration.js";
 import LLMIntegration from "../models/LLMIntegration.js";
 import { decryptSecret } from "../utils/crypto.js";
 import { normalizeLLMProvider } from "../services/llmProviders/providerIdentity.service.js";
+import { isDefaultSystem } from "../services/apiKeyMode.service.js";
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 // Voice calls default to Flash-Lite for the lowest time-to-first-token. Only used as a
@@ -188,16 +189,25 @@ export async function resolveAgentLLMRuntimeConfig({
     console.warn("Gemini Pro is not recommended for voice calls due to latency.");
   }
 
-  const connectedApiKey = connectedApiKeyOverride !== undefined
-    ? connectedApiKeyOverride
-    : skipDb
-      ? null
-      : await resolveConnectedAccountApiKey({ agent, config: savedConfig, provider });
+  // DEFAULT SYSTEM mode: ignore the user's connected key and use the platform env key.
+  // This is NOT a silent fallback — the user explicitly chose Default System, so this is intended.
+  // (For BYOK agents the "call must not start on a broken key" enforcement already ran in the
+  // outbound pre-flight; this runtime guard only stops default_system picking up a user key.)
+  const useDefaultSystem = isDefaultSystem(agent);
+  const connectedApiKey = useDefaultSystem
+    ? null
+    : (connectedApiKeyOverride !== undefined
+        ? connectedApiKeyOverride
+        : skipDb
+          ? null
+          : await resolveConnectedAccountApiKey({ agent, config: savedConfig, provider }));
   const apiKey = connectedApiKey || String(envKeyForProvider(provider) || "").trim();
   console.log(
-    connectedApiKey
-      ? "[Vapi LLM config] using agent connected account"
-      : "[Vapi LLM config] using env fallback",
+    useDefaultSystem
+      ? "[LLM config] default_system mode -> env platform key"
+      : connectedApiKey
+        ? "[LLM config] byok mode -> agent connected account"
+        : "[LLM config] byok mode but connected key unresolved",
     {
       agentId: agent?._id?.toString?.() || agent?._id,
       provider,

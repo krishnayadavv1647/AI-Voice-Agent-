@@ -19,6 +19,7 @@ export const defaultLLMConfiguration = {
 };
 
 const PROVIDERS = [
+  { value: "platform_default", label: "Platform Default (Inbuilt)" },
   { value: "openai", label: "OpenAI" },
   { value: "google_gemini", label: "Google Gemini" },
   { value: "groq", label: "Groq" },
@@ -170,6 +171,7 @@ export default function LLMConfigurationPanel({ value, onChange, compact = false
     return [{ id: config.model, name: config.model }, ...filteredModels];
   }, [config.model, filteredModels]);
 
+  const isPlatformDefault = config.provider === "platform_default";
   const credentialsConnected = Boolean(config.integrationId);
   const agentConfigured = Boolean(config.integrationId && config.model);
 
@@ -193,21 +195,27 @@ export default function LLMConfigurationPanel({ value, onChange, compact = false
             </select>
           </label>
 
-          <label className="block text-sm font-semibold text-neutral-700">
+          {!isPlatformDefault && <label className="block text-sm font-semibold text-neutral-700">
             Connected Account
             <select className="mt-1" value={config.integrationId || ""} onChange={(event) => patch({ integrationId: event.target.value, model: "" })}>
               <option value="">Select account</option>
               {accounts.map((account) => <option key={account.id} value={account.id}>{account.connectionName} ({account.maskedApiKey})</option>)}
             </select>
-          </label>
+          </label>}
 
-          {!compact && <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
+          {!compact && !isPlatformDefault && <label className="block text-sm font-semibold text-neutral-700 xl:col-span-1">
             Manual Model ID
             <input className="mt-1" value={config.model || ""} onChange={(event) => patch({ model: event.target.value })} placeholder="Paste model ID" />
           </label>}
         </div>
 
-        <div className={compact ? "voice-model-card" : "mt-4 rounded-xl border border-hairline bg-white p-4"}>
+        {isPlatformDefault && (
+          <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
+            Using the platform default model. Credits are charged per minute.
+          </div>
+        )}
+
+        {!isPlatformDefault && <div className={compact ? "voice-model-card" : "mt-4 rounded-xl border border-hairline bg-white p-4"}>
           <div className={compact ? "voice-model-tools" : "mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_13rem_auto]"}>
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
@@ -234,13 +242,13 @@ export default function LLMConfigurationPanel({ value, onChange, compact = false
               <p className="mt-2 text-xs font-medium text-amber-700">No chat-compatible models were returned for this provider account.</p>
             )}
           </label>
-        </div>
+        </div>}
 
-        {compact && (
+        {compact && !isPlatformDefault && (
           <p className="voice-provider-note">Save Agent applies this LLM selection to the existing calling configuration.</p>
         )}
 
-        {!compact && <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {!compact && !isPlatformDefault && <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <NumberField label="Temperature" min={0} max={2} step={0.05} value={config.settings.temperature} onChange={(value) => patchSettings({ temperature: value })} />
           <NumberField label="Maximum Output Tokens" min={16} max={4096} step={16} value={config.settings.maxTokens} onChange={(value) => patchSettings({ maxTokens: value })} />
           <NumberField label="Top P" min={0} max={1} step={0.05} value={config.settings.topP} onChange={(value) => patchSettings({ topP: value })} />
@@ -251,7 +259,7 @@ export default function LLMConfigurationPanel({ value, onChange, compact = false
           <Toggle label="Tool Calling" checked={config.settings.toolCalling} onChange={(value) => patchSettings({ toolCalling: value })} />
         </div>}
 
-        {!compact && <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
+        {!compact && !isPlatformDefault && <div className="mt-4 rounded-xl border border-hairline bg-white p-4">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
             <input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} />
             <button type="button" className="btn-secondary" disabled={testing || !config.integrationId || !config.model} onClick={testModel}>
@@ -261,7 +269,7 @@ export default function LLMConfigurationPanel({ value, onChange, compact = false
           {testResult && <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">Provider Test: Successful ({testResult.latencyMs} ms). {testResult.responseText || testResult.text}</div>}
         </div>}
 
-        {!compact && <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
+        {!compact && !isPlatformDefault && <div className="mt-4 rounded-xl border border-hairline bg-white px-3 py-3 text-sm text-neutral-700">
           <p className="font-bold">LLM Runtime Status</p>
           <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <StatusLine label="Credentials" value={credentialsConnected ? "Connected" : "Not connected"} ok={credentialsConnected} />

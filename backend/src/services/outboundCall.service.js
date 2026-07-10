@@ -5,6 +5,7 @@ import { decryptSecret } from "../utils/secretCrypto.js";
 import { ensureVapiPhoneNumber } from "./vapi.service.js";
 import { applyCallOutcomeToLog } from "./callOutcome.service.js";
 import { reserveVoiceCallBilling, releaseVoiceReservation } from "./billing/voiceCallBilling.service.js";
+import { assertByokKeyUsableOrThrow } from "./apiKeyMode.service.js";
 import { getProvider } from "../providers/index.js";
 import { ApiError } from "../utils/apiError.js";
 
@@ -107,6 +108,13 @@ export async function triggerOutboundCallForAgent({
   }
 
   const effectiveUserId = userId || agent.userId;
+
+  // -- STRICT BYOK PRE-FLIGHT (NO SILENT FALLBACK) --------------------------------
+  // If the agent is in BYOK mode and its own LLM key is missing/invalid, this THROWS
+  // here — before any credit reservation — so the call does not start and no platform
+  // credits are consumed. Default System agents skip this and use platform keys + credits.
+  await assertByokKeyUsableOrThrow(agent);
+  // -------------------------------------------------------------------------------
 
   // Credit gating — UNCHANGED behavior. Reserve before placing the call.
   const billing = await reserveVoiceCallBilling({ userId: effectiveUserId, agent });

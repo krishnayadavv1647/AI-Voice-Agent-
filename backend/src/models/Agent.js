@@ -56,6 +56,15 @@ const agentSchema = new mongoose.Schema(
     leadCaptureEnabled: { type: Boolean, default: true },
     voiceProvider: { type: String, default: "elevenlabs" },
     voiceId: String,
+    // Which API-key strategy this agent uses at call time:
+    //  - "default_system": inbuilt platform keys (env GEMINI_API_KEY + Vapi inbuilt voice) + credits.
+    //  - "byok": the user's own connected LLM account key (voice still runs on the platform Vapi).
+    // Fail-closed default is "default_system". See services/apiKeyMode.service.js for enforcement.
+    apiKeyMode: {
+      type: String,
+      enum: ["default_system", "byok"],
+      default: "default_system"
+    },
     llmProvider: {
       type: String,
       enum: CANONICAL_LLM_PROVIDERS,
