@@ -1,8 +1,11 @@
 ﻿import {
   ArrowLeft,
   ArrowRight,
+  AudioWaveform,
   BadgePercent,
+  Bot,
   BookOpen,
+  Briefcase,
   Building2,
   Calendar,
   CalendarDays,
@@ -16,10 +19,12 @@
   HeartPulse,
   HelpCircle,
   Home,
+  Info,
   Instagram,
   Landmark,
   Linkedin,
   MapPin,
+  Menu,
   MessageCircle,
   PhoneOff,
   Phone,
@@ -27,6 +32,7 @@
   ShieldCheck,
   Sparkles,
   Star,
+  Store,
   Users,
   Utensils,
   User,
@@ -437,11 +443,20 @@ export default function PublicAgent() {
 
   return (
     <main
-      className={`vf-theme vf-template-${bio.template || "coaching_education"} vf-layout-${layoutVariant} vf-bg-${bio.backgroundStyle || "soft_gradient"} vf-space-${bio.spacingScale || "comfortable"} vf-shadow-${bio.cardShadow || "soft"} vf-border-${bio.cardBorder || "subtle"} vf-anim-${bio.animation || "fade_in"} min-h-screen`}
+      className={`vf-theme vf-public-page vf-template-${bio.template || "coaching_education"} vf-layout-${layoutVariant} vf-bg-${bio.backgroundStyle || "soft_gradient"} vf-space-${bio.spacingScale || "comfortable"} vf-shadow-${bio.cardShadow || "soft"} vf-border-${bio.cardBorder || "subtle"} vf-anim-${bio.animation || "fade_in"} min-h-screen`}
       style={pageStyle}
     >
       <style>{themeCss}</style>
-      {showTopBar && <TopBar profile={profile} view={view} showLogo={showLogo} onHome={() => setView("landing")} />}
+      {showTopBar && (
+        <PublicPageNavbar
+          profile={profile}
+          view={view}
+          showLogo={showLogo}
+          showBusinessInfo={showBusinessInfo}
+          showAppointment={showAppointment}
+          onHome={() => setView("landing")}
+        />
+      )}
 
       {view === "landing" && (
         <LandingRenderer
@@ -495,37 +510,108 @@ export default function PublicAgent() {
   );
 }
 
-function TopBar({ profile, view, showLogo = true, onHome }) {
+function isOnlineStatus(value) {
+  return !/(offline|closed|unavailable|away)/i.test(String(value || ""));
+}
+
+function businessIconFor(category = "") {
+  if (/restaurant|food|cafe|hotel|menu|dining/i.test(category)) return Utensils;
+  if (/store|shop|retail/i.test(category)) return Store;
+  if (/school|college|course|education|coaching|admission/i.test(category)) return BookOpen;
+  if (/business|consult|service|agency/i.test(category)) return Briefcase;
+  return Building2;
+}
+
+function PublicPageNavbar({ profile, view, showLogo = true, showBusinessInfo, showAppointment, onHome }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const online = isOnlineStatus(profile.availability);
+  const BusinessIcon = businessIconFor(profile.category);
+  const navItems = [
+    { id: "vf-public-hero", label: "Home", Icon: Home },
+    { id: "vf-public-about", label: "About", Icon: Info },
+    { id: "vf-public-features", label: showAppointment ? "Services" : "Features", Icon: showAppointment ? CalendarDays : Sparkles },
+    ...(showBusinessInfo ? [{ id: "vf-public-meta", label: "Location", Icon: MapPin }] : [])
+  ];
+
+  function goToSection(id) {
+    if (view !== "landing") {
+      onHome();
+      window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    } else {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setMenuOpen(false);
+  }
+
   return (
-    <header className="vf-topbar sticky top-0 z-30">
-      <div className="vf-landing flex h-[66px] items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <button onClick={onHome} className="flex min-w-0 items-center gap-3 text-left" aria-label="Home">
+    <header className="vf-public-nav-shell sticky top-0 z-30">
+      <nav className="vf-public-nav vf-landing">
+        <button
+          onClick={() => goToSection("vf-public-hero")}
+          className="vf-public-brand"
+          aria-label="Home"
+        >
           {showLogo && (
-            <span className="vf-avatar-frame h-10 w-10 flex-none rounded-xl">
-              <Robot size={34} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
+            <span className="vf-public-brand-avatar">
+              <Robot size={44} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
             </span>
           )}
-          <span className="min-w-0 leading-tight">
-            <span className="block truncate text-[14.5px] font-extrabold">{profile.title}</span>
-            <span className="vf-muted flex min-w-0 items-center gap-1.5 text-[11.5px]">
-              <span className="truncate">{profile.category}</span>
-              <span className="opacity-50">·</span>
-              <span className="hidden truncate sm:inline">{profile.availability}</span>
+          <span className="vf-public-brand-copy">
+            <span className="vf-public-brand-title">{profile.businessName || profile.title}</span>
+            <span className="vf-public-brand-sub">
+              <BusinessIcon size={14} />
+              <span>{profile.category}</span>
+              <span className="vf-public-dot" />
+              <span>{online ? "Online now" : profile.availability}</span>
             </span>
           </span>
         </button>
-        <div className="ml-auto flex items-center gap-2.5">
+
+        <div className="vf-public-nav-items" aria-label="Page sections">
+          {navItems.map(({ id, label, Icon }, index) => (
+            <button
+              key={id}
+              onClick={() => goToSection(id)}
+              className={`vf-public-nav-link ${index === 0 ? "is-active" : ""}`}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="vf-public-nav-actions">
           {view !== "landing" && (
-            <button onClick={onHome} className="vf-btn vf-btn-ghost px-3 py-2 text-[13.5px]">
+            <button onClick={onHome} className="vf-public-back">
               <ArrowLeft size={16} />
               <span className="hidden sm:inline">Home</span>
             </button>
           )}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-            <GreenDot /> Online now
+          <span className={`vf-public-online-pill ${online ? "" : "is-offline"}`}>
+            {online ? <GreenDot /> : <span className="vf-public-offline-dot" />}
+            {online ? "Online now" : profile.availability}
           </span>
+          <button
+            className="vf-public-menu"
+            onClick={() => setMenuOpen((current) => !current)}
+            aria-label="Open navigation menu"
+            aria-expanded={menuOpen}
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
-      </div>
+
+        {menuOpen && (
+          <div className="vf-public-mobile-menu">
+            {navItems.map(({ id, label, Icon }) => (
+              <button key={id} onClick={() => goToSection(id)}>
+                <Icon size={18} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </nav>
     </header>
   );
 }
@@ -535,20 +621,200 @@ function TopBar({ profile, view, showLogo = true, onHome }) {
 // template renders a genuinely different landing page, not just a recolor.
 // ---------------------------------------------------------------------------
 function LandingRenderer(props) {
-  switch (props.layoutVariant) {
-    case "split_saas": return <SplitSaasLanding {...props} />;
-    case "cover_service": return <CoverServiceLanding {...props} />;
-    case "education_advisor": return <EducationAdvisorLanding {...props} />;
-    case "clinic_trust": return <ClinicTrustLanding {...props} />;
-    case "real_estate_cover": return <RealEstateCoverLanding {...props} />;
-    case "booking_first": return <BookingFirstLanding {...props} />;
-    case "finance_trust": return <FinanceTrustLanding {...props} />;
-    case "centered_minimal":
-    default: return <CenteredMinimalLanding {...props} />;
-  }
+  return <ModernPublicLanding {...props} />;
 }
 
 // ---- Shared landing building blocks ---------------------------------------
+function ModernPublicLanding({ profile, showBusinessInfo, showSocialLinks, showAppointment, showVoiceCall, showAgentImage, onStart, onCall, onBook }) {
+  return (
+    <div className="vf-public-shell vf-enter">
+      <section id="vf-public-hero" className="vf-public-hero-card">
+        <DecorativeHeroBackground />
+        <div className="vf-public-hero-grid">
+          <HeroAssistantVisual profile={profile} showAgentImage={showAgentImage} />
+          <AssistantInfo
+            profile={profile}
+            showBusinessInfo={showBusinessInfo}
+            showAppointment={showAppointment}
+            showVoiceCall={showVoiceCall}
+            onStart={onStart}
+            onCall={onCall}
+            onBook={onBook}
+          />
+        </div>
+      </section>
+
+      <FeaturesSection showAppointment={showAppointment} showVoiceCall={showVoiceCall} />
+      {showSocialLinks && (
+        <section className="vf-public-social">
+          <SocialRow socialLinks={profile.socialLinks} />
+        </section>
+      )}
+    </div>
+  );
+}
+
+function DecorativeHeroBackground() {
+  return (
+    <div className="vf-public-hero-decor" aria-hidden="true">
+      <span className="vf-public-dots vf-public-dots-a" />
+      <span className="vf-public-dots vf-public-dots-b" />
+      <span className="vf-public-ring vf-public-ring-a" />
+      <span className="vf-public-ring vf-public-ring-b" />
+      <span className="vf-public-glow vf-public-glow-a" />
+      <span className="vf-public-glow vf-public-glow-b" />
+      <span className="vf-public-curve" />
+    </div>
+  );
+}
+
+function HeroAssistantVisual({ profile, showAgentImage }) {
+  const badges = [
+    { className: "is-message", Icon: MessageCircle },
+    { className: "is-zap", Icon: Zap },
+    { className: "is-headphones", Icon: Headphones },
+    { className: "is-wave", Icon: AudioWaveform }
+  ];
+
+  return (
+    <div className="vf-public-visual" aria-hidden={!showAgentImage}>
+      <div className="vf-public-visual-ring">
+        <div className="vf-public-visual-inner">
+          {showAgentImage ? (
+            <Robot size={360} src={profile.agentImageUrl || profile.logoUrl} glow float />
+          ) : (
+            <span className="vf-public-bot-placeholder">
+              <Bot size={96} />
+            </span>
+          )}
+        </div>
+      </div>
+      {badges.map(({ className, Icon }) => (
+        <span key={className} className={`vf-public-float-badge ${className}`}>
+          <Icon size={28} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AssistantInfo({ profile, showBusinessInfo, showAppointment, showVoiceCall, onStart, onCall, onBook }) {
+  return (
+    <div id="vf-public-about" className="vf-public-info">
+      <AiPill />
+      <h1 className="vf-public-title">{profile.title}</h1>
+      <p className="vf-public-description">{profile.subtitle}</p>
+      <StatusPills profile={profile} showVoiceCall={showVoiceCall} />
+      <ActionButtons
+        profile={profile}
+        showAppointment={showAppointment}
+        showVoiceCall={showVoiceCall}
+        onStart={onStart}
+        onCall={onCall}
+        onBook={onBook}
+      />
+      {showBusinessInfo && <BusinessMeta profile={profile} />}
+    </div>
+  );
+}
+
+function StatusPills({ profile, showVoiceCall }) {
+  const online = isOnlineStatus(profile.availability);
+  const pills = [
+    { key: "status", label: online ? "Online now" : profile.availability, icon: online ? "dot" : "offline", tone: online ? "green" : "muted" },
+    { key: "fast", label: profile.responseTime ? `Fast response` : "Fast response", Icon: Zap },
+    { key: "ai", label: "AI assistant", Icon: Sparkles }
+  ];
+  if (showVoiceCall) pills.push({ key: "voice", label: "Voice enabled", Icon: Headphones });
+
+  return (
+    <div className="vf-public-pills">
+      {pills.map(({ key, label, Icon, icon, tone }) => (
+        <span key={key} className={`vf-public-status-pill ${tone === "green" ? "is-green" : ""}`}>
+          {icon === "dot" ? <GreenDot /> : icon === "offline" ? <span className="vf-public-offline-dot" /> : <Icon size={16} />}
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ActionButtons({ profile, showVoiceCall, showAppointment, onStart, onCall, onBook }) {
+  return (
+    <div className="vf-public-actions">
+      <button className="vf-public-primary-action" onClick={onStart}>
+        <MessageCircle size={23} />
+        <span>{profile.cta}</span>
+        <ArrowRight size={23} />
+      </button>
+      {(showAppointment || showVoiceCall) && (
+        <div className="vf-public-secondary-actions">
+          {showAppointment && (
+            <button className="vf-public-secondary-action is-booking" onClick={onBook}>
+              <CalendarDays size={21} />
+              <span>{profile.secondaryCta}</span>
+            </button>
+          )}
+          {showVoiceCall && (
+            <button className="vf-public-secondary-action is-voice" onClick={onCall}>
+              <Headphones size={21} />
+              <span>{profile.voiceCta}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BusinessMeta({ profile }) {
+  const BusinessIcon = businessIconFor(profile.category);
+  return (
+    <div id="vf-public-meta" className="vf-public-meta">
+      <span>
+        <BusinessIcon size={19} />
+        {profile.category}
+      </span>
+      <span className="vf-public-meta-divider" />
+      <span>
+        <MapPin size={19} />
+        {profile.location}
+      </span>
+    </div>
+  );
+}
+
+function FeaturesSection({ showAppointment, showVoiceCall }) {
+  const cards = [
+    { title: "AI Assistant", description: "Get instant answers to your questions.", Icon: MessageCircle, tone: "purple" },
+    { title: "Fast Response", description: "Receive quick help whenever you need it.", Icon: Zap, tone: "green" },
+    ...(showVoiceCall ? [{ title: "Voice Enabled", description: "Speak naturally with the assistant.", Icon: Headphones, tone: "blue" }] : []),
+    ...(showAppointment ? [{ title: "Easy Booking", description: "Book appointments or reservations in seconds.", Icon: CalendarDays, tone: "orange" }] : [])
+  ];
+
+  return (
+    <section id="vf-public-features" className="vf-public-features" aria-label="Assistant features">
+      {cards.map((card) => (
+        <FeatureCard key={card.title} {...card} />
+      ))}
+    </section>
+  );
+}
+
+function FeatureCard({ title, description, Icon, tone }) {
+  return (
+    <article className="vf-public-feature-card">
+      <span className={`vf-public-feature-icon is-${tone}`}>
+        <Icon size={28} />
+      </span>
+      <span className="vf-public-feature-copy">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </span>
+    </article>
+  );
+}
+
 function TrustChips({ showVoiceCall, align = "center" }) {
   const chips = [
     { icon: "dot", label: "Online now" },
@@ -1471,6 +1737,76 @@ const themeCss = `
 .vf-theme *{overflow-wrap:anywhere}
 .vf-muted{color:var(--muted)}
 .vf-accent-ink{color:var(--accent-d)}
+.vf-public-page{min-height:100vh;background:linear-gradient(135deg,#f8f9ff 0%,#f5f4ff 48%,#fafaff 100%)!important;color:#11163d;--accent:#4f46e5;--accent-d:#3730a3;--accent-soft:#ede9fe;--accent-tint:rgba(79,70,229,.16);--btn:#4f46e5;--btn-d:#4338ca;--text:#11163d;--muted:#626985;--line:#e3e7f5;--panel:#fff;--radius:24px;--button-radius:16px;--content-max:1560px;--shadow:0 18px 45px rgba(42,36,116,.10);font-family:"App Body Inter",Inter,ui-sans-serif,system-ui,sans-serif}
+.vf-public-page .vf-landing{max-width:min(1560px,calc(100vw - 56px));padding-inline:0}
+.vf-public-page button:focus-visible,.vf-public-page a:focus-visible{outline:3px solid rgba(79,70,229,.28);outline-offset:3px}
+.vf-public-nav-shell{padding:14px 0 12px;background:linear-gradient(180deg,rgba(248,249,255,.92),rgba(248,249,255,.66));backdrop-filter:blur(16px)}
+.vf-public-nav{position:relative;display:flex;min-height:92px;align-items:center;gap:22px;border:1px solid rgba(218,222,242,.82);border-radius:22px;background:rgba(255,255,255,.88);box-shadow:0 18px 45px rgba(34,36,72,.08);padding:16px 24px}
+.vf-public-brand{display:flex;min-width:0;align-items:center;gap:14px;text-align:left}
+.vf-public-brand-avatar{display:grid;height:54px;width:54px;flex:none;place-items:center;overflow:hidden;border:1px solid rgba(126,111,255,.20);border-radius:16px;background:linear-gradient(145deg,#fff,#eeeaff);box-shadow:inset 0 1px 0 rgba(255,255,255,.86),0 10px 22px rgba(79,70,229,.12)}
+.vf-public-brand-copy{display:grid;min-width:0;gap:4px}
+.vf-public-brand-title{overflow:hidden;color:#101541;font-size:18px;font-weight:850;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.vf-public-brand-sub{display:flex;min-width:0;align-items:center;gap:8px;color:#59617f;font-size:13.5px;font-weight:650}
+.vf-public-brand-sub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vf-public-dot,.vf-public-meta-divider{display:inline-block;height:5px;width:5px;flex:none;border-radius:999px;background:#10b981}
+.vf-public-nav-items{position:absolute;left:50%;display:flex;align-items:center;gap:32px;transform:translateX(-50%)}
+.vf-public-nav-link{position:relative;display:inline-flex;height:48px;align-items:center;gap:9px;color:#4d5576;font-size:15px;font-weight:800;white-space:nowrap;transition:color .18s ease,transform .18s ease}
+.vf-public-nav-link:hover{color:#4f46e5;transform:translateY(-1px)}
+.vf-public-nav-link.is-active{color:#4f46e5}
+.vf-public-nav-link.is-active::after{position:absolute;right:0;bottom:-15px;left:0;height:3px;border-radius:999px;background:#4f46e5;content:""}
+.vf-public-nav-actions{display:flex;align-items:center;gap:10px;margin-left:auto}
+.vf-public-back{display:inline-flex;min-height:40px;align-items:center;gap:7px;border:1px solid #e4e7f4;border-radius:999px;background:#fff;padding:0 13px;color:#38405f;font-size:13px;font-weight:800}
+.vf-public-online-pill{display:inline-flex;min-height:42px;align-items:center;gap:8px;border:1px solid rgba(16,185,129,.25);border-radius:999px;background:#ecfdf5;padding:0 16px;color:#047857;font-size:14px;font-weight:850;white-space:nowrap}
+.vf-public-online-pill.is-offline{border-color:#e5e7eb;background:#f8fafc;color:#64748b}
+.vf-public-offline-dot{height:10px;width:10px;border-radius:999px;background:#94a3b8}
+.vf-public-menu{display:none;height:42px;width:42px;place-items:center;border:1px solid #e4e7f4;border-radius:14px;background:#fff;color:#3730a3}
+.vf-public-mobile-menu{position:absolute;top:calc(100% + 10px);right:14px;left:14px;display:grid;gap:6px;border:1px solid #e4e7f4;border-radius:18px;background:#fff;padding:10px;box-shadow:0 18px 42px rgba(34,36,72,.12)}
+.vf-public-mobile-menu button{display:flex;align-items:center;gap:10px;border-radius:13px;padding:12px 13px;color:#11163d;font-weight:800;text-align:left}
+.vf-public-mobile-menu button:hover{background:#f3f1ff;color:#4f46e5}
+.vf-public-shell{width:100%;max-width:min(1560px,calc(100vw - 56px));margin-inline:auto;padding:18px 0 30px}
+.vf-public-hero-card{position:relative;min-height:540px;overflow:hidden;border:1px solid rgba(219,222,245,.92);border-radius:28px;background:linear-gradient(120deg,rgba(255,255,255,.96) 0%,rgba(255,255,255,.88) 46%,rgba(238,234,255,.92) 100%);box-shadow:0 22px 55px rgba(45,42,116,.11)}
+.vf-public-hero-grid{position:relative;z-index:1;display:grid;min-height:540px;align-items:center;gap:clamp(46px,5vw,78px);grid-template-columns:minmax(360px,.44fr) minmax(0,.56fr);padding:clamp(54px,4.8vw,72px)}
+.vf-public-hero-decor,.vf-public-hero-decor span{pointer-events:none;position:absolute}
+.vf-public-dots{width:104px;height:104px;background-image:radial-gradient(circle,rgba(79,70,229,.20) 2px,transparent 2.4px);background-size:20px 20px;opacity:.35}
+.vf-public-dots-a{top:24px;left:28px}.vf-public-dots-b{right:42px;bottom:48px}
+.vf-public-ring{border:4px solid rgba(255,255,255,.72);border-radius:999px;opacity:.75}
+.vf-public-ring-a{right:-46px;top:168px;width:168px;height:168px}.vf-public-ring-b{left:-54px;bottom:84px;width:126px;height:126px}
+.vf-public-glow{border-radius:999px;filter:blur(34px);opacity:.65}
+.vf-public-glow-a{top:-90px;right:18%;width:300px;height:240px;background:rgba(167,139,250,.26)}
+.vf-public-glow-b{bottom:-90px;left:18%;width:320px;height:230px;background:rgba(196,181,253,.23)}
+.vf-public-curve{right:5%;bottom:15%;width:44%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);transform:rotate(-12deg)}
+.vf-public-visual{position:relative;display:grid;min-height:430px;place-items:center}
+.vf-public-visual-ring{position:relative;display:grid;width:min(440px,100%);aspect-ratio:1;place-items:center;border-radius:999px;background:radial-gradient(circle at 46% 48%,#f9f8ff 0 45%,rgba(220,214,255,.70) 46% 63%,rgba(220,214,255,.28) 64% 100%);box-shadow:inset 0 0 0 24px rgba(255,255,255,.42),0 28px 60px rgba(79,70,229,.13)}
+.vf-public-visual-inner{display:grid;width:82%;height:82%;place-items:center;border-radius:999px;background:radial-gradient(circle at 50% 38%,rgba(255,255,255,.92),rgba(255,255,255,.42) 66%,transparent 68%)}
+.vf-public-visual .vf-robot-wrap{max-width:100%;max-height:100%}
+.vf-public-bot-placeholder{display:grid;width:70%;height:70%;place-items:center;border-radius:999px;background:linear-gradient(145deg,#4f46e5,#a78bfa);color:#fff;box-shadow:0 26px 48px rgba(79,70,229,.22)}
+.vf-public-float-badge{position:absolute;z-index:2;display:grid;height:76px;width:76px;place-items:center;border:1px solid rgba(225,226,246,.95);border-radius:999px;background:rgba(255,255,255,.88);box-shadow:0 18px 38px rgba(45,42,116,.10);color:#4f46e5;animation:vfPublicFloat 5.2s ease-in-out infinite}
+.vf-public-float-badge.is-message{top:44px;left:8%}.vf-public-float-badge.is-zap{top:44px;right:7%;animation-delay:.7s}.vf-public-float-badge.is-headphones{bottom:54px;left:9%;animation-delay:1.1s}.vf-public-float-badge.is-wave{right:8%;bottom:54px;animation-delay:1.6s}
+.vf-public-info{display:flex;min-width:0;flex-direction:column;align-items:flex-start}
+.vf-public-title{margin-top:22px;max-width:760px;color:#11163d;font-size:clamp(46px,4.8vw,68px);font-weight:850;line-height:1.07;letter-spacing:0;overflow-wrap:normal}
+.vf-public-description{margin-top:18px;max-width:680px;color:#626985;font-size:clamp(17px,1.4vw,20px);font-weight:560;line-height:1.55}
+.vf-public-pills{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}
+.vf-public-status-pill{display:inline-flex;min-height:38px;align-items:center;gap:8px;border:1px solid rgba(221,225,243,.92);border-radius:999px;background:rgba(255,255,255,.82);box-shadow:0 8px 20px rgba(45,42,116,.07);color:#58617f;padding:0 16px;font-size:14px;font-weight:800}
+.vf-public-status-pill svg{color:#4f46e5}.vf-public-status-pill.is-green{color:#047857}
+.vf-public-actions{display:grid;width:min(100%,560px);gap:16px;margin-top:28px}
+.vf-public-primary-action{display:grid;min-height:64px;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;border-radius:16px;background:linear-gradient(135deg,#4f46e5,#4338ca);box-shadow:0 18px 34px rgba(67,56,202,.28);color:#fff;padding:0 24px;font-size:18px;font-weight:900;text-align:left;transition:transform .18s ease,box-shadow .2s ease,filter .2s ease}
+.vf-public-primary-action:hover{transform:translateY(-2px);box-shadow:0 24px 42px rgba(67,56,202,.34);filter:saturate(1.08)}
+.vf-public-secondary-actions{display:grid;gap:14px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.vf-public-secondary-action{display:inline-flex;min-height:60px;align-items:center;justify-content:center;gap:11px;border-radius:15px;font-size:17px;font-weight:900;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.vf-public-secondary-action:hover{transform:translateY(-1px)}
+.vf-public-secondary-action.is-booking{border:1px solid #e1e5f2;background:#fff;color:#11163d;box-shadow:0 10px 24px rgba(45,42,116,.07)}
+.vf-public-secondary-action.is-voice{border:1px solid rgba(79,70,229,.18);background:#eef2ff;color:#4338ca;box-shadow:inset 0 1px 0 rgba(255,255,255,.72)}
+.vf-public-meta{display:flex;max-width:760px;flex-wrap:wrap;align-items:center;gap:12px;margin-top:28px;color:#68708b;font-size:15px;font-weight:800}
+.vf-public-meta span:not(.vf-public-meta-divider){display:inline-flex;align-items:center;gap:9px}
+.vf-public-meta svg{color:#4f46e5}.vf-public-meta-divider{background:#c7cbe0}
+.vf-public-features{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:30px}
+.vf-public-feature-card{display:flex;min-height:120px;align-items:center;gap:22px;border:1px solid rgba(221,225,243,.9);border-radius:20px;background:rgba(255,255,255,.88);box-shadow:0 14px 34px rgba(45,42,116,.08);padding:24px 26px;transition:transform .18s ease,box-shadow .2s ease,border-color .18s ease}
+.vf-public-feature-card:hover{transform:translateY(-3px);border-color:rgba(79,70,229,.20);box-shadow:0 20px 42px rgba(45,42,116,.11)}
+.vf-public-feature-icon{display:grid;height:62px;width:62px;flex:none;place-items:center;border-radius:999px;color:#fff;box-shadow:0 12px 26px rgba(45,42,116,.14)}
+.vf-public-feature-icon.is-purple{background:linear-gradient(145deg,#8b5cf6,#4f46e5)}.vf-public-feature-icon.is-green{background:linear-gradient(145deg,#34d399,#059669)}.vf-public-feature-icon.is-blue{background:linear-gradient(145deg,#60a5fa,#2563eb)}.vf-public-feature-icon.is-orange{background:linear-gradient(145deg,#fbbf24,#f97316)}
+.vf-public-feature-copy{display:grid;gap:6px;min-width:0}.vf-public-feature-copy strong{color:#11163d;font-size:18px;font-weight:900;line-height:1.12}.vf-public-feature-copy span{color:#51607d;font-size:15px;font-weight:560;line-height:1.45}
+.vf-public-social{display:flex;justify-content:center;margin-top:28px}
+@keyframes vfPublicFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 /* Background treatments (one wins per template via the extra class on .vf-theme) */
 .vf-theme.vf-bg-clean_white,.vf-theme.vf-bg-solid,.vf-theme.vf-bg-cover_image{background:var(--bg)}
 .vf-theme.vf-bg-soft_gradient{background:radial-gradient(circle at 6% -4%,var(--accent-tint),transparent 30%),radial-gradient(circle at 98% 0%,var(--accent-tint),transparent 34%),var(--bg)}
@@ -1565,7 +1901,11 @@ const themeCss = `
 @keyframes vfSpin{to{transform:rotate(360deg)}}
 @keyframes vfFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes vfModalIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media (max-width:1280px){.vf-public-nav-items{gap:18px}.vf-public-nav-link{font-size:14px}.vf-public-hero-grid{grid-template-columns:minmax(320px,.42fr) minmax(0,.58fr);padding:44px}.vf-public-visual-ring{width:min(380px,100%)}.vf-public-float-badge{height:66px;width:66px}.vf-public-features{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1024px){.vf-public-page .vf-landing,.vf-public-shell{max-width:calc(100vw - 40px)}.vf-public-nav{min-height:82px;padding:14px 16px}.vf-public-nav-items{display:none}.vf-public-menu{display:grid}.vf-public-hero-grid{gap:28px;grid-template-columns:minmax(280px,.48fr) minmax(0,.52fr);padding:36px}.vf-public-title{font-size:clamp(40px,5.2vw,52px)}.vf-public-description{font-size:17px}.vf-public-actions{width:100%}}
+@media (max-width:780px){.vf-public-page .vf-landing,.vf-public-shell{max-width:calc(100vw - 28px)}.vf-public-nav-shell{padding-top:10px}.vf-public-nav{border-radius:18px}.vf-public-brand-avatar{height:48px;width:48px}.vf-public-brand-title{font-size:16px}.vf-public-brand-sub{font-size:12.5px}.vf-public-online-pill{display:none}.vf-public-hero-card{border-radius:24px}.vf-public-hero-grid{min-height:auto;grid-template-columns:1fr;padding:28px 22px 30px}.vf-public-visual{min-height:330px;order:-1}.vf-public-visual-ring{width:min(330px,88vw)}.vf-public-visual-inner .vf-robot-wrap{width:280px!important;height:280px!important}.vf-public-float-badge{height:56px;width:56px}.vf-public-float-badge svg{width:22px;height:22px}.vf-public-info{align-items:center;text-align:center}.vf-public-title{font-size:clamp(34px,9vw,42px);line-height:1.1}.vf-public-description{font-size:16px}.vf-public-pills{justify-content:center}.vf-public-secondary-actions{grid-template-columns:1fr}.vf-public-meta{justify-content:center;font-size:14px}.vf-public-features{grid-template-columns:1fr;gap:14px;margin-top:22px}.vf-public-feature-card{min-height:104px;padding:20px}.vf-public-hero-decor .vf-public-dots-b,.vf-public-ring-a,.vf-public-curve{display:none}}
 @media (max-width:640px){.vf-cover-hero{min-height:340px}}
-@media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge{animation:none!important}}
+@media (max-width:480px){.vf-public-brand-sub svg,.vf-public-brand-sub .vf-public-dot,.vf-public-brand-sub span:last-child{display:none}.vf-public-shell{padding-top:10px}.vf-public-hero-grid{padding:24px 18px}.vf-public-visual{min-height:280px}.vf-public-visual-ring{width:min(280px,86vw)}.vf-public-visual-inner .vf-robot-wrap{width:230px!important;height:230px!important}.vf-public-float-badge{height:48px;width:48px}.vf-public-float-badge.is-message{left:0;top:28px}.vf-public-float-badge.is-zap{right:0;top:28px}.vf-public-float-badge.is-headphones{left:2%;bottom:34px}.vf-public-float-badge.is-wave{right:2%;bottom:34px}.vf-public-primary-action{min-height:58px;padding:0 18px;font-size:16px}.vf-public-secondary-action{min-height:56px;font-size:15px}.vf-public-feature-icon{height:54px;width:54px}.vf-public-feature-copy strong{font-size:16px}.vf-public-feature-copy span{font-size:14px}}
+@media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge,.vf-public-float-badge,.vf-public-primary-action,.vf-public-secondary-action,.vf-public-feature-card{animation:none!important;transition:none!important}}
 `;
 
