@@ -222,8 +222,8 @@ export default function Settings() {
         )}
 
         {activeKey === "email" && (
-          <TabView title="Email" description="Configure email providers, sender identities, and inbox sync.">
-            <LinkCard icon={Mail} title="Email Integration" description="Connect Brevo or IMAP, validate API keys, and manage sender addresses." to="/settings/email" cta="Open Email Settings" />
+          <TabView title="Email" description="Connect Gmail to view, send, reply to, and manage email from your account.">
+            <LinkCard icon={Mail} title="Email Integration" description="Connect Gmail to view, send, reply to, and manage email from your account." to="/settings/email" cta="Open Email Settings" />
           </TabView>
         )}
 

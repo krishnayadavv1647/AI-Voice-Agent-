@@ -64,6 +64,29 @@ These let a user browse/preview provider voices and pick a voice per agent (`Age
 
 ---
 
+## Gmail (email)
+
+The active email provider. Users connect their **own Gmail** via a Google OAuth flow that is **separate from application login** — same Google client, different callback URL. Full details in **[11 — Email](11-email.md)**.
+
+### Endpoints (`/api/email-integrations`)
+`GET /gmail/auth-url`, `GET /gmail/callback` (public — Google calls it; secured by signed state), `POST /gmail/import-more`, `DELETE /gmail`, `GET /status`, `POST /sync-now`.
+
+```mermaid
+flowchart LR
+    Connect[Connect Gmail] --> URL[auth-url -> Google consent: gmail.modify]
+    URL --> CB[callback -> verify signed state -> exchange code]
+    CB --> Store[(EmailIntegration.gmail - tokens encrypted)]
+    Store --> Sync[initial + incremental sync]
+    Store --> Send[send / reply / campaigns from the user's address]
+```
+
+- Scopes: `openid email profile https://www.googleapis.com/auth/gmail.modify`.
+- Tokens are encrypted at rest (`credentialEncryptionService`), never logged, never sent to the browser. Refresh tokens are preserved on reconnect when Google omits a new one.
+- **Login is untouched:** `/api/auth/google` still requests only `profile email`.
+- Legacy Brevo/IMAP connection endpoints remain for rollback but are hidden from the UI.
+
+---
+
 ## Telegram
 
 ### Endpoints (`/api/integrations/telegram`)

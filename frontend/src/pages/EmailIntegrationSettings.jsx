@@ -1,10 +1,8 @@
-﻿import { CheckCircle2, KeyRound, Mail, RefreshCw, Save, ShieldCheck, Trash2, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Mail, RefreshCw, Trash2, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
 import { api } from "../lib/api.js";
-
-const defaultBrevo = { apiKey: "", senderId: "", senderName: "", senderEmail: "", replyToName: "", replyToEmail: "" };
-const defaultImap = { email: "", host: "imap.gmail.com", port: 993, secure: true, username: "", password: "" };
 
 function messageFrom(error) {
   return error.response?.message || error.message || "Request failed.";
@@ -14,54 +12,50 @@ function timeLabel(value) {
   return value ? new Date(value).toLocaleString() : "Not synced yet";
 }
 
+const ERROR_REASONS = {
+  invalid_state: "The connection request expired or was tampered with. Please try again.",
+  missing_code: "Google did not return an authorization code. Please try again.",
+  connection_failed: "We could not complete the Gmail connection. Please try again.",
+  access_denied: "You declined the Gmail permission request."
+};
+
 export default function EmailIntegrationSettings() {
   const [status, setStatus] = useState(null);
-  const [brevoForm, setBrevoForm] = useState(defaultBrevo);
-  const [imapForm, setImapForm] = useState(defaultImap);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [verifiedSenders, setVerifiedSenders] = useState([]);
-  const [sendersLoading, setSendersLoading] = useState(false);
-  const [sendersError, setSendersError] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const integration = status?.integration;
-  const replyMismatch = useMemo(() => {
-    const replyTo = integration?.brevo?.replyToEmail?.toLowerCase();
-    const mailbox = integration?.inbound?.email?.toLowerCase();
-    return Boolean(replyTo && mailbox && replyTo !== mailbox);
-  }, [integration]);
+  const gmail = status?.integration?.gmail;
+  const connected = Boolean(gmail?.connected);
 
   async function loadStatus() {
     const result = await api("/email-integrations/status");
     setStatus(result);
-    setBrevoForm((current) => ({
-      ...current,
-      senderName: result.integration?.brevo?.senderName || current.senderName,
-      senderEmail: result.integration?.brevo?.senderEmail || current.senderEmail,
-      senderId: result.integration?.brevo?.senderId || current.senderId,
-      replyToName: result.integration?.brevo?.replyToName || current.replyToName,
-      replyToEmail: result.integration?.brevo?.replyToEmail || current.replyToEmail
-    }));
-    setImapForm((current) => ({
-      ...current,
-      email: result.integration?.inbound?.email || current.email,
-      host: result.integration?.inbound?.host || current.host,
-      port: result.integration?.inbound?.port || current.port,
-      secure: result.integration?.inbound?.secure ?? current.secure,
-      username: result.integration?.inbound?.username || current.username
-    }));
   }
 
   useEffect(() => {
     loadStatus().catch((err) => setError(messageFrom(err)));
   }, []);
 
+  // Handle the OAuth redirect result (?gmail=connected | ?gmail=error&reason=...).
   useEffect(() => {
-    if (integration?.brevo?.hasApiKey || integration?.brevo?.connected) {
-      loadVerifiedSenders().catch(() => {});
+    const gmailResult = searchParams.get("gmail");
+    if (!gmailResult) return;
+    if (gmailResult === "connected") {
+      setNotice("Gmail connected. Your inbox is syncing now.");
+      loadStatus().catch(() => {});
+    } else if (gmailResult === "error") {
+      const reason = searchParams.get("reason") || "";
+      setError(ERROR_REASONS[reason] || "Gmail connection failed. Please try again.");
     }
-  }, [integration?.brevo?.hasApiKey, integration?.brevo?.connected]);
+    // Strip the query params so a refresh doesn't re-trigger the banner.
+    const next = new URLSearchParams(searchParams);
+    next.delete("gmail");
+    next.delete("reason");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function run(label, action, success) {
     setBusy(label);
@@ -78,225 +72,118 @@ export default function EmailIntegrationSettings() {
     }
   }
 
-  async function connectBrevo() {
-    await run("brevo", () => api("/email-integrations/brevo/connect", { method: "POST", body: brevoForm }), "Brevo connected.");
-    setBrevoForm((current) => ({ ...current, apiKey: "" }));
-  }
-
-  async function validateBrevo() {
-    if (!brevoForm.apiKey.trim()) {
-      setError("Enter your Brevo API key.");
-      return;
-    }
-    setBusy("brevo-validate");
-    setSendersLoading(true);
-    setSendersError("");
-    setNotice("");
+  async function connectGmail() {
+    setBusy("connect");
     setError("");
     try {
-      const result = await api("/email-integrations/brevo/validate", { method: "POST", body: { apiKey: brevoForm.apiKey.trim() } });
-      const senders = Array.isArray(result.senders) ? result.senders : [];
-      setVerifiedSenders(senders);
-      setStatus((current) => ({
-        ...(current || {}),
-        integration: {
-          ...(current?.integration || {}),
-          brevo: { ...(current?.integration?.brevo || {}), hasApiKey: true, accountEmail: result.account?.email || "", verifiedSenders: senders }
-        }
-      }));
-      setNotice(senders.length ? `${senders.length} Brevo sender${senders.length === 1 ? "" : "s"} loaded.` : "No Brevo sender found. Add and verify a sender in your Brevo account, then reload senders.");
+      const result = await api("/email-integrations/gmail/auth-url");
+      window.location.href = result.authUrl;
     } catch (err) {
-      setVerifiedSenders([]);
-      setSendersError(messageFrom(err) || "Unable to validate the Brevo API key.");
-      setError(messageFrom(err) || "Unable to validate the Brevo API key.");
-    } finally {
-      setSendersLoading(false);
+      setError(messageFrom(err));
       setBusy("");
     }
   }
 
-  async function loadVerifiedSenders() {
-    setSendersLoading(true);
-    setSendersError("");
-    try {
-      const result = await api("/email-integrations/brevo/senders");
-      const senders = Array.isArray(result.senders) ? result.senders : [];
-      setVerifiedSenders(senders);
-      setStatus((current) => ({
-        ...(current || {}),
-        integration: {
-          ...(current?.integration || {}),
-          brevo: { ...(current?.integration?.brevo || {}), verifiedSenders: senders }
-        }
-      }));
-      if (!senders.length) setSendersError("No Brevo sender found. Add and verify a sender in your Brevo account, then reload senders.");
-    } catch (err) {
-      setVerifiedSenders([]);
-      setSendersError(messageFrom(err) || "Unable to load verified Brevo senders.");
-    } finally {
-      setSendersLoading(false);
-    }
-  }
-
-  function selectSender(email) {
-    const selectedSender = verifiedSenders.find((sender) => sender.email === email);
-    setBrevoForm((current) => ({
-      ...current,
-      senderEmail: email,
-      senderId: selectedSender?.id || "",
-      senderName: selectedSender?.name || current.senderName
-    }));
-  }
-
-  async function saveBrevoSender() {
-    await run("brevo-save", () => api("/email-integrations/brevo/sender", { method: "PATCH", body: brevoForm }), "Brevo sender settings saved.");
-  }
-
-  async function connectImap() {
-    await run("imap", () => api("/email-integrations/imap/connect", { method: "POST", body: { ...imapForm, port: Number(imapForm.port) } }), "Receiving mailbox connected.");
-    setImapForm((current) => ({ ...current, password: "" }));
-  }
-
-  async function testImap() {
-    await run("imap-test", () => api("/email-integrations/imap/test", { method: "POST", body: { ...imapForm, port: Number(imapForm.port) } }), "Mailbox connection works.");
-  }
-
-  async function syncNow() {
-    await run("sync", () => api("/email-integrations/sync-now", { method: "POST" }), "Mailbox sync complete.");
-    window.dispatchEvent(new Event("email-unread-count-changed"));
-  }
-
-  function useMailboxAsReplyTo() {
-    setBrevoForm((current) => ({ ...current, replyToEmail: integration?.inbound?.email || "" }));
+  async function loadOlderEmails() {
+    await run("load-more", async () => {
+      const result = await api("/email-integrations/gmail/import-more", { method: "POST" });
+      if (!result.hasMore) setNotice("No more older emails are available.");
+    }, "Older emails imported.");
   }
 
   return (
     <div className="page-stack">
-      <PageHeader title="Email Integrations" description="Connect your own sending account and receiving mailbox." />
+      <PageHeader title="Email Integration" description="Connect Gmail to view, send, reply to, and manage email from your account." />
 
       {notice && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
-      <section className="card space-y-4">
+      <section className="card space-y-5">
         <div className="flex items-start gap-3">
-          <div className="icon-tile"><ShieldCheck size={18} /></div>
+          <div className="icon-tile"><Mail size={18} /></div>
           <div>
-            <h2 className="panel-title">Email Setup Status</h2>
-            <p className="text-sm text-neutral-500">Sending and receiving stay isolated to your account.</p>
+            <h2 className="panel-title">Gmail</h2>
+            <p className="text-sm text-neutral-500">
+              {connected ? "Your Gmail account is connected." : "Connect Gmail to view, send, reply to, and manage emails from this app."}
+            </p>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <Status label="Brevo Sending" ok={integration?.brevo?.connected} />
-          <Status label="Receiving Mailbox" ok={integration?.inbound?.connected} />
-          <Status label="Verified Sender" ok={integration?.brevo?.verifiedSender} />
-          <Status label="Reply-To Match" ok={integration?.setup?.replyToMatchesMailbox} />
-          <Status label="Automatic Sync" ok={integration?.inbound?.syncEnabled && integration?.inbound?.syncStatus !== "error"} />
-        </div>
-        {replyMismatch && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            Your Reply-To email does not match your connected receiving mailbox. Customer replies may not appear in your app.
-            <button className="btn-secondary mt-3" onClick={useMailboxAsReplyTo}>Use Connected Mailbox as Reply-To</button>
+
+        {!connected ? (
+          <div className="rounded-xl border border-dashed border-hairline p-6 text-center">
+            <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-neutral-100">
+              <Mail size={22} className="text-neutral-600" />
+            </div>
+            <p className="text-sm text-neutral-600">
+              Connect your Gmail account to send campaigns, reply to leads, and keep every conversation in one inbox.
+              Emails are sent from your real Gmail address.
+            </p>
+            <button className="btn-primary mx-auto mt-4" disabled={busy === "connect"} onClick={connectGmail}>
+              <Mail size={16} />{busy === "connect" ? "Redirecting to Google…" : "Connect Gmail"}
+            </button>
           </div>
+        ) : (
+          <>
+            <div className="grid gap-3 rounded-xl bg-neutral-50 p-4 sm:grid-cols-2">
+              <Info label="Connected Account" value={gmail.email} />
+              <Info label="Name" value={gmail.displayName || "—"} />
+              <Info label="Last Synced" value={timeLabel(gmail.lastSyncedAt)} />
+              <Info label="Sync Status" value={gmail.syncStatus === "error" ? "Needs attention" : gmail.syncStatus} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <StatusPill label="Sending" ok={gmail.canSend} />
+              <StatusPill label="Receiving" ok={gmail.canRead} />
+              <StatusPill label="Automatic Sync" ok={gmail.syncEnabled && gmail.syncStatus !== "error"} />
+            </div>
+
+            {gmail.syncStatus === "error" && gmail.lastErrorType === "auth" && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>Gmail authorization expired. Reconnect Gmail to resume sending and syncing.</span>
+              </div>
+            )}
+
+            <div className="action-row">
+              <button className="btn-secondary" disabled={busy === "sync"} onClick={() => run("sync", () => api("/email-integrations/sync-now", { method: "POST" }), "Gmail sync complete.")}>
+                <RefreshCw size={16} className={busy === "sync" ? "animate-spin" : ""} />{busy === "sync" ? "Syncing…" : "Sync Now"}
+              </button>
+              {gmail.hasMore && (
+                <button className="btn-secondary" disabled={busy === "load-more"} onClick={loadOlderEmails}>
+                  {busy === "load-more" ? "Importing…" : "Load Older Emails"}
+                </button>
+              )}
+              <button className="btn-secondary" disabled={busy === "reconnect"} onClick={connectGmail}>
+                Reconnect Gmail
+              </button>
+              <button className="btn-danger" disabled={busy === "disconnect"} onClick={() => run("disconnect", () => api("/email-integrations/gmail", { method: "DELETE" }), "Gmail disconnected.")}>
+                <Trash2 size={16} />Disconnect Gmail
+              </button>
+            </div>
+          </>
         )}
       </section>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="card space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="icon-tile"><KeyRound size={18} /></div>
-            <div>
-              <h2 className="panel-title">Brevo Email Sending</h2>
-              <p className="text-sm text-neutral-500">Send email through your own Brevo account.</p>
-            </div>
-          </div>
-
-          {integration?.brevo?.connected && (
-            <div className="grid gap-3 rounded-xl bg-neutral-50 p-3 sm:grid-cols-2">
-              <Info label="Status" value="Connected" />
-              <Info label="Account" value={integration.brevo.accountEmail || "Connected"} />
-              <Info label="Sender" value={integration.brevo.senderEmail} />
-              <Info label="Reply-To" value={integration.brevo.replyToEmail} />
-              <Info label="API Key" value={integration.brevo.maskedApiKey} />
-            </div>
-          )}
-
-          <label className="field-label">Brevo API Key<input type="password" value={brevoForm.apiKey} onChange={(event) => setBrevoForm({ ...brevoForm, apiKey: event.target.value })} placeholder={integration?.brevo?.maskedApiKey || "xkeysib-..."} /></label>
-          <label className="field-label">Sender Name<input value={brevoForm.senderName} onChange={(event) => setBrevoForm({ ...brevoForm, senderName: event.target.value })} /></label>
-          <label className="field-label">Verified Sender Email
-            <select value={brevoForm.senderEmail || ""} disabled={sendersLoading || verifiedSenders.length === 0} onChange={(event) => selectSender(event.target.value)}>
-              <option value="">
-                {sendersLoading ? "Loading verified senders..." : verifiedSenders.length === 0 ? "No verified sender found" : "Select verified sender"}
-              </option>
-              {verifiedSenders.map((sender) => <option key={sender.id || sender.email} value={sender.email}>{sender.name} - {sender.email}</option>)}
-            </select>
-            {sendersError && <p className="mt-1 text-sm text-rose-600">{sendersError}</p>}
-          </label>
-          <label className="field-label">Reply-To Name<input value={brevoForm.replyToName} onChange={(event) => setBrevoForm({ ...brevoForm, replyToName: event.target.value })} /></label>
-          <label className="field-label">Reply-To Email<input value={brevoForm.replyToEmail} onChange={(event) => setBrevoForm({ ...brevoForm, replyToEmail: event.target.value })} /></label>
-
-          <div className="action-row">
-            <button className="btn-secondary" disabled={!brevoForm.apiKey || busy === "brevo-validate"} onClick={validateBrevo}><RefreshCw size={16} />{busy === "brevo-validate" ? "Loading..." : "Verify API Key & Load Senders"}</button>
-            <button className="btn-secondary" disabled={sendersLoading || !(integration?.brevo?.hasApiKey || integration?.brevo?.connected)} onClick={() => loadVerifiedSenders().catch((err) => setError(messageFrom(err)))}><RefreshCw size={16} />Reload Senders</button>
-            <button className="btn-primary" disabled={busy === "brevo" || !brevoForm.senderEmail || !brevoForm.replyToEmail} onClick={connectBrevo}><Save size={16} />{busy === "brevo" ? "Saving..." : "Save Brevo Configuration"}</button>
-            <button className="btn-secondary" disabled={!integration?.brevo?.connected || busy === "brevo-save"} onClick={saveBrevoSender}>Save Changes</button>
-            <button className="btn-danger" disabled={!integration?.brevo?.connected} onClick={() => run("brevo-disconnect", () => api("/email-integrations/brevo", { method: "DELETE" }), "Brevo disconnected.")}><Trash2 size={16} />Disconnect</button>
-          </div>
-        </section>
-
-        <section className="card space-y-4">
-          <div className="flex items-start gap-3">
-            <div className="icon-tile"><Mail size={18} /></div>
-            <div>
-              <h2 className="panel-title">Receiving Mailbox</h2>
-              <p className="text-sm text-neutral-500">Connect the inbox where customer replies should arrive.</p>
-            </div>
-          </div>
-
-          {integration?.inbound?.connected && (
-            <div className="grid gap-3 rounded-xl bg-neutral-50 p-3 sm:grid-cols-2">
-              <Info label="Status" value="Connected" />
-              <Info label="Mailbox" value={integration.inbound.email} />
-              <Info label="Provider" value={integration.inbound.provider === "gmail_oauth" ? "Gmail OAuth" : "Gmail IMAP"} />
-              <Info label="Last Sync" value={timeLabel(integration.inbound.lastSyncedAt)} />
-              <Info label="Auto Sync" value={integration.inbound.syncStatus === "error" ? "Needs attention" : "Active"} />
-            </div>
-          )}
-
-          <button className="btn-secondary" onClick={() => run("gmail", async () => {
-            const result = await api("/email-integrations/gmail/auth-url");
-            window.location.href = result.authUrl;
-          })}>Connect Gmail</button>
-
-          <div className="rounded-xl border border-hairline p-4">
-            <p className="mb-3 text-sm font-semibold text-ink">Connect with IMAP</p>
-            <div className="field-grid">
-              <input placeholder="Email Address" value={imapForm.email} onChange={(event) => setImapForm({ ...imapForm, email: event.target.value, username: imapForm.username || event.target.value })} />
-              <input placeholder="IMAP Host" value={imapForm.host} onChange={(event) => setImapForm({ ...imapForm, host: event.target.value })} />
-              <input placeholder="IMAP Port" type="number" value={imapForm.port} onChange={(event) => setImapForm({ ...imapForm, port: event.target.value })} />
-              <input placeholder="Username" value={imapForm.username} onChange={(event) => setImapForm({ ...imapForm, username: event.target.value })} />
-              <input placeholder="App Password" type="password" value={imapForm.password} onChange={(event) => setImapForm({ ...imapForm, password: event.target.value })} />
-              <label className="flex items-center gap-2 text-sm font-medium text-neutral-700"><input className="h-4 w-4" type="checkbox" checked={imapForm.secure} onChange={(event) => setImapForm({ ...imapForm, secure: event.target.checked })} />Use Secure Connection</label>
-            </div>
-            <p className="mt-3 text-sm text-neutral-500">For Gmail IMAP, use a Google App Password instead of your normal Gmail password.</p>
-          </div>
-
-          <div className="action-row">
-            <button className="btn-secondary" disabled={busy === "imap-test"} onClick={testImap}>Test Connection</button>
-            <button className="btn-primary" disabled={busy === "imap"} onClick={connectImap}>Connect with IMAP</button>
-            <button className="btn-secondary" disabled={!integration?.inbound?.connected || busy === "sync"} onClick={syncNow}><RefreshCw size={16} />Sync Now</button>
-            <button className="btn-danger" disabled={!integration?.inbound?.connected} onClick={() => run("imap-disconnect", () => api("/email-integrations/imap", { method: "DELETE" }), "Mailbox disconnected.")}><Trash2 size={16} />Disconnect</button>
-          </div>
-        </section>
-      </div>
     </div>
   );
 }
 
-function Status({ label, ok }) {
+function StatusPill({ label, ok }) {
   const Icon = ok ? CheckCircle2 : XCircle;
-  return <div className="rounded-xl bg-neutral-50 p-3"><p className="text-xs font-medium uppercase text-neutral-500">{label}</p><p className={`mt-1 flex items-center gap-2 text-sm font-bold ${ok ? "text-emerald-700" : "text-rose-700"}`}><Icon size={16} />{ok ? "Connected" : "Not ready"}</p></div>;
+  return (
+    <div className="rounded-xl bg-neutral-50 p-3">
+      <p className="text-xs font-medium uppercase text-neutral-500">{label}</p>
+      <p className={`mt-1 flex items-center gap-2 text-sm font-bold ${ok ? "text-emerald-700" : "text-rose-700"}`}>
+        <Icon size={16} />{ok ? "Active" : "Not ready"}
+      </p>
+    </div>
+  );
 }
 
 function Info({ label, value }) {
-  return <div><p className="text-xs font-medium uppercase text-neutral-500">{label}</p><p className="break-anywhere text-sm font-semibold text-ink">{value || "Not configured"}</p></div>;
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase text-neutral-500">{label}</p>
+      <p className="break-anywhere text-sm font-semibold text-ink">{value || "Not configured"}</p>
+    </div>
+  );
 }

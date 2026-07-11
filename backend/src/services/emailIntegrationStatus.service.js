@@ -17,6 +17,8 @@ export async function getOrCreateEmailIntegration(userId) {
   );
 }
 
+const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+
 export function toSafeIntegrationStatus(integration) {
   const brevoKey = integration?.brevo?.apiKeyEncrypted
     ? decryptCredential(integration.brevo.apiKeyEncrypted)
@@ -31,7 +33,30 @@ export function toSafeIntegrationStatus(integration) {
     integration.brevo.replyToEmail.toLowerCase() === integration.inbound.email.toLowerCase()
   );
 
+  // --- Gmail status (never exposes tokens; no decryption needed) ---
+  const g = integration?.gmail || {};
+  const gmailConnected = Boolean(g.connected && g.email);
+  const hasModifyScope = Array.isArray(g.grantedScopes)
+    ? g.grantedScopes.includes(GMAIL_MODIFY_SCOPE)
+    : true; // older records predate scope tracking; assume modify was granted.
+  const gmail = {
+    connected: gmailConnected,
+    email: g.email || "",
+    displayName: g.displayName || "",
+    canRead: Boolean(gmailConnected && g.syncEnabled !== false),
+    canSend: Boolean(gmailConnected && hasModifyScope),
+    syncEnabled: g.syncEnabled !== false,
+    syncStatus: g.syncStatus || "not_connected",
+    lastSyncedAt: g.lastSyncedAt || null,
+    lastError: g.lastError || null,
+    lastErrorType: g.lastErrorType || null,
+    initialSyncComplete: Boolean(g.gmailInitialSyncComplete),
+    hasMore: Boolean(g.gmailNextPageToken),
+    connectedAt: g.connectedAt || null
+  };
+
   return {
+    gmail,
     brevo: {
       connected: Boolean(integration?.brevo?.connected),
       hasApiKey: Boolean(integration?.brevo?.apiKeyEncrypted),
@@ -67,10 +92,11 @@ export function toSafeIntegrationStatus(integration) {
       lastError: integration?.inbound?.lastError || null
     },
     setup: {
-      canSend: Boolean(integration?.brevo?.connected && verifiedSender && integration?.brevo?.replyToEmail),
-      canReceive: Boolean(integration?.inbound?.connected),
+      // Gmail is the active provider: setup readiness is driven entirely by the Gmail connection.
+      canSend: gmail.canSend,
+      canReceive: gmail.canRead,
       replyToMatchesMailbox,
-      fullyConfigured: Boolean(integration?.brevo?.connected && verifiedSender && integration?.brevo?.replyToEmail && integration?.inbound?.connected)
+      fullyConfigured: gmail.connected && gmail.canSend
     }
   };
 }

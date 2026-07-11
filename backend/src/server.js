@@ -8,6 +8,7 @@ import { startFollowUpWorker } from "./services/followUpWorker.js";
 import { startCampaignWorker } from "./services/campaignWorker.js";
 import { startScheduledCallWorker } from "./services/scheduledCallWorker.js";
 import { startEmailSyncWorker } from "./workers/emailSyncWorker.js";
+import { startGmailCampaignWorker } from "./workers/gmailCampaignWorker.js";
 import { startTelegramBot } from "./services/telegram/bot.js";
 import { startPipelineScheduler } from "./services/pipelineScheduler.js";
 import { refreshPlanConfig } from "./config/plans.js";
@@ -78,6 +79,7 @@ connectDB()
       startCampaignWorker();
       startFollowUpWorker();
       startEmailSyncWorker();
+      if (process.env.GMAIL_CAMPAIGN_WORKER_ENABLED !== "false") startGmailCampaignWorker();
       startTelegramBot();
       startPipelineScheduler();
       console.log("[server] background workers started (RUN_WORKERS=true)");

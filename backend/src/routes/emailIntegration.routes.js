@@ -9,6 +9,7 @@ import {
   getEmailIntegrationStatus,
   getGmailAuthUrl,
   gmailCallback,
+  importMoreGmail,
   listBrevoSenders,
   syncNow,
   validateBrevo,
@@ -36,7 +37,8 @@ router.post("/imap/connect", connectionLimiter, connectImap);
 router.post("/imap/test", connectionLimiter, testImap);
 router.delete("/imap", disconnectImap);
 router.post("/sync-now", syncLimiter, syncNow);
-router.get("/gmail/auth-url", getGmailAuthUrl);
+router.get("/gmail/auth-url", connectionLimiter, getGmailAuthUrl);
+router.post("/gmail/import-more", syncLimiter, importMoreGmail);
 router.delete("/gmail", disconnectGmail);
 
 export default router;
