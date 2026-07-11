@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import Agent from "../models/Agent.js";
 import EmailCampaign from "../models/EmailCampaign.js";
+import EmailCampaignRecipient from "../models/EmailCampaignRecipient.js";
 import EmailLog from "../models/EmailLog.js";
 import EmailMessage from "../models/EmailMessage.js";
 import EmailThread from "../models/EmailThread.js";
@@ -12,11 +13,18 @@ import { sendUserBrevoEmail } from "../services/brevoService.js";
 import { emitToUser } from "../services/emailRealtime.service.js";
 import { getOrCreateEmailIntegration } from "../services/emailIntegrationStatus.service.js";
 import { syncEmailIntegration } from "../services/emailInboundSyncService.js";
+import { sendGmailEmail, fetchGmailAttachment } from "../services/gmail/gmailSend.service.js";
+import { storeSentGmailMessage } from "../services/gmail/gmailStore.service.js";
+import { markGmailThreadRead } from "../services/gmail/gmailLabels.service.js";
+import { searchGmailMessages } from "../services/gmail/gmailSync.service.js";
+import { buildReplyRecipients, buildReplySubject, buildReplyThreadingHeaders } from "../services/gmail/gmailReply.util.js";
+import { safeGmailErrorMessage } from "../services/gmail/gmailErrors.js";
 import { createEmailSentFollowUp, pauseEmailSentFollowUpsForLead } from "../services/followUp.service.js";
 import { chargeFeatureOrThrow } from "../services/billing/featureBilling.service.js";
 import { creditEnforcementEnabled } from "../services/billing/featureAccess.service.js";
 import ledger from "../services/billing/creditLedger.service.js";
 import { getActionPricing } from "../config/creditPricing.js";
+import { gmailDailyLimit } from "../config/gmailLimits.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -94,6 +102,115 @@ async function requireUserEmailIntegration(userId) {
     throw new ApiError(400, "Connect your Brevo account before sending emails.");
   }
   return integration;
+}
+
+// Gmail is the active provider. All new sends/replies/campaigns go through it.
+async function requireGmailIntegration(userId) {
+  const integration = await getOrCreateEmailIntegration(userId);
+  if (!integration?.gmail?.connected || !integration.gmail.email) {
+    throw new ApiError(400, "Connect Gmail before sending emails.");
+  }
+  return integration;
+}
+
+const MAX_RECIPIENTS = 100;
+const MAX_SUBJECT_LENGTH = 255;
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Validates + normalizes a recipient list. Rejects header injection (CR/LF) and invalid addresses.
+function assertRecipientList(value, label, { required = false } = {}) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  const list = raw
+    .map((entry) => normalizeEmail(typeof entry === "string" ? entry : entry?.email || ""))
+    .filter(Boolean);
+  if (required && !list.length) throw new ApiError(400, `${label} requires at least one recipient.`);
+  for (const address of list) {
+    if (/[\r\n]/.test(address)) throw new ApiError(400, `${label} contains an invalid character.`);
+    if (!validEmail(address)) throw new ApiError(400, `${address} is not a valid email address.`);
+  }
+  return Array.from(new Set(list));
+}
+
+function assertSubject(value) {
+  const subject = clean(value);
+  if (/[\r\n]/.test(subject)) throw new ApiError(400, "Subject cannot contain line breaks.");
+  if (subject.length > MAX_SUBJECT_LENGTH) throw new ApiError(400, "Subject is too long.");
+  return subject;
+}
+
+// Converts inbound compose attachments ({ filename, mimeType, contentBase64 }) into MailComposer
+// parts, enforcing the configured total-size limit.
+function buildOutgoingAttachments(value) {
+  if (!Array.isArray(value) || !value.length) return [];
+  const maxBytes = (Number(process.env.GMAIL_MAX_ATTACHMENT_MB) || 20) * 1024 * 1024;
+  let total = 0;
+  const attachments = value.slice(0, 20).map((att) => {
+    const base64 = String(att?.contentBase64 || att?.content || "").replace(/^data:[^;]+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
+    total += buffer.length;
+    if (total > maxBytes) throw new ApiError(413, `Attachments exceed the ${maxBytes / (1024 * 1024)}MB limit.`);
+    return {
+      filename: clean(att?.filename) || "attachment",
+      mimeType: clean(att?.mimeType) || "application/octet-stream",
+      content: buffer
+    };
+  });
+  return attachments;
+}
+
+function safeContentType(mimeType) {
+  const value = clean(mimeType).toLowerCase();
+  // Never serve active content types inline; force a neutral type so browsers don't execute them.
+  if (!value || /html|javascript|xml|svg/.test(value)) return "application/octet-stream";
+  return value.replace(/[^a-z0-9!#$&^_.+/-]/g, "") || "application/octet-stream";
+}
+
+function sanitizeFilename(name) {
+  return clean(name).replace(/[\r\n"\\/]/g, "_").replace(/[^\w.\- ]/g, "").slice(0, 200) || "attachment";
+}
+
+function gmailSender(integration) {
+  return clean(integration?.gmail?.email || "").toLowerCase();
+}
+
+const GMAIL_FOLDER_LABELS = {
+  inbox: "INBOX",
+  sent: "SENT",
+  drafts: "DRAFT",
+  starred: "STARRED",
+  important: "IMPORTANT",
+  spam: "SPAM",
+  trash: "TRASH"
+};
+
+// Attaches lastMessage/preview/unread/message counts to a set of lean thread docs.
+async function decorateThreads(req, threads) {
+  const threadIds = threads.map((thread) => thread._id);
+  if (!threadIds.length) return [];
+  const messages = await EmailMessage.find({ threadId: { $in: threadIds }, ...filter(req) })
+    .sort({ createdAt: -1 })
+    .lean();
+  const latestByThread = {};
+  const statsByThread = {};
+  for (const message of messages) {
+    const key = String(message.threadId);
+    if (!latestByThread[key]) latestByThread[key] = message;
+    statsByThread[key] = statsByThread[key] || { messagesCount: 0, unreadCount: 0 };
+    statsByThread[key].messagesCount += 1;
+    if (message.direction === "inbound" && !message.isRead && !message.readAt) statsByThread[key].unreadCount += 1;
+  }
+  return threads.map((thread) => ({
+    ...thread,
+    leadName: thread.leadId?.businessName || thread.leadId?.contactName || thread.leadId?.name || "",
+    email: thread.leadId?.email || thread.toEmail || thread.fromEmail || "",
+    lastMessage: latestByThread[String(thread._id)] || null,
+    lastMessagePreview: previewBody(latestByThread[String(thread._id)] || {}),
+    unreadCount: statsByThread[String(thread._id)]?.unreadCount || 0,
+    messagesCount: statsByThread[String(thread._id)]?.messagesCount || thread.messagesCount || 0
+  }));
 }
 
 function canonicalSubject(subject = "") {
@@ -359,19 +476,22 @@ async function selectedLeads(req, leadIds) {
   return Lead.find({ _id: { $in: leadIds }, ...filter(req) }).sort({ createdAt: -1 });
 }
 
-async function checkDailyLimit(req, plannedCount) {
-  const limit = DAILY_LIMITS[req.user.plan] || DAILY_LIMITS.free;
+// Pre-flight check at enqueue time. Blocks only when the account has ALREADY exhausted today's
+// Gmail cap — a large campaign can still be queued and the worker paces it across days.
+async function checkDailyLimit(req) {
+  const limit = gmailDailyLimit(req.user.plan);
   const since = new Date();
   since.setHours(0, 0, 0, 0);
 
   const sentToday = await EmailLog.countDocuments({
     userId: req.user._id,
+    provider: "gmail",
     status: "sent",
     sentAt: { $gte: since }
   });
 
-  if (sentToday + plannedCount > limit) {
-    throw new ApiError(429, `Daily email limit reached for ${req.user.plan || "free"} plan.`);
+  if (sentToday >= limit) {
+    throw new ApiError(429, `Daily Gmail sending limit reached for the ${req.user.plan || "free"} plan. Sending resumes tomorrow.`);
   }
 }
 
@@ -529,10 +649,10 @@ export const generateEmail = asyncHandler(async (req, res) => {
 export const sendTestEmail = asyncHandler(async (req, res) => {
   const { agentId, testEmail, subject, body } = req.body;
   const agent = await ensureAgentAccess(req, agentId);
-  const toEmail = clean(testEmail || req.user.email).toLowerCase();
-  if (!toEmail) throw new ApiError(400, "Test email address is required.");
+  const toEmail = normalizeEmail(testEmail || req.user.email);
+  if (!toEmail || !validEmail(toEmail)) throw new ApiError(400, "A valid test email address is required.");
 
-  const integration = await requireUserEmailIntegration(req.user._id);
+  const integration = await requireGmailIntegration(req.user._id);
   const fakeLead = {
     businessName: "Sample Business",
     contactName: req.user.name,
@@ -541,95 +661,134 @@ export const sendTestEmail = asyncHandler(async (req, res) => {
     city: "Sample City"
   };
 
-  const finalSubject = personalize(subject, { lead: fakeLead, agent });
+  const finalSubject = assertSubject(personalize(subject, { lead: fakeLead, agent }) || "Test email");
   const finalBody = personalize(ensureFooter(body), { lead: fakeLead, agent });
 
   try {
-    const sentAt = new Date();
-    const replyTo = integration.brevo.replyToEmail || integration.inbound?.email;
-    const result = await sendUserBrevoEmail({
+    const sendResult = await sendGmailEmail(integration, {
+      to: [{ email: toEmail, name: req.user.name }],
+      subject: finalSubject,
+      text: finalBody
+    });
+
+    const { thread, message } = await storeSentGmailMessage({
       integration,
-      toEmail,
-      toName: req.user.name,
-      subject: finalSubject,
-      body: finalBody,
-      replyTo
-    });
-
-    const { thread, message } = await saveOutboundEmailMessage({
-      userId: req.user._id,
-      emailIntegrationId: integration._id,
       agentId: agent._id,
-      leadId: null,
-      campaignId: null,
-      subject: finalSubject,
-      body: finalBody,
       toEmail,
       toName: req.user.name,
-      providerKey: "brevo",
-      providerMessageId: result.messageId,
-      sentAt,
-      rawPayload: { source: "test_email", replyTo, fromEmail: integrationSenderEmail(integration) }
+      subject: finalSubject,
+      text: finalBody,
+      sendResult,
+      source: "test_email"
     });
 
-    console.info("[email] test send saved", {
-      campaignId: null,
-      leadId: null,
+    console.info("[email] gmail test send saved", {
       toEmail,
       threadId: String(thread._id),
       messageId: String(message._id),
-      providerMessageId: result.messageId
+      providerMessageId: sendResult.id
     });
 
     res.json({
       success: true,
-      provider: "brevo",
-      simulated: result.provider === "mock",
-      messageId: result.messageId,
+      provider: "gmail",
+      simulated: false,
+      messageId: sendResult.id,
       threadId: thread._id,
       toEmail
     });
   } catch (error) {
-    throw new ApiError(error.statusCode || 502, error.message || "Test email failed.");
+    throw new ApiError(error.statusCode || 502, safeGmailErrorMessage(error, "Test email failed."));
   }
 });
 
+// Compose and send a brand-new email from the connected Gmail address.
+export const sendEmail = asyncHandler(async (req, res) => {
+  const integration = await requireGmailIntegration(req.user._id);
+  const to = assertRecipientList(req.body.to, "To", { required: true });
+  const cc = assertRecipientList(req.body.cc, "Cc");
+  const bcc = assertRecipientList(req.body.bcc, "Bcc");
+  if (to.length + cc.length + bcc.length > MAX_RECIPIENTS) {
+    throw new ApiError(400, `A single email cannot exceed ${MAX_RECIPIENTS} recipients.`);
+  }
+  const subject = assertSubject(req.body.subject);
+  const text = clean(req.body.text || req.body.body);
+  const html = typeof req.body.html === "string" ? req.body.html : "";
+  if (!text && !html) throw new ApiError(400, "Email body is required.");
+  const attachments = buildOutgoingAttachments(req.body.attachments);
+
+  await chargeFeatureOrThrow({
+    userId: req.user._id,
+    featureKey: "email_send",
+    idempotencyKey: `email_send:${req.user._id}:${Date.now()}`,
+    metadata: { type: "compose" }
+  });
+
+  try {
+    const sendResult = await sendGmailEmail(integration, {
+      to: to.map((email) => ({ email })),
+      cc: cc.map((email) => ({ email })),
+      bcc: bcc.map((email) => ({ email })),
+      subject,
+      text,
+      html,
+      attachments
+    });
+
+    const { thread, message } = await storeSentGmailMessage({
+      integration,
+      toEmail: to[0],
+      cc,
+      bcc,
+      subject,
+      text,
+      html,
+      sendResult,
+      source: "compose"
+    });
+
+    res.status(201).json({
+      success: true,
+      provider: "gmail",
+      messageId: sendResult.id,
+      threadId: thread._id,
+      thread,
+      message
+    });
+  } catch (error) {
+    throw new ApiError(error.statusCode || 502, safeGmailErrorMessage(error, "The email could not be sent."));
+  }
+});
+
+// Enqueue a Gmail campaign. Sending happens in the background worker — this endpoint validates,
+// charges credits idempotently, queues one personalized recipient row per lead, and returns 202.
 export const sendCampaign = asyncHandler(async (req, res) => {
   const campaign = await EmailCampaign.findOne({ _id: req.params.id, ...filter(req) });
   if (!campaign) throw new ApiError(404, "Email campaign not found.");
 
   const agent = await ensureAgentAccess(req, campaign.agentId);
   const leads = await Lead.find({ _id: { $in: campaign.selectedLeadIds }, ...filter(req) });
-  const integration = await requireUserEmailIntegration(req.user._id);
+  const integration = await requireGmailIntegration(req.user._id);
+  const connectedEmail = gmailSender(integration);
 
   const uniqueByEmail = new Map();
   const skipped = [];
   leads.forEach((lead) => {
     const email = clean(lead.email).toLowerCase();
-    if (!email) {
-      skipped.push({ lead, toEmail: "", error: "Missing email address." });
-      return;
-    }
-    if (!validEmail(email)) {
-      skipped.push({ lead, toEmail: email, error: "Invalid email address." });
-      return;
-    }
-    if (isUnsubscribed(lead)) {
-      skipped.push({ lead, toEmail: email, error: "Lead is unsubscribed." });
-      return;
-    }
-    if (uniqueByEmail.has(email)) {
-      skipped.push({ lead, toEmail: email, error: "Duplicate email in this campaign." });
-      return;
-    }
+    if (!email) return skipped.push({ lead, toEmail: "", error: "Missing email address." });
+    if (!validEmail(email)) return skipped.push({ lead, toEmail: email, error: "Invalid email address." });
+    if (isUnsubscribed(lead)) return skipped.push({ lead, toEmail: email, error: "Lead is unsubscribed." });
+    if (email === connectedEmail) return skipped.push({ lead, toEmail: email, error: "Cannot send a campaign to your own address." });
+    if (uniqueByEmail.has(email)) return skipped.push({ lead, toEmail: email, error: "Duplicate email in this campaign." });
     uniqueByEmail.set(email, lead);
   });
 
   const recipients = Array.from(uniqueByEmail.values());
-  await checkDailyLimit(req, recipients.length);
+  if (!recipients.length) throw new ApiError(400, "No valid recipients to queue for this campaign.");
+  await checkDailyLimit(req);
 
-  // Charge credits upfront for all recipients (1 credit per email). Blocks when balance is short.
-  if (creditEnforcementEnabled() && recipients.length > 0) {
+  // Charge upfront, idempotent per campaign id — a retried enqueue never double-charges.
+  if (creditEnforcementEnabled()) {
     const { cost } = getActionPricing("email_send");
     const totalCost = cost * recipients.length;
     const bill = await ledger.charge({
@@ -643,190 +802,165 @@ export const sendCampaign = asyncHandler(async (req, res) => {
     if (!bill.ok) {
       throw new ApiError(402, `Not enough credits to send to ${recipients.length} recipients (need ${totalCost} credits).`, { code: "INSUFFICIENT_CREDITS" });
     }
-    await ledger.recordUsage({
-      userId: req.user._id,
-      action: "email_send",
-      mode: "platform_credits",
-      success: true,
-      cost: totalCost,
-      creditsCharged: totalCost,
-      metadata: { campaignId: campaign._id.toString(), count: recipients.length }
-    });
-  }
-
-  campaign.status = "sending";
-  campaign.totalRecipients = recipients.length;
-  campaign.sentCount = 0;
-  campaign.failedCount = 0;
-  await campaign.save();
-
-  let sentCount = 0;
-  let failedCount = 0;
-  const errors = [];
-
-  for (const skippedItem of skipped) {
-    await EmailLog.create({
-      userId: req.user._id,
-      campaignId: campaign._id,
-      leadId: skippedItem.lead?._id,
-      toEmail: skippedItem.toEmail || skippedItem.lead?.email || "missing",
-      subject: campaign.subject,
-      body: ensureFooter(campaign.body),
-      provider: "brevo",
-      status: "skipped",
-      error: skippedItem.error,
-      sentAt: new Date()
-    });
-  }
-
-  for (let index = 0; index < recipients.length; index += SEND_BATCH_SIZE) {
-    const batch = recipients.slice(index, index + SEND_BATCH_SIZE);
-
-    await Promise.all(batch.map(async (lead) => {
-      const toEmail = clean(lead.email).toLowerCase();
-      const subject = personalize(campaign.subject, { lead, agent });
-      const body = personalize(ensureFooter(campaign.body), { lead, agent });
-      const sentAt = new Date();
-      const replyTo = integration.brevo.replyToEmail || integration.inbound?.email;
-
-      try {
-        const result = await sendUserBrevoEmail({
-          integration,
-          toEmail,
-          toName: leadName(lead),
-          subject,
-          body,
-          replyTo
-        });
-
-        sentCount += 1;
-        const emailLog = await EmailLog.create({
-          userId: req.user._id,
-          campaignId: campaign._id,
-          leadId: lead._id,
-          toEmail,
-          subject,
-          body,
-          provider: "brevo",
-          providerMessageId: result.messageId,
-          status: "sent",
-          sentAt
-        });
-
-        const { thread, message: savedMessage } = await saveOutboundEmailMessage({
-          userId: req.user._id,
-          emailIntegrationId: integration._id,
-          agentId: campaign.agentId,
-          leadId: lead._id,
-          campaignId: campaign._id,
-          subject,
-          body,
-          toEmail,
-          toName: leadName(lead),
-          providerKey: "brevo",
-          providerMessageId: result.messageId,
-          sentAt,
-          rawPayload: { replyTo, fromEmail: integrationSenderEmail(integration) }
-        });
-
-        console.info("[email] campaign send saved", {
-          campaignId: String(campaign._id),
-          leadId: String(lead._id),
-          toEmail,
-          threadId: String(thread._id),
-          messageId: String(savedMessage._id),
-          providerMessageId: result.messageId
-        });
-
-        await createEmailSentFollowUp({
-          userId: req.user._id,
-          agentId: campaign.agentId,
-          leadId: lead._id,
-          campaignId: campaign._id,
-          emailLogId: emailLog._id
-        });
-      } catch (error) {
-        const message = error.message || "Email send failed.";
-        failedCount += 1;
-        errors.push({ leadId: lead._id, toEmail, error: message });
-        await EmailLog.create({
-          userId: req.user._id,
-          campaignId: campaign._id,
-          leadId: lead._id,
-          toEmail,
-          subject,
-          body,
-          provider: "brevo",
-          status: "failed",
-          error: message,
-          sentAt
-        });
-      }
-    }));
-
-    if (index + SEND_BATCH_SIZE < recipients.length) {
-      await sleep(SEND_BATCH_DELAY_MS);
+    if (!bill.reused) {
+      await ledger.recordUsage({
+        userId: req.user._id,
+        action: "email_send",
+        mode: "platform_credits",
+        success: true,
+        cost: totalCost,
+        creditsCharged: totalCost,
+        metadata: { campaignId: campaign._id.toString(), count: recipients.length }
+      });
     }
   }
 
-  campaign.sentCount = sentCount;
-  campaign.failedCount = failedCount;
-  campaign.status = sentCount > 0 && failedCount === 0 ? "sent" : sentCount > 0 ? "partially_sent" : "failed";
+  // Log skipped recipients once (idempotent-ish: only when the campaign wasn't already queued).
+  if (campaign.status !== "queued" && campaign.status !== "sending") {
+    for (const item of skipped) {
+      await EmailLog.create({
+        userId: req.user._id,
+        campaignId: campaign._id,
+        leadId: item.lead?._id,
+        toEmail: item.toEmail || item.lead?.email || "missing",
+        subject: campaign.subject,
+        body: ensureFooter(campaign.body),
+        provider: "gmail",
+        status: "skipped",
+        error: item.error,
+        sentAt: new Date()
+      });
+    }
+  }
+
+  // Queue one personalized row per recipient. Unique index (campaignId, toEmail) makes this idempotent.
+  let queuedCount = 0;
+  for (const lead of recipients) {
+    const toEmail = clean(lead.email).toLowerCase();
+    try {
+      await EmailCampaignRecipient.create({
+        userId: req.user._id,
+        campaignId: campaign._id,
+        leadId: lead._id,
+        emailIntegrationId: integration._id,
+        agentId: campaign.agentId,
+        toEmail,
+        toName: leadName(lead),
+        personalizedSubject: personalize(campaign.subject, { lead, agent }),
+        personalizedBody: personalize(ensureFooter(campaign.body), { lead, agent }),
+        status: "queued",
+        provider: "gmail",
+        nextAttemptAt: new Date()
+      });
+      queuedCount += 1;
+    } catch (error) {
+      if (error?.code === 11000) continue; // already queued in a prior attempt
+      throw error;
+    }
+  }
+
+  // Resume recipients that were paused earlier (e.g. after a temporary Gmail disconnect).
+  const resumed = await EmailCampaignRecipient.updateMany(
+    { campaignId: campaign._id, status: "paused" },
+    { $set: { status: "queued", nextAttemptAt: new Date(), error: "", lockedAt: null, lockedBy: "" } }
+  );
+  queuedCount += resumed.modifiedCount || 0;
+
+  const skippedCount = skipped.length + Math.max(0, campaign.selectedLeadIds.length - leads.length);
+  campaign.status = "queued";
+  campaign.provider = "gmail";
+  campaign.totalRecipients = recipients.length;
+  campaign.queuedCount = queuedCount;
+  campaign.skippedCount = skippedCount;
+  campaign.sentCount = 0;
+  campaign.failedCount = 0;
+  campaign.queuedAt = new Date();
+  campaign.lastError = "";
   await campaign.save();
 
-  res.json({
+  emitToUser(req.user._id, "email:campaign-status", { campaignId: campaign._id, status: campaign.status, queuedCount });
+
+  res.status(202).json({
     success: true,
+    status: campaign.status,
     campaign,
-    totalRecipients: recipients.length,
-    sentCount,
-    failedCount,
-    skippedCount: skipped.length + Math.max(0, campaign.selectedLeadIds.length - leads.length),
-    errors
+    queuedCount,
+    skippedCount,
+    totalRecipients: recipients.length
   });
 });
 
+// Live campaign status for frontend polling (recipient-status breakdown).
+export const getCampaignStatus = asyncHandler(async (req, res) => {
+  const campaign = await EmailCampaign.findOne({ _id: req.params.id, ...filter(req) });
+  if (!campaign) throw new ApiError(404, "Email campaign not found.");
+  const counts = await EmailCampaignRecipient.aggregate([
+    { $match: { campaignId: campaign._id } },
+    { $group: { _id: "$status", count: { $sum: 1 } } }
+  ]);
+  const breakdown = counts.reduce((acc, item) => ({ ...acc, [item._id]: item.count }), {});
+  const pending = (breakdown.queued || 0) + (breakdown.processing || 0);
+  res.json({ campaign, breakdown, pending });
+});
+
 export const listThreads = asyncHandler(async (req, res) => {
-  const query = { ...filter(req) };
-  if (req.query.status && req.query.status !== "all") {
-    if (req.query.status === "unread") query.status = { $in: ["unread", "needs_reply"] };
-    else query.status = req.query.status;
+  const base = filter(req);
+  const folder = clean(req.query.folder).toLowerCase();
+  const search = clean(req.query.search);
+  const status = clean(req.query.status);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+
+  const query = { ...base };
+
+  // Folder filtering is driven by the accurate per-message Gmail labels.
+  if (folder && folder !== "all") {
+    const messageQuery = { ...base, provider: "gmail" };
+    if (folder === "unread") {
+      messageQuery.direction = "inbound";
+      messageQuery.isRead = false;
+    } else if (GMAIL_FOLDER_LABELS[folder]) {
+      messageQuery.labelIds = GMAIL_FOLDER_LABELS[folder];
+    }
+    const threadIds = await EmailMessage.distinct("threadId", messageQuery);
+    query._id = { $in: threadIds };
+  } else if (status && status !== "all") {
+    // Legacy status filter (kept for non-folder callers).
+    if (status === "unread") query.status = { $in: ["unread", "needs_reply"] };
+    else query.status = status;
   }
+
   if (req.query.leadId && OBJECT_ID_REGEX.test(req.query.leadId)) query.leadId = req.query.leadId;
 
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), "i");
+    query.$or = [
+      { subject: rx },
+      { normalizedSubject: rx },
+      { fromEmail: rx },
+      { toEmail: rx },
+      { snippet: rx }
+    ];
+  }
+
+  const totalCount = await EmailThread.countDocuments(query);
   const threads = await EmailThread.find(query)
     .populate("leadId", "businessName contactName name email phone status city")
     .populate("campaignId", "name subject")
     .populate("agentId", "agentName businessName")
     .sort({ lastMessageAt: -1 })
-    .limit(100)
+    .skip((page - 1) * limit)
+    .limit(limit)
     .lean();
 
-  const threadIds = threads.map((thread) => thread._id);
-  const messages = await EmailMessage.find({ threadId: { $in: threadIds }, ...filter(req) })
-    .sort({ createdAt: -1 })
-    .lean();
-  const latestByThread = messages.reduce((acc, message) => {
-    const key = String(message.threadId);
-    if (!acc[key]) acc[key] = message;
-    return acc;
-  }, {});
-  const statsByThread = messages.reduce((acc, message) => {
-    const key = String(message.threadId);
-    acc[key] = acc[key] || { messagesCount: 0, unreadCount: 0 };
-    acc[key].messagesCount += 1;
-    if (message.direction === "inbound" && message.status === "received" && !message.readAt) acc[key].unreadCount += 1;
-    return acc;
-  }, {});
-
-  res.json(threads.map((thread) => ({
-    ...thread,
-    leadName: thread.leadId?.businessName || thread.leadId?.contactName || thread.leadId?.name || "Unknown lead",
-    email: thread.leadId?.email || thread.toEmail || thread.fromEmail || "",
-    lastMessage: latestByThread[String(thread._id)] || null,
-    lastMessagePreview: previewBody(latestByThread[String(thread._id)] || {}),
-    unreadCount: statsByThread[String(thread._id)]?.unreadCount || 0,
-    messagesCount: statsByThread[String(thread._id)]?.messagesCount || 0
-  })));
+  const decorated = await decorateThreads(req, threads);
+  res.json({
+    threads: decorated,
+    page,
+    limit,
+    totalCount,
+    hasMore: page * limit < totalCount
+  });
 });
 
 export const getThread = asyncHandler(async (req, res) => {
@@ -857,6 +991,19 @@ export const markThreadRead = asyncHandler(async (req, res) => {
     unreadInboundQuery(req, { threadId: thread._id }),
     { $set: { readAt: now, status: "read", isRead: true } }
   );
+
+  // Mirror the read state to Gmail (remove UNREAD from the whole conversation). Best-effort so a
+  // Gmail hiccup never blocks the local update.
+  const gmailThreadId = thread.threadHeaders?.providerThreadId;
+  if (gmailThreadId) {
+    const integration = await getOrCreateEmailIntegration(thread.userId);
+    if (integration.gmail?.connected) {
+      markGmailThreadRead(integration, gmailThreadId).catch((error) => {
+        console.warn("[gmail] mark thread read failed", { message: error?.message });
+      });
+    }
+  }
+
   const unreadCount = await EmailMessage.countDocuments(unreadInboundQuery(req));
   emitToUser(req.user._id, "email:read", { threadId: thread._id, markedCount: result.modifiedCount || 0, unreadCount });
   emitToUser(req.user._id, "email:unread-count", { unreadCount });
@@ -1129,68 +1276,117 @@ Rules:
 
 export const sendThreadReply = asyncHandler(async (req, res) => {
   const { body, subject } = req.body;
+  const mode = req.body.mode === "reply_all" ? "reply_all" : "reply";
   if (!clean(body)) throw new ApiError(400, "Reply body is required.");
 
   const thread = await EmailThread.findOne({ _id: req.params.id, ...filter(req) }).populate("leadId", "email contactName name businessName");
   if (!thread) throw new ApiError(404, "Email thread not found.");
-  const toEmail = normalizeEmail(thread.leadId?.email || thread.fromEmail);
-  if (!validEmail(toEmail)) throw new ApiError(400, "Thread lead email is missing or invalid.");
 
-  const integration = await requireUserEmailIntegration(req.user._id);
+  const integration = await requireGmailIntegration(req.user._id);
+  const connectedEmail = gmailSender(integration);
+
+  // Anchor on the latest inbound message (the one we're replying to); fall back to the newest message.
+  const messages = await EmailMessage.find({ threadId: thread._id, ...filter(req) }).sort({ createdAt: 1 });
+  const latestInbound = [...messages].reverse().find((message) => message.direction === "inbound");
+  const anchor = latestInbound || messages[messages.length - 1] || {
+    fromEmail: thread.fromEmail,
+    toEmail: thread.toEmail
+  };
+
+  const { to, cc } = buildReplyRecipients({ mode, message: anchor, connectedEmail });
+  if (!to.length) throw new ApiError(400, "The email could not be added to the original Gmail thread: no valid recipient.");
+
+  const gmailThreadId = thread.threadHeaders?.providerThreadId || anchor.providerThreadId || "";
+  const { inReplyTo, references } = buildReplyThreadingHeaders(anchor);
+  const replySubject = assertSubject(buildReplySubject(subject || thread.subject));
 
   await chargeFeatureOrThrow({
     userId: req.user._id,
     featureKey: "email_send",
     idempotencyKey: `email_reply:${thread._id}:${Date.now()}`,
-    metadata: { threadId: thread._id.toString() }
+    metadata: { threadId: thread._id.toString(), mode }
   });
 
-  const finalSubject = clean(subject || thread.subject || "Following up");
-  const replySubject = finalSubject.toLowerCase().startsWith("re:") ? finalSubject : `Re: ${finalSubject}`;
-  const sentAt = new Date();
-  const result = await sendUserBrevoEmail({
-    integration,
-    toEmail,
-    toName: leadName(thread.leadId || {}),
-    subject: replySubject,
-    body,
-    replyTo: integration.brevo.replyToEmail || integration.inbound?.email || thread.replyToEmail
-  });
+  try {
+    const sendResult = await sendGmailEmail(integration, {
+      to,
+      cc,
+      subject: replySubject,
+      text: body,
+      inReplyTo,
+      references,
+      threadId: gmailThreadId
+    });
 
-  const message = await EmailMessage.create({
-    userId: req.user._id,
-    emailIntegrationId: integration._id,
-    threadId: thread._id,
-    agentId: thread.agentId,
-    leadId: thread.leadId?._id || thread.leadId,
-    campaignId: thread.campaignId,
-    direction: "outbound",
-    fromEmail: integrationSenderEmail(integration),
-    toEmail,
-    from: [{ email: integrationSenderEmail(integration), name: integration.brevo.senderName }],
-    to: [{ email: toEmail, name: leadName(thread.leadId || {}) }],
-    subject: replySubject,
-    body,
-    text: body,
-    html: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
-    textBody: body,
-    htmlBody: `<html><body>${String(body || "").replace(/\n/g, "<br>")}</body></html>`,
-    provider: "brevo",
-    providerMessageId: result.messageId,
-    internetMessageId: result.messageId || "",
-    sentAt,
-    isRead: true,
-    status: "sent"
-  });
+    const { thread: updated, message } = await storeSentGmailMessage({
+      integration,
+      existingThread: thread,
+      agentId: thread.agentId,
+      leadId: thread.leadId?._id || thread.leadId,
+      campaignId: thread.campaignId,
+      toEmail: to[0].email,
+      toName: to[0].name,
+      cc,
+      subject: replySubject,
+      text: body,
+      inReplyTo,
+      references,
+      sendResult,
+      source: "reply"
+    });
 
-  thread.status = "replied";
-  thread.lastMessageAt = sentAt;
-  thread.normalizedSubject = thread.normalizedSubject || normalizeEmailSubject(replySubject);
-  thread.replyToEmail = integration.brevo.replyToEmail || integration.inbound?.email || thread.replyToEmail;
-  await thread.save();
-  emitToUser(req.user._id, "email:sent", { threadId: thread._id, messageId: message._id, sentAt });
+    res.status(201).json({ success: true, thread: updated, message });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(502, safeGmailErrorMessage(error, "The reply could not be sent."));
+  }
+});
 
-  res.status(201).json({ success: true, thread, message });
+// Download a Gmail attachment by local message id + Gmail attachment id (ownership-checked).
+export const getMessageAttachment = asyncHandler(async (req, res) => {
+  const message = await EmailMessage.findOne({ _id: req.params.messageId, ...filter(req) });
+  if (!message) throw new ApiError(404, "Message not found.");
+  if (message.provider !== "gmail") throw new ApiError(400, "Attachments are only available for Gmail messages.");
+
+  const meta = (message.attachments || []).find((att) => att.attachmentId === req.params.attachmentId);
+  if (!meta) throw new ApiError(404, "Attachment not found.");
+
+  const integration = await getOrCreateEmailIntegration(message.userId);
+  if (!integration.gmail?.connected) throw new ApiError(400, "Gmail is not connected.");
+
+  const dataB64Url = await fetchGmailAttachment(integration, message.providerMessageId, req.params.attachmentId);
+  const buffer = Buffer.from(String(dataB64Url).replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  const maxBytes = (Number(process.env.GMAIL_MAX_ATTACHMENT_MB) || 25) * 1024 * 1024;
+  if (buffer.length > maxBytes) throw new ApiError(413, "Attachment is too large to download.");
+
+  res.setHeader("Content-Type", safeContentType(meta.mimeType));
+  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(meta.filename)}"`);
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.send(buffer);
+});
+
+// Gmail-backed search: queries Gmail directly, caches matches locally, returns normalized threads.
+export const searchGmail = asyncHandler(async (req, res) => {
+  const q = clean(req.query.q);
+  if (!q) throw new ApiError(400, "Search query is required.");
+
+  const integration = await requireGmailIntegration(req.user._id);
+  let result;
+  try {
+    result = await searchGmailMessages(integration, q, { limit: Number(req.query.limit) || 25 });
+  } catch (error) {
+    throw new ApiError(502, safeGmailErrorMessage(error, "Gmail search failed."));
+  }
+
+  const threads = await EmailThread.find({ _id: { $in: result.threadIds || [] }, ...filter(req) })
+    .populate("leadId", "businessName contactName name email phone status city")
+    .populate("campaignId", "name subject")
+    .populate("agentId", "agentName businessName")
+    .sort({ lastMessageAt: -1 })
+    .lean();
+
+  const decorated = await decorateThreads(req, threads);
+  res.json({ success: true, importedCount: result.importedCount || 0, threads: decorated });
 });
 
 export const backfillThreads = asyncHandler(async (req, res) => {

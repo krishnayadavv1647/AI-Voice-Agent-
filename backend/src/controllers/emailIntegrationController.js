@@ -1,8 +1,19 @@
-import crypto from "crypto";
 import { fetchBrevoSenders, validateBrevoAccount } from "../services/brevoService.js";
 import { decryptCredential, encryptCredential } from "../services/credentialEncryptionService.js";
 import { getOrCreateEmailIntegration, toSafeIntegrationStatus } from "../services/emailIntegrationStatus.service.js";
 import { syncEmailIntegration, testImapConnection } from "../services/emailInboundSyncService.js";
+import {
+  createGmailClientFromTokens,
+  decodeIdToken,
+  exchangeGmailAuthorizationCode,
+  generateGmailAuthorizationUrl,
+  getGmailProfile,
+  GMAIL_SCOPES,
+  revokeGmailAuthorization,
+  verifyGmailState
+} from "../services/gmail/gmailOAuth.service.js";
+import { importMoreGmailMessages, runGmailSync } from "../services/gmail/gmailSync.service.js";
+import EmailCampaignRecipient from "../models/EmailCampaignRecipient.js";
 import { ApiError } from "../utils/apiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -32,25 +43,6 @@ function assertText(value, label, max = 100) {
 
 function accountEmail(account = {}) {
   return email(account.email || account.accountEmail || account.companyName || account.firstName || "");
-}
-
-function signState(userId, nonce) {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new ApiError(500, "JWT_SECRET is missing in backend environment");
-  const payload = Buffer.from(JSON.stringify({ userId: String(userId), nonce, ts: Date.now() })).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
-  return `${payload}.${signature}`;
-}
-
-function verifyState(state) {
-  const [payload, signature] = String(state || "").split(".");
-  if (!payload || !signature || !process.env.JWT_SECRET) return null;
-  const expected = crypto.createHmac("sha256", process.env.JWT_SECRET).update(payload).digest("base64url");
-  if (Buffer.byteLength(signature) !== Buffer.byteLength(expected)) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-  if (Date.now() - Number(parsed.ts || 0) > 10 * 60 * 1000) return null;
-  return parsed;
 }
 
 export const getEmailIntegrationStatus = asyncHandler(async (req, res) => {
@@ -234,35 +226,116 @@ export const syncNow = asyncHandler(async (req, res) => {
 });
 
 export const getGmailAuthUrl = asyncHandler(async (req, res) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_GMAIL_REDIRECT_URI) {
-    throw new ApiError(400, "Gmail OAuth is not configured.");
-  }
-  const state = crypto.randomBytes(24).toString("hex");
-  const signedState = signState(req.user._id, state);
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: process.env.GOOGLE_GMAIL_REDIRECT_URI,
-    response_type: "code",
-    access_type: "offline",
-    prompt: "consent",
-    scope: "https://www.googleapis.com/auth/gmail.readonly",
-    state: signedState
-  });
-  res.json({ success: true, authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+  // generateGmailAuthorizationUrl asserts config + signs the state (userId, HMAC, timestamp).
+  const authUrl = generateGmailAuthorizationUrl({ userId: req.user._id });
+  res.json({ success: true, authUrl });
 });
 
+// Public callback — Google calls this without the app JWT, so authorization relies entirely on the
+// signed state. Tokens are exchanged, encrypted, and stored server-side; never returned to the browser.
 export const gmailCallback = asyncHandler(async (req, res) => {
-  const state = verifyState(req.query.state);
-  if (!state) throw new ApiError(400, "Invalid Gmail OAuth state.");
-  res.redirect(`${process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:5173"}/settings/email?gmail=not_implemented`);
+  const frontend = (process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+  const redirect = (params) => res.redirect(`${frontend}/settings/email?${params}`);
+
+  const { error, code, state } = req.query;
+  if (error) return redirect(`gmail=error&reason=${encodeURIComponent(String(error).slice(0, 40))}`);
+
+  const verified = verifyGmailState(state);
+  if (!verified?.userId) return redirect("gmail=error&reason=invalid_state");
+  if (!code) return redirect("gmail=error&reason=missing_code");
+
+  try {
+    const tokens = await exchangeGmailAuthorizationCode(code);
+    const gmailClient = createGmailClientFromTokens(tokens);
+    const profile = await getGmailProfile(gmailClient);
+    const claims = decodeIdToken(tokens.id_token);
+
+    const integration = await getOrCreateEmailIntegration(verified.userId);
+    const email = String(profile.emailAddress || claims.email || "").toLowerCase();
+
+    integration.gmail = integration.gmail || {};
+    integration.gmail.email = email;
+    integration.gmail.displayName = claims.name || integration.gmail.displayName || "";
+    integration.gmail.providerAccountId = claims.sub || integration.gmail.providerAccountId || "";
+    integration.gmail.accessTokenEncrypted = tokens.access_token ? encryptCredential(tokens.access_token) : integration.gmail.accessTokenEncrypted;
+    // Preserve an existing refresh token when Google omits one on reconnect.
+    if (tokens.refresh_token) integration.gmail.refreshTokenEncrypted = encryptCredential(tokens.refresh_token);
+    integration.gmail.tokenExpiresAt = tokens.expiry_date ? new Date(tokens.expiry_date) : integration.gmail.tokenExpiresAt;
+    integration.gmail.grantedScopes = tokens.scope ? tokens.scope.split(" ") : GMAIL_SCOPES;
+    integration.gmail.gmailHistoryId = profile.historyId ? String(profile.historyId) : integration.gmail.gmailHistoryId || "";
+    integration.gmail.gmailInitialSyncComplete = false;
+    integration.gmail.gmailNextPageToken = "";
+    integration.gmail.connected = true;
+    integration.gmail.connectedAt = integration.gmail.connectedAt || new Date();
+    integration.gmail.lastValidatedAt = new Date();
+    integration.gmail.syncEnabled = true;
+    integration.gmail.syncStatus = "idle";
+    integration.gmail.lastError = "";
+    integration.gmail.lastErrorType = "";
+
+    integration.outboundProvider = "gmail";
+    integration.inboundProvider = "gmail_oauth";
+    // Mirror legacy inbound flags so any code that still reads them treats Gmail as connected.
+    integration.inbound = integration.inbound || {};
+    integration.inbound.connected = true;
+    integration.inbound.syncEnabled = true;
+    integration.inbound.syncStatus = "idle";
+    integration.inbound.email = email;
+
+    await integration.save();
+    console.info("[gmail] connected", { userId: String(verified.userId), email });
+
+    // Kick off the initial mailbox sync in the background; the sync worker also picks it up.
+    runGmailSync(integration).catch(() => {});
+
+    return redirect("gmail=connected");
+  } catch (err) {
+    console.error("[gmail] callback failed", { message: err?.message });
+    return redirect("gmail=error&reason=connection_failed");
+  }
+});
+
+export const importMoreGmail = asyncHandler(async (req, res) => {
+  const integration = await getOrCreateEmailIntegration(req.user._id);
+  if (!integration.gmail?.connected) throw new ApiError(400, "Connect Gmail before importing older emails.");
+  const result = await importMoreGmailMessages(integration);
+  res.json(result);
 });
 
 export const disconnectGmail = asyncHandler(async (req, res) => {
   const integration = await getOrCreateEmailIntegration(req.user._id);
-  integration.inbound.accessTokenEncrypted = "";
-  integration.inbound.refreshTokenEncrypted = "";
-  integration.inbound.connected = false;
-  integration.inbound.syncStatus = "not_connected";
+
+  // Best-effort Google revocation; a failure must not block the local disconnect.
+  await revokeGmailAuthorization(integration);
+
+  integration.gmail = integration.gmail || {};
+  integration.gmail.accessTokenEncrypted = "";
+  integration.gmail.refreshTokenEncrypted = "";
+  integration.gmail.tokenExpiresAt = undefined;
+  integration.gmail.gmailHistoryId = "";
+  integration.gmail.gmailNextPageToken = "";
+  integration.gmail.gmailInitialSyncComplete = false;
+  integration.gmail.connected = false;
+  integration.gmail.syncEnabled = false;
+  integration.gmail.syncStatus = "not_connected";
+  integration.gmail.lastError = "";
+  integration.gmail.lastErrorType = "";
+
+  // Stop sending through Gmail; revert providers to legacy defaults.
+  if (integration.outboundProvider === "gmail") integration.outboundProvider = "brevo";
+  if (integration.inboundProvider === "gmail_oauth") {
+    integration.inboundProvider = "imap";
+    integration.inbound.connected = false;
+    integration.inbound.syncStatus = "not_connected";
+  }
   await integration.save();
+
+  // Pause any queued Gmail campaign recipients for this user so the worker stops sending.
+  await EmailCampaignRecipient.updateMany(
+    { userId: req.user._id, status: { $in: ["queued", "processing"] } },
+    { $set: { status: "paused", error: "Gmail disconnected." } }
+  ).catch(() => {});
+
+  // Imported local email history is intentionally preserved.
   res.json({ success: true, integration: toSafeIntegrationStatus(integration) });
 });

@@ -6,6 +6,13 @@ import EmailThread from "../models/EmailThread.js";
 import Lead from "../models/Lead.js";
 import { decryptCredential } from "./credentialEncryptionService.js";
 import { emitToUser } from "./emailRealtime.service.js";
+import { runGmailSync } from "./gmail/gmailSync.service.js";
+
+// Provider router: Gmail-connected integrations sync through the Gmail API; legacy IMAP-connected
+// integrations continue to use the ImapFlow path below.
+function isGmailIntegration(integration) {
+  return Boolean(integration?.gmail?.connected) || integration?.inboundProvider === "gmail_oauth";
+}
 
 const activeSyncs = new Set();
 
@@ -179,6 +186,12 @@ export async function syncEmailIntegration(integrationOrId) {
   const integration = typeof integrationOrId === "string"
     ? await EmailIntegration.findById(integrationOrId)
     : integrationOrId;
+
+  // Gmail takes precedence once connected.
+  if (isGmailIntegration(integration)) {
+    return runGmailSync(integration);
+  }
+
   if (!integration?.inbound?.connected || integration.inbound.syncEnabled === false) {
     return { success: false, importedCount: 0, duplicateCount: 0, error: "Inbound mailbox is not connected." };
   }
@@ -243,9 +256,10 @@ export async function syncEmailIntegration(integrationOrId) {
 
 export async function syncDueEmailIntegrations() {
   const integrations = await EmailIntegration.find({
-    "inbound.connected": true,
-    "inbound.syncEnabled": true,
-    "settings.autoSync": true
+    $or: [
+      { "gmail.connected": true, "gmail.syncEnabled": true },
+      { "inbound.connected": true, "inbound.syncEnabled": true, "settings.autoSync": true }
+    ]
   }).limit(Math.max(1, Number(process.env.EMAIL_SYNC_BATCH_SIZE || 10)));
 
   const results = [];

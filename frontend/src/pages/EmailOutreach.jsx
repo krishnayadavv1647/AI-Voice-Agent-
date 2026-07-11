@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronRight, Mail, RefreshCw, Save, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Mail, RefreshCw, Save, Send, Sparkles } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import PageLoader from "../components/PageLoader.jsx";
@@ -38,7 +39,7 @@ export default function EmailOutreach() {
   const { data: leads = [], error: leadsError, isPending: leadsPending } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
   const { data: campaigns = [], error: campaignsError } = useQuery({ queryKey: ["email-campaigns"], queryFn: () => api("/email/campaigns") });
   const { data: logs = [], error: logsError } = useQuery({ queryKey: ["email-logs"], queryFn: () => api("/email/logs") });
-  const { data: providers = [], error: providersError } = useQuery({ queryKey: ["email-providers"], queryFn: () => api("/email/providers") });
+  const { data: integrationStatus } = useQuery({ queryKey: ["email-integration-status"], queryFn: () => api("/email-integrations/status") });
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [form, setForm] = useState(initialForm);
   const loading = leadsPending;
@@ -47,11 +48,16 @@ export default function EmailOutreach() {
   const [sending, setSending] = useState(false);
   const [testing, setTesting] = useState(false);
   const [campaignResult, setCampaignResult] = useState(null);
+  const [pollingCampaignId, setPollingCampaignId] = useState("");
   const [showHistory, setShowHistory] = useState(true);
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
-  const loadError = agentsError || leadsError || campaignsError || logsError || providersError;
+  const pollRef = useRef(null);
+  const loadError = agentsError || leadsError || campaignsError || logsError;
   const error = actionError || (loadError ? errorText(loadError) : "");
+
+  const gmailConnected = Boolean(integrationStatus?.integration?.gmail?.connected);
+  const gmailEmail = integrationStatus?.integration?.gmail?.email || "";
 
   const emailLeads = useMemo(() => {
     const seenEmails = new Set();
@@ -65,19 +71,52 @@ export default function EmailOutreach() {
   }, [leads, form.agentId]);
 
   const selectedCount = selectedLeadIds.length;
-  const providerSummary = providers.map((provider) => `${provider.label}${provider.configured ? "" : " not configured"}`).join(", ");
+  const providerSummary = gmailConnected ? `Sending from ${gmailEmail}` : "Gmail not connected";
 
   // Default the campaign agent once the agents list has loaded.
   useEffect(() => {
     setForm((current) => ({ ...current, agentId: current.agentId || agents[0]?._id || "" }));
   }, [agents]);
 
+  // Poll a queued campaign until every recipient is processed, so the UI reflects real progress
+  // instead of hanging in a loading state.
+  useEffect(() => {
+    if (!pollingCampaignId) return undefined;
+    let stopped = false;
+    async function poll() {
+      try {
+        const { campaign, breakdown, pending } = await api(`/email/campaigns/${pollingCampaignId}/status`);
+        if (stopped) return;
+        setCampaignResult({
+          totalRecipients: campaign.totalRecipients || 0,
+          sentCount: breakdown.sent || 0,
+          failedCount: breakdown.failed || 0,
+          skippedCount: (breakdown.skipped || 0) + (campaign.skippedCount || 0),
+          pending,
+          status: campaign.status
+        });
+        if (pending === 0 || ["sent", "partially_sent", "failed", "paused"].includes(campaign.status)) {
+          setPollingCampaignId("");
+          setSending(false);
+          queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
+          queryClient.invalidateQueries({ queryKey: ["email-logs"] });
+        }
+      } catch {
+        /* transient; the next tick retries */
+      }
+    }
+    poll();
+    pollRef.current = setInterval(poll, 4000);
+    return () => { stopped = true; clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollingCampaignId]);
+
   function reloadAll() {
     queryClient.invalidateQueries({ queryKey: ["agents"] });
     queryClient.invalidateQueries({ queryKey: ["leads"] });
     queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
     queryClient.invalidateQueries({ queryKey: ["email-logs"] });
-    queryClient.invalidateQueries({ queryKey: ["email-providers"] });
+    queryClient.invalidateQueries({ queryKey: ["email-integration-status"] });
   }
 
   function setField(field, value) {
@@ -162,10 +201,7 @@ export default function EmailOutreach() {
           body: form.body
         }
       });
-      setNotice(result.simulated
-        ? `Mock test email simulated for ${result.toEmail}. Set EMAIL_PROVIDER=brevo to deliver real email.`
-        : `Test email sent to ${result.toEmail} through ${result.provider}.`
-      );
+      setNotice(`Test email sent to ${result.toEmail} from your connected Gmail account.`);
     } catch (err) {
       setActionError(errorText(err));
     } finally {
@@ -174,22 +210,37 @@ export default function EmailOutreach() {
   }
 
   async function sendCampaign(campaignId) {
+    if (!gmailConnected) {
+      setActionError("Connect Gmail before sending a campaign.");
+      return;
+    }
     setSending(true);
     setNotice("");
     setActionError("");
     setCampaignResult(null);
     try {
       const campaign = campaignId ? { _id: campaignId } : await saveDraft();
-      if (!campaign?._id) return;
+      if (!campaign?._id) {
+        setSending(false);
+        return;
+      }
 
+      // 202 Accepted — the campaign is queued and sent by the background worker.
       const result = await api(`/email/campaigns/${campaign._id}/send`, { method: "POST" });
-      setCampaignResult(result);
-      setNotice(`${result.sentCount} sent, ${result.failedCount} failed, ${result.skippedCount} skipped.`);
+      setCampaignResult({
+        totalRecipients: result.totalRecipients || result.queuedCount || 0,
+        sentCount: 0,
+        failedCount: 0,
+        skippedCount: result.skippedCount || 0,
+        pending: result.queuedCount || 0,
+        status: result.status || "queued"
+      });
+      setNotice(`Campaign queued: ${result.queuedCount} emails queued, ${result.skippedCount} skipped. Sending in the background…`);
       queryClient.invalidateQueries({ queryKey: ["email-campaigns"] });
-      queryClient.invalidateQueries({ queryKey: ["email-logs"] });
+      // Kick off status polling; `sending` clears when the queue drains.
+      setPollingCampaignId(campaign._id);
     } catch (err) {
       setActionError(errorText(err));
-    } finally {
       setSending(false);
     }
   }
@@ -204,6 +255,13 @@ export default function EmailOutreach() {
 
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      {integrationStatus && !gmailConnected && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertTriangle size={16} className="shrink-0" />
+          <span>Connect Gmail to send test emails and campaigns from your own address.</span>
+          <Link to="/settings/email" className="btn-secondary ml-auto h-8 min-h-8 px-3 py-1">Open Email Settings</Link>
+        </div>
+      )}
 
       <div className={`grid gap-6 ${showHistory ? "xl:grid-cols-[minmax(0,1fr)_24rem]" : "grid-cols-1"}`}>
         <section className="card p-6 sm:p-8">
@@ -250,14 +308,14 @@ export default function EmailOutreach() {
               <button className="btn-primary" disabled={!form.agentId || generating} onClick={generateEmail}>
                 <Sparkles size={16} />{generating ? "Generating..." : "Generate Email"}
               </button>
-              <button className="btn-secondary" disabled={!form.agentId || !form.subject || !form.body || testing} onClick={sendTestEmail}>
+              <button className="btn-secondary" disabled={!gmailConnected || !form.agentId || !form.subject || !form.body || testing} onClick={sendTestEmail}>
                 <Mail size={16} />{testing ? "Sending test..." : "Send Test Email"}
               </button>
               <button className="btn-secondary" disabled={!form.agentId || !selectedCount || saving} onClick={saveDraft}>
                 <Save size={16} />{saving ? "Saving draft..." : "Save Draft"}
               </button>
-              <button className="btn-primary sm:ml-auto" disabled={!form.agentId || !selectedCount || !form.subject || !form.body || sending} onClick={() => sendCampaign()}>
-                <Send size={16} />{sending ? "Sending campaign..." : "Send Campaign"}
+              <button className="btn-primary sm:ml-auto" disabled={!gmailConnected || !form.agentId || !selectedCount || !form.subject || !form.body || sending} onClick={() => sendCampaign()}>
+                <Send size={16} />{sending ? "Queuing campaign..." : "Send Campaign"}
               </button>
             </div>
           </div>
@@ -286,7 +344,7 @@ export default function EmailOutreach() {
                 <p className="mt-1 break-anywhere text-xs text-neutral-500">{campaign.subject || "No subject"}</p>
                 <p className="mt-2 text-xs text-neutral-500">{campaign.sentCount || 0} sent - {campaign.failedCount || 0} failed - {campaign.totalRecipients || 0} recipients</p>
                 {campaign.status === "draft" && (
-                  <button className="btn-secondary mt-3 w-full" disabled={sending} onClick={() => sendCampaign(campaign._id)}>
+                  <button className="btn-secondary mt-3 w-full" disabled={sending || !gmailConnected} onClick={() => sendCampaign(campaign._id)}>
                     <Send size={16} />Send Draft
                   </button>
                 )}
@@ -306,11 +364,20 @@ export default function EmailOutreach() {
       )}
 
       {campaignResult && (
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <ResultCard label="Total" value={campaignResult.totalRecipients || 0} />
-          <ResultCard label="Sent" value={campaignResult.sentCount || 0} />
-          <ResultCard label="Failed" value={campaignResult.failedCount || 0} />
-          <ResultCard label="Skipped" value={campaignResult.skippedCount || 0} />
+        <section className="space-y-2">
+          {campaignResult.status && (
+            <p className="text-sm text-neutral-500">
+              Campaign status: <span className="font-semibold text-ink capitalize">{String(campaignResult.status).replace("_", " ")}</span>
+              {campaignResult.pending > 0 ? ` · ${campaignResult.pending} pending` : ""}
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <ResultCard label="Total" value={campaignResult.totalRecipients || 0} />
+            <ResultCard label="Sent" value={campaignResult.sentCount || 0} />
+            <ResultCard label="Failed" value={campaignResult.failedCount || 0} />
+            <ResultCard label="Pending" value={campaignResult.pending || 0} />
+            <ResultCard label="Skipped" value={campaignResult.skippedCount || 0} />
+          </div>
         </section>
       )}
 
