@@ -347,15 +347,11 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     elapsedMs: elapsed(startedAt)
   });
 
-  // Wire-format spike: record whether Vapi forwards the assistant's tool schema to us. If it does,
-  // native tool calling (STEP 3a) becomes possible; if not, we rely on the sentinel bridge (3b).
-  if (Array.isArray(body.tools) && body.tools.length) {
-    console.log("[Vapi wire-format] chat/completions received tools", {
-      conversationId,
-      count: body.tools.length,
-      names: body.tools.map((t) => t?.function?.name || t?.type)
-    });
-  }
+  // TEMPORARY diagnostic spike (Part B0): does Vapi forward the assistant tool schema to the custom
+  // LLM? If body.tools is a non-empty array, native tool calling (B1) is possible; if null/absent,
+  // the sentinel bridge (B2, active below) is the only path. Remove after capturing on a live call.
+  console.log("[TOOLS DEBUG] incoming body.tools =", JSON.stringify(body.tools ?? null));
+  console.log("[TOOLS DEBUG] incoming body keys =", Object.keys(body));
 
   // Non-streamed mode (Vapi uses streaming; this makes local curl testing trivial).
   if (body.stream === false) {
