@@ -1,7 +1,7 @@
 import Agent from "../models/Agent.js";
 import mongoose from "mongoose";
 import { runCustomAgent, runCustomAgentStream } from "../engine/agentRuntime.js";
-import { createSentinelFilter, writeTransferToolCallSSE } from "../engine/transferSignal.js";
+import { createTransferGate, writeTransferToolCallSSE } from "../engine/transferSignal.js";
 import { transferNumberForAgent } from "../utils/phone.js";
 
 const FALLBACK_REPLY = "Sorry, I had a little trouble. Could you repeat that?";
@@ -398,9 +398,10 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   let lastSseFlushAt = null;
   let maxGapBetweenSseChunks = 0;
   let firstTokenWarningTimer = null;
-  // Human warm-transfer: active only when the agent has a valid forwarding number. When the model
-  // emits the silent sentinel, we suppress it from audio and emit a transferCall tool call instead.
-  let sentinelFilter = null;
+  // Human warm-transfer: active only when the agent has a valid forwarding number. The gate holds
+  // ALL text until it knows the turn isn't a transfer, so a transfer turn emits zero content deltas
+  // (required — Vapi discards a tool_calls chunk that arrives after any content on the same turn).
+  let transferGate = null;
   let transferRequested = false;
   let enableFirstTokenFiller = body.enableFirstTokenFiller === true || metadata.enableFirstTokenFiller === true;
 
@@ -517,10 +518,10 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     provider = providerFromAgent(agent);
     selectedModel = modelFromAgent(agent, model);
     latencyMarks.agentLoaded = Date.now();
-    // Only watch for the transfer sentinel when forwarding is enabled — otherwise zero overhead and
-    // byte-for-byte identical behavior to today.
+    // Only gate the stream when forwarding is enabled — otherwise zero overhead and byte-for-byte
+    // identical behavior to today.
     if (transferNumberForAgent(agent)) {
-      sentinelFilter = createSentinelFilter({ onText: (text) => smoothBuffer.push(text) });
+      transferGate = createTransferGate({ onCommitText: (text) => smoothBuffer.push(text) });
     }
     enableFirstTokenFiller = enableFirstTokenFiller || agent?.settings?.llm?.enableFirstTokenFiller === true;
     logLatency("agent_loaded", {
@@ -572,10 +573,10 @@ export async function vapiChatCompletions(req, res, deps = {}) {
             });
           }
         }
-        if (sentinelFilter) {
-          if (sentinelFilter.push(part)) {
+        if (transferGate) {
+          if (transferGate.push(part)) {
             transferRequested = true;
-            break; // sentinel seen — stop consuming; emit the transfer tool call below
+            break; // transfer decided — nothing was flushed; emit the tool call below
           }
         } else {
           smoothBuffer.push(part);
@@ -601,11 +602,20 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     }
   }
 
-  // Human warm transfer: the model asked to hand off. Speak any lead-in it produced, then emit a
-  // bare transferCall tool call so Vapi requests the destination from our webhook and warm-transfers.
+  // Human warm transfer: the gate saw the sentinel and held back all text, so NOTHING has been
+  // written for this turn. Emit a content-free transferCall tool call as the first and only write,
+  // so Vapi accepts it and asks our webhook for the destination.
   if (transferRequested) {
     clearFirstTokenWarningTimer();
-    await smoothBuffer.flushFinal({ logTotal: false });
+    if (sawFirstSseFlush) {
+      // Guard: if any content reached Vapi first (e.g. a first-token filler), the transfer turn is
+      // poisoned and Vapi will ignore the tool call. Loud error so this never fails silently.
+      console.error("[Vapi transfer] content was flushed before the tool call — Vapi will ignore this transfer", {
+        conversationId,
+        agentId,
+        outputChars
+      });
+    }
     writeTransferToolCallSSE(res, { id, created, model: selectedModel });
     latencyMarks.streamDone = Date.now();
     logLatency("transfer_requested", {
@@ -619,8 +629,8 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     return;
   }
 
-  // No transfer: flush any tail the sentinel filter held back (partial-sentinel guard).
-  if (sentinelFilter) sentinelFilter.flush();
+  // No transfer: flush any tail the gate held back (partial-sentinel guard).
+  if (transferGate) transferGate.flush();
 
   await smoothBuffer.flushFinal({ logTotal: false });
 
