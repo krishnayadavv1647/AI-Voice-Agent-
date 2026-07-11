@@ -1,7 +1,6 @@
 import axios from "axios";
 
 import { ApiError } from "../utils/apiError.js";
-import { transferNumberForAgent } from "../utils/phone.js";
 
 const DEFAULT_VAPI_BASE_URL = "https://api.vapi.ai";
 
@@ -98,53 +97,15 @@ export function resolveCustomLlmUrl() {
   return /\/api\/vapi$/.test(base) ? base : `${base}/api/vapi`;
 }
 
-// Returns a DESTINATION-LESS Vapi `transferCall` tool, or null when forwarding is disabled
-// (no valid contactNumber, or agent opted out). The empty `destinations` array is deliberate: it
-// forces Vapi to ask our server for the number via the `transfer-destination-request` webhook
-// (see vapiWebhook.controller.js), so the LLM never sees or handles the phone number and the
-// destination stays 100% server-controlled. Additive — when this returns null, the assistant config
-// is byte-for-byte unchanged from today. (Warm-transfer-with-summary is applied server-side in the
-// webhook response, and only summarizes on Twilio telephony.)
-function buildHumanTransferTool(agent) {
-  if (!transferNumberForAgent(agent)) return null; // no valid number / opted out -> OFF
-
-  const holdMessage = "Please hold for a moment while I connect you to a team member.";
-  const failMessage =
-    (agent?.humanTransferMessage && agent.humanTransferMessage.trim()) ||
-    "Our team is busy right now. I'll have someone call you back shortly.";
-
-  return {
-    type: "transferCall",
-    function: {
-      name: "transferCall",
-      description:
-        "Transfer the call to a human team member. Call this when the caller explicitly asks to " +
-        "speak to a human, agent, or representative, OR when you cannot answer their question " +
-        "confidently. Do not guess — transfer instead.",
-      parameters: { type: "object", properties: {}, required: [] }
-    },
-    // What the CALLER hears at each stage.
-    messages: [
-      { type: "request-start", content: holdMessage, blocking: true },
-      { type: "request-failed", content: failMessage, endCallAfterSpokenEnabled: false }
-    ],
-    destinations: [] // INTENTIONALLY EMPTY -> server supplies destination via webhook
-  };
-}
-
 export function buildAssistantConfig(agent) {
   const publicBackendUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, "") || "";
-  const transferTool = buildHumanTransferTool(agent);
 
   const config = {
     name: agent.agentName,
     model: {
       provider: "custom-llm",
       url: resolveCustomLlmUrl(), // Vapi appends /chat/completions
-      model: agent._id.toString(), // routing key for the local engine (Layer B)
-      // Vapi's custom-llm contract registers tools under model.tools (not a top-level assistant
-      // `tools`). Only present when forwarding is enabled, so disabled agents are unchanged.
-      ...(transferTool ? { tools: [transferTool] } : {})
+      model: agent._id.toString() // routing key for the local engine (Layer B)
     },
     transcriber: {
       provider: "deepgram",
