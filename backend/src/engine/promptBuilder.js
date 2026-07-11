@@ -60,12 +60,11 @@ export function buildAgentMessages({ agent, userMessage, history = [], voiceMode
   const forwardingOn = !!transferNumberForAgent(agent);
   const transferGuidance = forwardingOn
     ? "\n\nHUMAN HANDOFF: If the caller asks to speak with a human, agent, or representative, or if " +
-      "you cannot answer their question confidently, you must hand the call to a human. To do that, end " +
-      `your reply with ${TRANSFER_SENTINEL} on its own line — that exact token is what actually transfers ` +
-      "the call. Just saying you'll connect them does NOT transfer anyone; without the token the caller " +
-      `is left stuck. So give one short line like "Let me connect you to a team member." and then put ` +
-      `${TRANSFER_SENTINEL} as the very last thing. Write the token exactly, never explain it, and never ` +
-      `say the word "transfer" out loud. Do not keep guessing instead of handing off.`
+      "you cannot answer their question confidently, do NOT reply with any words. Your entire response " +
+      `for that turn must be exactly ${TRANSFER_SENTINEL} and nothing else — no greeting, no apology, no ` +
+      `"please hold", no explanation. The system speaks to the caller and connects them. Any words you ` +
+      `add are spoken INSTEAD of transferring, so the caller gets stuck — output only ${TRANSFER_SENTINEL}. ` +
+      "Only do this when a transfer is genuinely needed."
     : "";
 
   return [

@@ -303,14 +303,10 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
         // contactNumber (E.164) with a warm-transfer-with-summary plan. Fail-safe: any problem ->
         // respond { error } and the call continues (never crash, never dead-air).
         try {
-          // Log the raw envelope once so the assistant-id field + shape can be confirmed on the
-          // first live transfer (wire-format spike).
-          console.log("[Vapi webhook] transfer-destination-request payload", JSON.stringify({
-            callId: message.call?.id,
-            assistantId: message.call?.assistantId,
-            assistantNestedId: message.call?.assistant?.id,
-            topAssistantId: message.assistant?.id || message.assistantId
-          }));
+          // TEMPORARY (Part B5): this case has never executed before, so dump the whole payload once
+          // to confirm which field carries the assistant id and the accepted response shape on a live
+          // call. Remove after verification.
+          console.log("[TRANSFER DEBUG] payload:", JSON.stringify(message, null, 2));
 
           const assistantId =
             message.call?.assistantId ||
