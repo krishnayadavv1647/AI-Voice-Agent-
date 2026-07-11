@@ -2,6 +2,7 @@ import { ChevronDown, ChevronLeft, RefreshCw, Search, Send, Sparkles, UserRound,
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -287,7 +288,7 @@ export default function EmailInbox() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
-              <div className="p-4"><EmptyState title="Loading inbox..." /></div>
+              <PageLoader label="Loading inbox" />
             ) : !visibleThreads.length ? (
               <div className="p-4">
                 <EmptyState

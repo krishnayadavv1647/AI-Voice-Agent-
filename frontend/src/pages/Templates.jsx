@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AgentLikeCard from "../components/AgentLikeCard.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import { api } from "../lib/api.js";
 
 const emptyForm = {
@@ -99,17 +100,7 @@ export default function Templates() {
       {error && <div className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">Unable to load templates. Please try again.</div>}
 
       {loading ? (
-        <div className="agent-card-grid" aria-label="Loading templates">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <AgentLikeCard
-              key={index}
-              className="agent-card-generating"
-              fallback="AI"
-              title="Loading template"
-              description="Preparing agent blueprint..."
-            />
-          ))}
-        </div>
+        <PageLoader label="Loading templates" />
       ) : templates.length ? (
         <div className="agent-card-grid">
           {templates.map((template) => (

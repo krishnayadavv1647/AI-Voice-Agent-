@@ -13,6 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import { api } from "../lib/api.js";
 
 const providers = [
@@ -659,12 +660,7 @@ function IconButton({ children, label, danger = false, ...props }) {
 }
 
 function LoadingBlock() {
-  return (
-    <div className="telephony-detail-card">
-      <div className="telephony-skeleton h-5 w-48" />
-      <div className="telephony-skeleton mt-4 h-16 w-full" />
-    </div>
-  );
+  return <PageLoader label="Loading telephony configuration" />;
 }
 
 function ErrorBlock({ message, onRetry, retryLabel = "Retry" }) {

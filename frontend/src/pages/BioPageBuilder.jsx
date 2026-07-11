@@ -30,6 +30,7 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { API_URL, api, getToken } from "../lib/api.js";
 
@@ -456,8 +457,12 @@ export default function BioPageBuilder() {
   if (!form) {
     return (
       <div className="page-stack">
-        <PageHeader title="Agent Bio Page Builder" description="Loading builder..." />
-        {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+        <PageHeader title="Agent Bio Page Builder" description={error ? "Could not load builder." : "Loading builder..."} />
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>
+        ) : (
+          <PageLoader label="Loading bio page builder" />
+        )}
       </div>
     );
   }

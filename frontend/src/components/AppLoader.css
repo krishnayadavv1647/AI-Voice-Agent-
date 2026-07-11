@@ -1,0 +1,75 @@
+.app-loader {
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  min-height: 86px;
+}
+
+.app-loader-bar {
+  display: inline-block;
+  width: 10px;
+  height: 70px;
+  transform-origin: bottom center;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 5px 10px 20px inset rgba(255, 255, 0, 0.8); /* yellow inset glow */
+  animation: appLoaderBars 1.2s linear infinite;
+}
+
+.app-loader-bar-1 {
+  animation-delay: 0.1s;
+}
+
+.app-loader-bar-2 {
+  animation-delay: 0.2s;
+}
+
+.app-loader-bar-3 {
+  animation-delay: 0.3s;
+}
+
+.app-loader-bar-4 {
+  animation-delay: 0.4s;
+}
+
+.app-loader-bar-5 {
+  animation-delay: 0.5s;
+}
+
+.app-loader-bar-6 {
+  animation-delay: 0.6s;
+}
+
+.app-loader-bar-7 {
+  animation-delay: 0.7s;
+}
+
+.app-loader-bar-8 {
+  animation-delay: 0.8s;
+}
+
+@keyframes appLoaderBars {
+  0% {
+    transform: scaleY(0.1);
+    background: transparent;
+  }
+
+  50% {
+    transform: scaleY(1);
+    background: linear-gradient(to bottom, #ffd700, #ffff00); /* gold -> yellow */
+  }
+
+  100% {
+    transform: scaleY(0.1);
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-loader-bar {
+    animation: none;
+    transform: scaleY(0.55);
+    background: linear-gradient(to bottom, #ffd700, #ffff00);
+  }
+}

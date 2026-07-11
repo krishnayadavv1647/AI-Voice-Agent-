@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import Section from "../components/Section.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import dashboardBannerBackground from "../assets/dashboard-waveform-banner.png";
@@ -72,9 +73,7 @@ export default function Dashboard() {
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
       {!data ? (
-        <div className="summary-grid">
-          {Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton h-32" />)}
-        </div>
+        <PageLoader label="Loading dashboard" />
       ) : (
         <>
           <Section title="Overview" description="The four numbers that best describe current account activity.">
