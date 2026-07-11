@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -294,6 +295,9 @@ export default function AgentDetails() {
       setError(formatApiError(err));
     }
   }
+
+  // First load: no data yet and no error to show -> centered page loader.
+  if (!data && !error) return <PageLoader label="Loading agent" />;
 
   const connected = Boolean(agent?.providerWorkflowId || agent?.providerAgentId);
 

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api, setToken } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
@@ -198,7 +199,7 @@ export default function Admin() {
         </aside>
 
         <main className="min-w-0">
-          {loading ? <div className="card text-sm text-neutral-500">Loading admin data...</div> : null}
+          {loading ? <PageLoader label="Loading admin data" /> : null}
           {active === "dashboard" && (
             <>
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -948,7 +949,7 @@ function PlanCatalogPanel({ users }) {
     return !q || u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
   });
 
-  if (loading) return <div className="card text-sm text-neutral-500">Loading plan catalog...</div>;
+  if (loading) return <PageLoader label="Loading plan catalog" />;
 
   return (
     <div className="space-y-4">

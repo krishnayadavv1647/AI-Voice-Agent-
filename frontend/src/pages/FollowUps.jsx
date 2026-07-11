@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -133,7 +134,7 @@ export default function FollowUps() {
           </div>
         )}
         {loading ? (
-          <div className="p-6"><EmptyState title="Loading follow-ups..." /></div>
+          <PageLoader label="Loading follow-ups" />
         ) : !followUps.length ? (
           <div className="p-6"><EmptyState title="No follow-ups yet" description="Successful email campaigns will schedule call follow-ups automatically." /></div>
         ) : !filteredFollowUps.length ? (

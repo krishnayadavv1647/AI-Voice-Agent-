@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -324,7 +325,7 @@ export default function EmailOutreach() {
           </button>
         </div>
         {loading ? (
-          <div className="p-6"><EmptyState title="Loading leads..." /></div>
+          <PageLoader label="Loading leads" />
         ) : !emailLeads.length ? (
           <div className="p-6"><EmptyState title="No leads with email" description="Save leads with email addresses before creating a campaign." /></div>
         ) : (

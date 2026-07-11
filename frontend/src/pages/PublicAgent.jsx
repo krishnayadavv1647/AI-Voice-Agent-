@@ -35,6 +35,7 @@
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import AppLoader from "../components/AppLoader.jsx";
 import robotHead from "../assets/voiceflow-theme/robot-head.png";
 import robotImage from "../assets/voiceflow-theme/robot.png";
 import { API_URL, api } from "../lib/api.js";
@@ -429,7 +430,7 @@ export default function PublicAgent() {
     }
   }
 
-  if (loading) return <main className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#64748b]">Loading...</main>;
+  if (loading) return <main className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#64748b]"><AppLoader label="Loading assistant" /></main>;
 
   if (error && !agent) {
     return <main className="grid min-h-screen place-items-center bg-[#f8fafc] p-4 text-center text-rose-700">{error}</main>;

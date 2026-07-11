@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api, apiBlob } from "../lib/api.js";
 
@@ -26,7 +27,7 @@ function callPhone(call) {
 
 export default function CallLogs() {
   const queryClient = useQueryClient();
-  const { data: calls = [], error: queryError } = useQuery({
+  const { data: calls = [], error: queryError, isPending } = useQuery({
     queryKey: ["calls"],
     queryFn: () => api("/calls")
   });
@@ -131,7 +132,9 @@ export default function CallLogs() {
           />
         </div>
       )}
-      {!calls.length ? (
+      {isPending ? (
+        <PageLoader label="Loading call logs" />
+      ) : !calls.length ? (
         <EmptyState title="No calls yet. Start a test call to see call logs." description="Completed calls will sync duration, status, transcript URL, and recording URL." />
       ) : !filteredCalls.length ? (
         <p className="py-8 text-center text-sm text-neutral-500">No call logs found for your search.</p>

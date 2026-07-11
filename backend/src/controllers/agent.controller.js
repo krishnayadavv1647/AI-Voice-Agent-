@@ -14,6 +14,7 @@ import { getProvider } from "../providers/index.js";
 import { runCustomAgent } from "../services/customAgentRuntime.js";
 import { triggerOutboundCallForAgent } from "../services/outboundCall.service.js";
 import { normalizeApiKeyMode } from "../services/apiKeyMode.service.js";
+import { toE164 } from "../utils/phone.js";
 import {
   applyVoiceConfigurationToAgent,
   getAgentVoiceConfiguration,
@@ -607,6 +608,14 @@ export const createAgent = asyncHandler(async (req, res) => {
     publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
 
+  // Normalize the business contact number to E.164 so human call-forwarding can dial it reliably.
+  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value and
+  // forwarding simply stays off until it's valid.
+  if (agent.contactNumber) {
+    const normalized = toE164(agent.contactNumber);
+    if (normalized) agent.contactNumber = normalized;
+  }
+
   agent.apiKeyMode = normalizeApiKeyMode(req.body.apiKeyMode);
   if (agent.apiKeyMode === "default_system") {
     // DEFAULT SYSTEM: force platform_default everywhere and ignore any BYOK inputs.
@@ -981,6 +990,14 @@ export const updateAgent = asyncHandler(async (req, res) => {
 
   for (const field of allowedFields) {
     if (body[field] !== undefined) agent[field] = body[field];
+  }
+
+  // Normalize the business contact number to E.164 so human call-forwarding can dial it reliably.
+  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value and
+  // forwarding simply stays off until it's valid.
+  if (agent.contactNumber) {
+    const normalized = toE164(agent.contactNumber);
+    if (normalized) agent.contactNumber = normalized;
   }
 
   // -- API KEY MODE (re-resolved at every save) -----------------------------------

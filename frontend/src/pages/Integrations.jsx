@@ -17,6 +17,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import { api } from "../lib/api.js";
 
 const VOICE_PROVIDERS = [
@@ -305,9 +306,7 @@ export default function Integrations() {
 
       <div className="space-y-10">
         {loading && !voiceIntegrations.length && !llmIntegrations.length ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {[1, 2, 3, 4].map((item) => <div key={item} className="h-36 animate-pulse rounded-2xl border border-hairline bg-white shadow-soft" />)}
-          </div>
+          <PageLoader label="Loading integrations" />
         ) : (
           sections.map((section) => {
             const open = !collapsed[section.key];

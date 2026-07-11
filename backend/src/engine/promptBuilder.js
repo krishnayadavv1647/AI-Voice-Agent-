@@ -1,3 +1,6 @@
+import { transferNumberForAgent } from "../utils/phone.js";
+import { TRANSFER_SENTINEL } from "./transferSignal.js";
+
 const VOICE_INSTRUCTIONS = [
   "You are speaking on a live phone or web call.",
   "Give helpful, natural spoken replies.",
@@ -49,8 +52,21 @@ export function buildAgentMessages({ agent, userMessage, history = [], voiceMode
   const firstMessage = agent.firstMessage ? `\nFirst message guidance:\n${agent.firstMessage}` : "";
   const voiceInstructions = voiceMode ? `\n\nLive voice behavior:\n${VOICE_INSTRUCTIONS}` : "";
 
+  // Human warm-transfer guidance — only when the agent has a valid forwarding number (mirrors the
+  // transferCall tool attached in vapi.service.js). Appended AFTER the voice truncation above so it
+  // is never cut, and kept short to protect voice time-to-first-token. The model signals a transfer
+  // by emitting TRANSFER_SENTINEL, which the streaming controller turns into a real transferCall
+  // tool call (the token itself is stripped and never spoken).
+  const forwardingOn = !!transferNumberForAgent(agent);
+  const transferGuidance = forwardingOn
+    ? "\n\nIf the caller asks to speak with a human, agent, or representative, or if you cannot " +
+      "answer their question confidently, briefly tell them you're connecting them to a team member, " +
+      `then output ${TRANSFER_SENTINEL} on its own line as the very last thing in your reply. Write ` +
+      `the token exactly, never explain it, and never say the word "transfer" out loud. Do not keep guessing.`
+    : "";
+
   return [
-    { role: "system", content: `${systemPrompt}${firstMessage}${voiceInstructions}` },
+    { role: "system", content: `${systemPrompt}${firstMessage}${voiceInstructions}${transferGuidance}` },
     ...history.map((item) => ({ role: item.role, content: item.content })),
     { role: "user", content: userMessage }
   ];

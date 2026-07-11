@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import dashboardCallingAgent from "../assets/dashboard-calling-agent-2.png";
 import AgentLikeCard from "../components/AgentLikeCard.jsx";
 import EmptyState from "../components/EmptyState.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import { api, assetUrl } from "../lib/api.js";
 
 function requestMessage(err, fallback = "Request failed.") {
@@ -13,7 +14,7 @@ function requestMessage(err, fallback = "Request failed.") {
 
 export default function Agents() {
   const queryClient = useQueryClient();
-  const { data: agents = [], error: queryError } = useQuery({
+  const { data: agents = [], error: queryError, isPending } = useQuery({
     queryKey: ["agents"],
     queryFn: () => api("/agents")
   });
@@ -177,7 +178,9 @@ export default function Agents() {
         />
       </div>
 
-      {!agents.length ? (
+      {isPending ? (
+        <PageLoader label="Loading agents" />
+      ) : !agents.length ? (
         <EmptyState
           title="No agents yet. Create your first AI voice agent."
           description="Choose a template, add business knowledge, and launch outbound AI calls through Vapi."

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./lib/queryClient.js";
 import AppShell from "./shell/AppShell.jsx";
+import AppLoader from "./components/AppLoader.jsx";
 import { AuthProvider, useAuth } from "./state/AuthContext.jsx";
 import { CreditsProvider } from "./state/CreditsContext.jsx";
 import "./styles.css";
@@ -42,12 +43,12 @@ const Credits = lazy(() => import("./pages/Credits.jsx"));
 const Welcome = lazy(() => import("./pages/Welcome.jsx"));
 
 function PageFallback() {
-  return <div className="grid min-h-screen place-items-center text-neutral-500">Loading...</div>;
+  return <div className="grid min-h-screen place-items-center text-neutral-500"><AppLoader /></div>;
 }
 
 function ProtectedRoute({ children, admin = false }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="grid min-h-screen place-items-center text-neutral-500">Loading...</div>;
+  if (loading) return <div className="grid min-h-screen place-items-center text-neutral-500"><AppLoader label="Checking session" /></div>;
   if (!user) return <Navigate to="/login" replace />;
   if (admin && !["admin", "super_admin"].includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;

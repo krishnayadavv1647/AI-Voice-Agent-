@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { api } from "../lib/api.js";
 
@@ -47,7 +48,7 @@ function truncateValue(value, max = 32) {
 
 export default function Leads() {
   const queryClient = useQueryClient();
-  const { data: leads = [], error: leadsError } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
+  const { data: leads = [], error: leadsError, isPending: leadsPending } = useQuery({ queryKey: ["leads"], queryFn: () => api("/leads") });
   const { data: followUps = [] } = useQuery({ queryKey: ["followups"], queryFn: () => api("/followups") });
   const { data: emailThreads = [] } = useQuery({ queryKey: ["email-threads"], queryFn: () => api("/email/threads") });
   const [search, setSearch] = useState("");
@@ -205,7 +206,9 @@ export default function Leads() {
       <PageHeader title="Leads" description="CRM-style lead management for customers captured from calls, callback forms, transcripts, and messages." action={<button className="btn-secondary" onClick={exportCsv}><Download size={16} />Export CSV</button>} />
       {notice && <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
-      {!leads.length ? (
+      {leadsPending ? (
+        <PageLoader label="Loading leads" />
+      ) : !leads.length ? (
         <EmptyState title="No leads captured yet. Leads will appear after calls or messages." />
       ) : (
         <>
@@ -335,22 +338,6 @@ export default function Leads() {
                   ))}
                 </div>
               )}
-            </div>
-            <div className="mt-5 action-row">
-              <button className="btn-secondary" onClick={() => addNote(selected._id)}>Add Note</button>
-              <button className="btn-secondary" disabled={!selected.website || enrichingId === selected._id} onClick={() => findEmail(selected)}>
-                {enrichingId === selected._id ? "Finding..." : "Find Email"}
-              </button>
-              <button className="btn-secondary" disabled={schedulingId === selected._id} onClick={() => scheduleFollowUp(selected)}>
-                {schedulingId === selected._id ? "Scheduling..." : "Schedule Follow-up"}
-              </button>
-              <Link className="btn-secondary" to="/followups">View Follow-ups</Link>
-              <Link className="btn-secondary" to={appointmentUrl(selected, true)}>Book Appointment</Link>
-              <Link className="btn-secondary" to={appointmentUrl(selected)}>View Appointments</Link>
-              <button className="btn-primary" onClick={() => callAgain(selected._id)}>Call Again</button>
-              <button className="btn-secondary text-rose-600" disabled={deletingId === selected._id} onClick={() => deleteLead(selected._id)}>
-                {deletingId === selected._id ? "Deleting..." : "Delete"}
-              </button>
             </div>
           </div>
         </div>

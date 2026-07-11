@@ -1,6 +1,8 @@
 import Agent from "../models/Agent.js";
 import mongoose from "mongoose";
 import { runCustomAgent, runCustomAgentStream } from "../engine/agentRuntime.js";
+import { createSentinelFilter, writeTransferToolCallSSE } from "../engine/transferSignal.js";
+import { transferNumberForAgent } from "../utils/phone.js";
 
 const FALLBACK_REPLY = "Sorry, I had a little trouble. Could you repeat that?";
 const AGENT_CACHE_FOUND_TTL_MS = 15000;
@@ -345,6 +347,16 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     elapsedMs: elapsed(startedAt)
   });
 
+  // Wire-format spike: record whether Vapi forwards the assistant's tool schema to us. If it does,
+  // native tool calling (STEP 3a) becomes possible; if not, we rely on the sentinel bridge (3b).
+  if (Array.isArray(body.tools) && body.tools.length) {
+    console.log("[Vapi wire-format] chat/completions received tools", {
+      conversationId,
+      count: body.tools.length,
+      names: body.tools.map((t) => t?.function?.name || t?.type)
+    });
+  }
+
   // Non-streamed mode (Vapi uses streaming; this makes local curl testing trivial).
   if (body.stream === false) {
     let reply = FALLBACK_REPLY;
@@ -390,6 +402,10 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   let lastSseFlushAt = null;
   let maxGapBetweenSseChunks = 0;
   let firstTokenWarningTimer = null;
+  // Human warm-transfer: active only when the agent has a valid forwarding number. When the model
+  // emits the silent sentinel, we suppress it from audio and emit a transferCall tool call instead.
+  let sentinelFilter = null;
+  let transferRequested = false;
   let enableFirstTokenFiller = body.enableFirstTokenFiller === true || metadata.enableFirstTokenFiller === true;
 
   function clearFirstTokenWarningTimer() {
@@ -505,6 +521,11 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     provider = providerFromAgent(agent);
     selectedModel = modelFromAgent(agent, model);
     latencyMarks.agentLoaded = Date.now();
+    // Only watch for the transfer sentinel when forwarding is enabled — otherwise zero overhead and
+    // byte-for-byte identical behavior to today.
+    if (transferNumberForAgent(agent)) {
+      sentinelFilter = createSentinelFilter({ onText: (text) => smoothBuffer.push(text) });
+    }
     enableFirstTokenFiller = enableFirstTokenFiller || agent?.settings?.llm?.enableFirstTokenFiller === true;
     logLatency("agent_loaded", {
       conversationId,
@@ -555,7 +576,14 @@ export async function vapiChatCompletions(req, res, deps = {}) {
             });
           }
         }
-        smoothBuffer.push(part);
+        if (sentinelFilter) {
+          if (sentinelFilter.push(part)) {
+            transferRequested = true;
+            break; // sentinel seen — stop consuming; emit the transfer tool call below
+          }
+        } else {
+          smoothBuffer.push(part);
+        }
       }
     }
   } catch (error) {
@@ -570,12 +598,33 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     });
     console.error("[Vapi chat] stream failed:", error.message);
 
-    if (!sawFirstSseFlush && !smoothBuffer.hasBufferedContent) {
+    if (!sawFirstSseFlush && !smoothBuffer.hasBufferedContent && !transferRequested) {
       for (const part of fallbackStream()) {
         smoothBuffer.push(part);
       }
     }
   }
+
+  // Human warm transfer: the model asked to hand off. Speak any lead-in it produced, then emit a
+  // bare transferCall tool call so Vapi requests the destination from our webhook and warm-transfers.
+  if (transferRequested) {
+    clearFirstTokenWarningTimer();
+    await smoothBuffer.flushFinal({ logTotal: false });
+    writeTransferToolCallSSE(res, { id, created, model: selectedModel });
+    latencyMarks.streamDone = Date.now();
+    logLatency("transfer_requested", {
+      conversationId,
+      agentId,
+      provider,
+      model: selectedModel,
+      elapsedMs: elapsed(startedAt)
+    });
+    logLatencyBreakdown();
+    return;
+  }
+
+  // No transfer: flush any tail the sentinel filter held back (partial-sentinel guard).
+  if (sentinelFilter) sentinelFilter.flush();
 
   await smoothBuffer.flushFinal({ logTotal: false });
 
