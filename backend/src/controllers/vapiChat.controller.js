@@ -616,6 +616,14 @@ export async function vapiChatCompletions(req, res, deps = {}) {
         outputChars
       });
     }
+    // Observability: a legitimate sole-sentinel transfer has outputChars: 0. A transfer on
+    // turnIndex 1 (the caller's first utterance) almost always means the prompt is misfiring.
+    console.log("[Vapi transfer] sentinel accepted", {
+      conversationId,
+      agentId,
+      outputChars,
+      turnIndex: (body.messages || []).filter((m) => m.role === "user").length
+    });
     writeTransferToolCallSSE(res, { id, created, model: selectedModel });
     latencyMarks.streamDone = Date.now();
     logLatency("transfer_requested", {

@@ -59,16 +59,14 @@ export function buildAgentMessages({ agent, userMessage, history = [], voiceMode
   // tool call (the token itself is stripped and never spoken).
   const forwardingOn = !!transferNumberForAgent(agent);
   const transferGuidance = forwardingOn
-    ? "\n\nHUMAN HANDOFF: If the caller asks to speak with a human, agent, or representative, or if " +
-      "you cannot answer their question confidently, do NOT reply with any words. Your entire response " +
-      `for that turn must be exactly ${TRANSFER_SENTINEL} and nothing else — no greeting, no apology, no ` +
-      `"please hold", no explanation. The system speaks to the caller and connects them. Any words you ` +
-      `add are spoken INSTEAD of transferring, so the caller gets stuck — output only ${TRANSFER_SENTINEL}. ` +
-      "Only do this when a transfer is genuinely needed."
+    ? `\n\nHandoff rule: Normally you answer the caller yourself — that is your default in every turn. ` +
+      `There is one exception: if the caller explicitly asks for a human/agent/representative, or you ` +
+      `truly cannot answer, then reply with the single token ${TRANSFER_SENTINEL} and no other text. ` +
+      `Do not use that token for greetings, ordinary questions, or anything you can answer.`
     : "";
 
   return [
-    { role: "system", content: `${systemPrompt}${firstMessage}${voiceInstructions}${transferGuidance}` },
+    { role: "system", content: `${systemPrompt}${firstMessage}${transferGuidance}${voiceInstructions}` },
     ...history.map((item) => ({ role: item.role, content: item.content })),
     { role: "user", content: userMessage }
   ];

@@ -59,7 +59,22 @@ export function createTransferGate({ sentinel = TRANSFER_SENTINEL, onCommitText,
 
       // deciding: hold everything, emit nothing.
       buffer += text;
-      if (buffer.includes(sentinel)) { mode = "transfer"; buffer = ""; return true; }
+
+      if (buffer.includes(sentinel)) {
+        // Only a SOLE-sentinel reply counts as a transfer. Anything else is a normal turn where the
+        // model leaked the token — strip it and speak the rest, rather than going silent.
+        const withoutSentinel = buffer.split(sentinel).join("").trim();
+        if (withoutSentinel.length === 0) {
+          mode = "transfer";
+          buffer = "";
+          return true;
+        }
+        mode = "committed";
+        const pending = buffer;
+        buffer = "";
+        emitStripped(pending); // emitStripped already removes the sentinel
+        return false;
+      }
 
       const trimmed = buffer.replace(/^\s+/, ""); // ignore leading whitespace before the token
       const stillCouldBeSentinel = trimmed.length === 0 || sentinel.startsWith(trimmed);
