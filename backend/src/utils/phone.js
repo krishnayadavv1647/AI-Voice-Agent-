@@ -29,11 +29,3 @@ export function toE164(raw, { defaultCountryCode } = {}) {
   const candidate = "+" + cc + digits;
   return /^\+\d{8,15}$/.test(candidate) ? candidate : null;
 }
-
-// Single source of truth for "is human warm-transfer available for this agent?".
-// Returns the E.164 destination or null. All of the transfer plumbing (tool attach, prompt
-// guidance, and the webhook that supplies the number) gate on this, so behavior stays consistent.
-export function transferNumberForAgent(agent) {
-  if (agent?.humanTransferEnabled === false) return null; // optional per-agent opt-out (STEP 6)
-  return toE164(agent?.contactNumber);
-}

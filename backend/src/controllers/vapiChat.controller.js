@@ -1,8 +1,6 @@
 import Agent from "../models/Agent.js";
 import mongoose from "mongoose";
 import { runCustomAgent, runCustomAgentStream } from "../engine/agentRuntime.js";
-import { createTransferGate, writeTransferToolCallSSE } from "../engine/transferSignal.js";
-import { transferNumberForAgent } from "../utils/phone.js";
 
 const FALLBACK_REPLY = "Sorry, I had a little trouble. Could you repeat that?";
 const AGENT_CACHE_FOUND_TTL_MS = 15000;
@@ -347,12 +345,6 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     elapsedMs: elapsed(startedAt)
   });
 
-  // TEMPORARY diagnostic spike (Part B0): does Vapi forward the assistant tool schema to the custom
-  // LLM? If body.tools is a non-empty array, native tool calling (B1) is possible; if null/absent,
-  // the sentinel bridge (B2, active below) is the only path. Remove after capturing on a live call.
-  console.log("[TOOLS DEBUG] incoming body.tools =", JSON.stringify(body.tools ?? null));
-  console.log("[TOOLS DEBUG] incoming body keys =", Object.keys(body));
-
   // Non-streamed mode (Vapi uses streaming; this makes local curl testing trivial).
   if (body.stream === false) {
     let reply = FALLBACK_REPLY;
@@ -398,11 +390,6 @@ export async function vapiChatCompletions(req, res, deps = {}) {
   let lastSseFlushAt = null;
   let maxGapBetweenSseChunks = 0;
   let firstTokenWarningTimer = null;
-  // Human warm-transfer: active only when the agent has a valid forwarding number. The gate holds
-  // ALL text until it knows the turn isn't a transfer, so a transfer turn emits zero content deltas
-  // (required — Vapi discards a tool_calls chunk that arrives after any content on the same turn).
-  let transferGate = null;
-  let transferRequested = false;
   let enableFirstTokenFiller = body.enableFirstTokenFiller === true || metadata.enableFirstTokenFiller === true;
 
   function clearFirstTokenWarningTimer() {
@@ -518,11 +505,6 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     provider = providerFromAgent(agent);
     selectedModel = modelFromAgent(agent, model);
     latencyMarks.agentLoaded = Date.now();
-    // Only gate the stream when forwarding is enabled — otherwise zero overhead and byte-for-byte
-    // identical behavior to today.
-    if (transferNumberForAgent(agent)) {
-      transferGate = createTransferGate({ onCommitText: (text) => smoothBuffer.push(text) });
-    }
     enableFirstTokenFiller = enableFirstTokenFiller || agent?.settings?.llm?.enableFirstTokenFiller === true;
     logLatency("agent_loaded", {
       conversationId,
@@ -573,14 +555,7 @@ export async function vapiChatCompletions(req, res, deps = {}) {
             });
           }
         }
-        if (transferGate) {
-          if (transferGate.push(part)) {
-            transferRequested = true;
-            break; // transfer decided — nothing was flushed; emit the tool call below
-          }
-        } else {
-          smoothBuffer.push(part);
-        }
+        smoothBuffer.push(part);
       }
     }
   } catch (error) {
@@ -595,50 +570,12 @@ export async function vapiChatCompletions(req, res, deps = {}) {
     });
     console.error("[Vapi chat] stream failed:", error.message);
 
-    if (!sawFirstSseFlush && !smoothBuffer.hasBufferedContent && !transferRequested) {
+    if (!sawFirstSseFlush && !smoothBuffer.hasBufferedContent) {
       for (const part of fallbackStream()) {
         smoothBuffer.push(part);
       }
     }
   }
-
-  // Human warm transfer: the gate saw the sentinel and held back all text, so NOTHING has been
-  // written for this turn. Emit a content-free transferCall tool call as the first and only write,
-  // so Vapi accepts it and asks our webhook for the destination.
-  if (transferRequested) {
-    clearFirstTokenWarningTimer();
-    if (sawFirstSseFlush) {
-      // Guard: if any content reached Vapi first (e.g. a first-token filler), the transfer turn is
-      // poisoned and Vapi will ignore the tool call. Loud error so this never fails silently.
-      console.error("[Vapi transfer] content was flushed before the tool call — Vapi will ignore this transfer", {
-        conversationId,
-        agentId,
-        outputChars
-      });
-    }
-    // Observability: a legitimate sole-sentinel transfer has outputChars: 0. A transfer on
-    // turnIndex 1 (the caller's first utterance) almost always means the prompt is misfiring.
-    console.log("[Vapi transfer] sentinel accepted", {
-      conversationId,
-      agentId,
-      outputChars,
-      turnIndex: (body.messages || []).filter((m) => m.role === "user").length
-    });
-    writeTransferToolCallSSE(res, { id, created, model: selectedModel });
-    latencyMarks.streamDone = Date.now();
-    logLatency("transfer_requested", {
-      conversationId,
-      agentId,
-      provider,
-      model: selectedModel,
-      elapsedMs: elapsed(startedAt)
-    });
-    logLatencyBreakdown();
-    return;
-  }
-
-  // No transfer: flush any tail the gate held back (partial-sentinel guard).
-  if (transferGate) transferGate.flush();
 
   await smoothBuffer.flushFinal({ logTotal: false });
 

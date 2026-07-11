@@ -8,7 +8,6 @@ import PageLoader from "../components/PageLoader.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import VoiceConfigurationPanel, { defaultVoiceConfiguration, normalizeVoiceConfiguration } from "../components/VoiceConfigurationPanel.jsx";
 import { api } from "../lib/api.js";
-import { toE164 } from "../lib/phone.js";
 import { agentTypes, languages, tones, personalities } from "../lib/options.js";
 
 const tabs = ["Basic Info", "Business Information", "System Prompt", "Call Behavior", "Voice & Language", "Calling System"];
@@ -373,10 +372,7 @@ export default function EditAgent() {
             <Field label="Agent Type" name="agentType" value={form.agentType} setField={setField} options={agentTypes} />
             <Field label="Business Name" name="businessName" value={form.businessName} setField={setField} />
             <Field label="Business Category" name="businessCategory" value={form.businessCategory} setField={setField} />
-            <div className="md:col-span-2">
-              <Field label="Contact Number" name="contactNumber" value={form.contactNumber} setField={setField} placeholder="e.g. +91 98765 43210" />
-              <ForwardingHint value={form.contactNumber} />
-            </div>
+            <Field label="Contact Number" name="contactNumber" value={form.contactNumber} setField={setField} placeholder="e.g. +91 98765 43210" />
             <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} setField={setField} textarea /></div>
             <div className="md:col-span-2">
               <BioField value={form.bio ?? ""} onChange={(v) => setField("bio", v)} disabled={saving} />
@@ -559,35 +555,6 @@ function Toggle({ label, name, value, setField }) {
       <input className="h-4 w-4" type="checkbox" checked={Boolean(value)} onChange={(event) => setField(name, event.target.checked)} />
       {label}
     </label>
-  );
-}
-
-function ForwardingHint({ value }) {
-  const raw = (value || "").trim();
-  const normalized = toE164(raw);
-
-  if (!raw) {
-    return (
-      <p className="mt-1 text-xs text-neutral-500">
-        When the AI can&apos;t help or the caller asks for a human, the call is forwarded to this
-        number. Add a valid phone number to enable call forwarding.
-      </p>
-    );
-  }
-
-  if (!normalized) {
-    return (
-      <p className="mt-1 text-xs text-amber-600">
-        Add a valid phone number to enable call forwarding to a human.
-      </p>
-    );
-  }
-
-  return (
-    <p className="mt-1 text-xs text-emerald-600">
-      Call forwarding is on. When the AI can&apos;t help or the caller asks for a human, the call is
-      warm-transferred to {normalized}.
-    </p>
   );
 }
 

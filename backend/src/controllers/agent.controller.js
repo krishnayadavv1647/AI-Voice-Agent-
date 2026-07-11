@@ -608,9 +608,8 @@ export const createAgent = asyncHandler(async (req, res) => {
     publicWelcomeMessage: body.publicWelcomeMessage || body.greetingMessage || body.firstMessage
   });
 
-  // Normalize the business contact number to E.164 so human call-forwarding can dial it reliably.
-  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value and
-  // forwarding simply stays off until it's valid.
+  // Normalize the business contact number to E.164 so it is stored in a consistent format.
+  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value.
   if (agent.contactNumber) {
     const normalized = toE164(agent.contactNumber);
     if (normalized) agent.contactNumber = normalized;
@@ -992,9 +991,8 @@ export const updateAgent = asyncHandler(async (req, res) => {
     if (body[field] !== undefined) agent[field] = body[field];
   }
 
-  // Normalize the business contact number to E.164 so human call-forwarding can dial it reliably.
-  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value and
-  // forwarding simply stays off until it's valid.
+  // Normalize the business contact number to E.164 so it is stored in a consistent format.
+  // Non-destructive: only overwrite when normalization succeeds; otherwise keep the raw value.
   if (agent.contactNumber) {
     const normalized = toE164(agent.contactNumber);
     if (normalized) agent.contactNumber = normalized;

@@ -11,7 +11,6 @@ import { extractVapiCallFields, hasUsefulLeadData, normalizeVapiLeadData, pick }
 import { normalizeLeadToEnglish } from "../services/leadEnglishNormalizer.js";
 import { autoGenerateLeadFromCall } from "../services/leadGeneration.service.js";
 import { settleVoiceCallBilling } from "../services/billing/voiceCallBilling.service.js";
-import { transferNumberForAgent } from "../utils/phone.js";
 
 // Real wiring. Tests pass fakes for the same keys so the side-effect chain runs without a DB.
 // Built lazily (at call time, NOT module-load time): this controller sits in a circular-import web
@@ -295,61 +294,6 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
       case "status-update": {
         await applyVapiStatusUpdate(message, deps);
         return res.status(200).json({ success: true });
-      }
-
-      case "transfer-destination-request": {
-        // The assistant called transferCall with NO destination (destinations: [] on the tool), so
-        // Vapi asks us where to send the caller. We resolve the owning agent and supply its own
-        // contactNumber (E.164) with a warm-transfer-with-summary plan. Fail-safe: any problem ->
-        // respond { error } and the call continues (never crash, never dead-air).
-        try {
-          // TEMPORARY (Part B5): this case has never executed before, so dump the whole payload once
-          // to confirm which field carries the assistant id and the accepted response shape on a live
-          // call. Remove after verification.
-          console.log("[TRANSFER DEBUG] payload:", JSON.stringify(message, null, 2));
-
-          const assistantId =
-            message.call?.assistantId ||
-            message.call?.assistant?.id ||
-            message.assistant?.id ||
-            message.assistantId;
-          const AgentModel = resolveModel(deps, "Agent");
-          const agent = assistantId && AgentModel
-            ? await AgentModel.findOne({ providerAgentId: assistantId })
-            : null;
-          const number = transferNumberForAgent(agent);
-
-          if (!number) {
-            console.warn("[Vapi webhook] transfer-destination-request: no valid contactNumber", { assistantId });
-            return res.status(200).json({
-              error:
-                (agent?.humanTransferMessage && agent.humanTransferMessage.trim()) ||
-                "Sorry, I can't connect you right now. Our team will call you back shortly."
-            });
-          }
-
-          return res.status(200).json({
-            destination: {
-              type: "number",
-              number, // agent.contactNumber, normalized to E.164
-              numberE164CheckEnabled: true,
-              message: "Please hold while I connect you to a team member.",
-              transferPlan: {
-                mode: "warm-transfer-with-summary",
-                summaryPlan: {
-                  enabled: true,
-                  messages: [
-                    { role: "system", content: "Provide a brief summary of this call for the human agent about to take over." },
-                    { role: "user", content: "Here is the transcript:\n\n{{transcript}}\n\n" }
-                  ]
-                }
-              }
-            }
-          });
-        } catch (error) {
-          console.error("[Vapi webhook] transfer-destination-request failed:", error.message);
-          return res.status(200).json({ error: "Transfer is unavailable right now." });
-        }
       }
 
       case "assistant-request": {
