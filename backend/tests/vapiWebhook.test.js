@@ -3,8 +3,13 @@ import mongoose from "mongoose";
 import { test, mock } from "node:test";
 
 import { extractVapiCallFields, mapVapiEndedReasonToStatus } from "../src/services/callLogMapper.js";
-import { processVapiEndOfCall, applyVapiStatusUpdate } from "../src/controllers/vapiWebhook.controller.js";
+import { processVapiEndOfCall, applyVapiStatusUpdate, vapiWebhook } from "../src/controllers/vapiWebhook.controller.js";
 import RealCallLog from "../src/models/CallLog.js";
+import { applyCallOutcomeToLog, scheduleRetryFollowUpForCall } from "../src/services/callOutcome.service.js";
+import { syncCampaignRecipientFromCall } from "../src/services/campaign.service.js";
+import { settleVoiceCallBilling } from "../src/services/billing/voiceCallBilling.service.js";
+import { autoGenerateLeadFromCall } from "../src/services/leadGeneration.service.js";
+import { normalizeLeadToEnglish } from "../src/services/leadEnglishNormalizer.js";
 
 // ---- extractVapiCallFields (pure) ------------------------------------------
 
@@ -218,3 +223,58 @@ test("applyVapiStatusUpdate resolves CallLog from the mongoose registry when dep
   assert.equal(updateArgs[0].providerCallId, "vapi_call_x");
   assert.deepEqual(updateArgs[1], { $set: { rawProviderStatus: "in-progress" } });
 });
+
+// ---- PART A: deps=next (Express arg collision) + circular-import resilience -----------------
+// Root cause: the route is `router.post("/webhook", vapiWebhook)`, so Express calls the handler as
+// `vapiWebhook(req, res, next)` and the positional `deps` is actually `next`. Every raw `deps.X`
+// is therefore undefined at request time. resolveModel already saved model access; resolveFn now
+// does the same for the imported functions.
+
+function makeRes() {
+  const r = { statusCode: null, body: null };
+  r.status = (c) => { r.statusCode = c; return r; };
+  r.json = (b) => { r.body = b; return r; };
+  r.setHeader = () => {};
+  return r;
+}
+
+test("resolveFn module fallbacks are all real functions (so deps=next still runs billing + leads)", () => {
+  const fallbacks = {
+    applyCallOutcomeToLog,
+    scheduleRetryFollowUpForCall,
+    syncCampaignRecipientFromCall,
+    settleVoiceCallBilling,
+    autoGenerateLeadFromCall,
+    normalizeLeadToEnglish
+  };
+  for (const [name, fn] of Object.entries(fallbacks)) {
+    assert.equal(typeof fn, "function", `${name} must be a real function at request time (not undefined)`);
+  }
+});
+
+test("webhook default case does NOT crash when deps is Express `next` and WebhookEvent is unavailable", async () => {
+  const req = { body: { message: { type: "speech-update", foo: 1 } }, headers: {} };
+  const res = makeRes();
+  const next = () => {}; // exactly what Express passes as the 3rd arg -> this is `deps`
+  // Force the mongoose-registry fallback to also miss, so WebhookEvent truly resolves to undefined.
+  const modelMock = mock.method(mongoose, "model", () => { throw new Error("not registered"); });
+  try {
+    await vapiWebhook(req, res, next);
+  } finally {
+    modelMock.mock.restore();
+  }
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { success: true }, "guarded clean skip — not the catch/warning path (no TypeError)");
+});
+
+test("webhook default case stores the event when a model is resolvable", async () => {
+  const events = [];
+  const deps = { WebhookEvent: { create: async (d) => { events.push(d); return d; } } };
+  const req = { body: { message: { type: "conversation-update" } }, headers: {} };
+  const res = makeRes();
+  await vapiWebhook(req, res, deps);
+  assert.equal(res.statusCode, 200);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].eventType, "conversation-update");
+});
+

@@ -43,6 +43,18 @@ function resolveModel(deps, name) {
   try { return mongoose.model(name); } catch { return undefined; }
 }
 
+// The same reason `deps.<Model>` can't be trusted (Express calls this handler as
+// `vapiWebhook(req, res, next)`, so the positional `deps` is actually Express's `next`; and
+// circular imports can also blank a binding) ALSO breaks `deps.<fn>` calls. Prefer an explicitly
+// injected dep (tests), else the module-scope import (fully resolved by request time), else a no-op
+// so one missing binding can never take down the whole end-of-call chain (billing/leads).
+function resolveFn(deps, name, moduleFallback) {
+  if (typeof deps?.[name] === "function") return deps[name];
+  if (typeof moduleFallback === "function") return moduleFallback;
+  console.error("[Vapi webhook] function unavailable", { fn: name });
+  return async () => {};
+}
+
 async function findAgent(fields, deps) {
   const AgentModel = resolveModel(deps, "Agent");
   if (!AgentModel) {
@@ -76,7 +88,8 @@ async function upsertLead({ agent, callLog, leadData }, deps) {
   const existingLead = await LeadModel.findOne({ callLogId: callLog._id });
   if (existingLead) return false;
 
-  await LeadModel.create(deps.normalizeLeadToEnglish({
+  const normalizeLead = resolveFn(deps, "normalizeLeadToEnglish", normalizeLeadToEnglish);
+  await LeadModel.create(normalizeLead({
     userId: agent.userId,
     agentId: agent._id,
     callLogId: callLog._id,
@@ -176,11 +189,20 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
     callLog = await CallLogModel.create(update);
   }
 
+  // Resolve every injected function through resolveFn (deps -> module import -> no-op) so a single
+  // unbound binding can't throw and abort the whole chain (which is what silently killed billing
+  // and lead creation on every call).
+  const applyOutcome = resolveFn(deps, "applyCallOutcomeToLog", applyCallOutcomeToLog);
+  const syncCampaign = resolveFn(deps, "syncCampaignRecipientFromCall", syncCampaignRecipientFromCall);
+  const scheduleRetry = resolveFn(deps, "scheduleRetryFollowUpForCall", scheduleRetryFollowUpForCall);
+  const settleBilling = resolveFn(deps, "settleVoiceCallBilling", settleVoiceCallBilling);
+  const autoGenLead = resolveFn(deps, "autoGenerateLeadFromCall", autoGenerateLeadFromCall);
+
   const leadCreated = await upsertLead({ agent, callLog, leadData }, deps);
-  await deps.applyCallOutcomeToLog(callLog, rawProviderStatus, { endedAt: fields.endedAt });
+  await applyOutcome(callLog, rawProviderStatus, { endedAt: fields.endedAt });
   await callLog.save();
-  await deps.syncCampaignRecipientFromCall(callLog);
-  await deps.scheduleRetryFollowUpForCall(callLog);
+  await syncCampaign(callLog);
+  await scheduleRetry(callLog);
   await WebhookEventModel.create({
     provider: "vapi",
     eventType: fields.endedReason || message.type,
@@ -202,11 +224,11 @@ export async function processVapiEndOfCall(message, deps = getDefaultDeps()) {
   ]);
 
   // Settle per-minute credit billing against the final duration/outcome (idempotent).
-  await deps.settleVoiceCallBilling(callLog);
+  await settleBilling(callLog);
 
   // If Vapi did not hand us structured lead data, auto-generate the lead from the transcript.
   if (!leadCreated) {
-    await deps.autoGenerateLeadFromCall(callLog);
+    await autoGenLead(callLog);
   }
 
   return { matched: true, callLog, agent, leadCreated };
@@ -295,8 +317,9 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
             message.call?.assistant?.id ||
             message.assistant?.id ||
             message.assistantId;
-          const agent = assistantId
-            ? await deps.Agent.findOne({ providerAgentId: assistantId })
+          const AgentModel = resolveModel(deps, "Agent");
+          const agent = assistantId && AgentModel
+            ? await AgentModel.findOne({ providerAgentId: assistantId })
             : null;
           const number = transferNumberForAgent(agent);
 
@@ -340,8 +363,9 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
         // uses whatever assistant is statically attached if we can't resolve one.
         try {
           const phoneNumberId = message.phoneNumberId || message.phoneNumber?.id || message.call?.phoneNumberId;
-          if (phoneNumberId) {
-            const agent = await deps.Agent.findOne({ vapiPhoneNumberId: phoneNumberId });
+          const AgentModel = resolveModel(deps, "Agent");
+          if (phoneNumberId && AgentModel) {
+            const agent = await AgentModel.findOne({ vapiPhoneNumberId: phoneNumberId });
             if (agent?.providerAgentId) {
               return res.status(200).json({ assistantId: agent.providerAgentId });
             }
@@ -353,11 +377,16 @@ export async function vapiWebhook(req, res, deps = getDefaultDeps()) {
       }
 
       default: {
-        await deps.WebhookEvent.create({
-          provider: "vapi",
-          eventType: message.type || "unknown",
-          payload: message
-        });
+        // speech-update / conversation-update etc. land here. Store when possible, skip cleanly
+        // otherwise — never let a missing model binding crash the webhook.
+        const WebhookEventModel = resolveModel(deps, "WebhookEvent");
+        if (WebhookEventModel) {
+          await WebhookEventModel.create({
+            provider: "vapi",
+            eventType: message.type || "unknown",
+            payload: message
+          });
+        }
         return res.status(200).json({ success: true });
       }
     }
