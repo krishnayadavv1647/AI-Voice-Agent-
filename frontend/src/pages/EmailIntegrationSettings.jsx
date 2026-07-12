@@ -15,7 +15,10 @@ function timeLabel(value) {
 const ERROR_REASONS = {
   invalid_state: "The connection request expired or was tampered with. Please try again.",
   missing_code: "Google did not return an authorization code. Please try again.",
-  connection_failed: "We could not complete the Gmail connection. Please try again.",
+  api_disabled: "The Gmail API is not enabled for this Google Cloud project. Enable it in the Google Cloud console, then reconnect.",
+  encryption_key: "The server email encryption key is missing or too short. Set EMAIL_CREDENTIAL_ENCRYPTION_KEY (32+ characters) and restart the backend.",
+  token_exchange: "Google could not verify the sign-in (token exchange failed). Please try connecting again.",
+  connection_failed: "We could not complete the Gmail connection. Check the backend log line \"[gmail] callback failed\" for the exact cause.",
   access_denied: "You declined the Gmail permission request."
 };
 
