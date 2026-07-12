@@ -290,8 +290,23 @@ export const gmailCallback = asyncHandler(async (req, res) => {
 
     return redirect("gmail=connected");
   } catch (err) {
-    console.error("[gmail] callback failed", { message: err?.message });
-    return redirect("gmail=error&reason=connection_failed");
+    // Classify the failure into a specific, safe reason so the owner can fix config quickly.
+    // Never logs tokens or the auth code — only error name/status and Google's error slug.
+    const status = err?.code || err?.response?.status || null;
+    const googleError = err?.errors?.[0]?.reason || err?.response?.data?.error || err?.response?.data?.error_description || "";
+    const msg = String(err?.message || "");
+    let reason = "connection_failed";
+    if (/ENCRYPTION_KEY/i.test(msg)) {
+      reason = "encryption_key";
+    } else if (status === 403 && (googleError === "accessNotConfigured" || /has not been used in project|is disabled|accessNotConfigured/i.test(msg))) {
+      reason = "api_disabled";
+    } else if (["invalid_grant", "invalid_request", "unauthorized_client", "invalid_client"].includes(String(googleError))) {
+      reason = "token_exchange";
+    } else if (status === 401) {
+      reason = "token_exchange";
+    }
+    console.error("[gmail] callback failed", { reason, status, googleError: googleError || null, name: err?.name, message: msg });
+    return redirect(`gmail=error&reason=${reason}`);
   }
 });
 
