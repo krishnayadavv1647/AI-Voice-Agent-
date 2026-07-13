@@ -28,6 +28,40 @@ function messageText(message) {
   return message?.textBody || message?.text || message?.body || String(message?.htmlBody || message?.html || "").replace(/<[^>]+>/g, " ");
 }
 
+// Splits a plain-text email into the new content vs. the quoted reply history, so the quoted
+// "On … wrote:" / ">"-prefixed block (and any quoted unsubscribe footer) can be collapsed.
+function splitQuotedText(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  let cut = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+    const isQuoteLine = /^>/.test(trimmed)
+      || /^-{2,}\s*Original Message\s*-{2,}/i.test(trimmed)
+      || /^_{5,}$/.test(trimmed)
+      || /^On\b.*\bwrote:\s*$/i.test(trimmed)
+      // "On … " attribution that wraps onto a following line ending in "wrote:"
+      || (/^On\b/.test(trimmed) && i + 1 < lines.length && /wrote:\s*$/i.test(lines[i + 1].trim()));
+    if (isQuoteLine) { cut = i; break; }
+  }
+  if (cut === -1) return { main: text, quoted: "" };
+  return {
+    main: lines.slice(0, cut).join("\n").trim(),
+    quoted: lines.slice(cut).join("\n").trim()
+  };
+}
+
+// Removes quoted reply blocks from HTML email so the formatted view is also trimmed.
+// Runs in the sandboxed-iframe path; DOMParser never executes scripts.
+function stripHtmlQuotes(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+    doc.querySelectorAll('.gmail_quote, blockquote, [class*="gmail_quote"], .gmail_extra').forEach((el) => el.remove());
+    return doc.body.innerHTML || html;
+  } catch {
+    return html;
+  }
+}
+
 function shortTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -405,9 +439,11 @@ export default function EmailInbox() {
 
 function MessageBubble({ message }) {
   const [showHtml, setShowHtml] = useState(false);
+  const [showQuoted, setShowQuoted] = useState(false);
   const outbound = message.direction === "outbound";
   const html = message.htmlBody || message.html || "";
   const text = messageText(message);
+  const { main, quoted } = splitQuotedText(text);
   const attachments = (message.attachments || []).filter((att) => att.filename && !att.inline);
 
   async function downloadAttachment(att) {
@@ -435,18 +471,35 @@ function MessageBubble({ message }) {
         </div>
         {showHtml && html ? (
           // Sandboxed iframe (no allow-scripts) neutralizes any script/JS in the email HTML.
+          // Quoted reply history is stripped so the formatted view stays trimmed too.
           <iframe
             title="Email content"
             sandbox=""
             referrerPolicy="no-referrer"
-            srcDoc={html}
+            srcDoc={stripHtmlQuotes(html)}
             className="h-72 w-[min(70vw,640px)] rounded-lg border-0 bg-white"
           />
         ) : (
-          <p className="whitespace-pre-wrap break-anywhere">{text || "No message body"}</p>
+          <>
+            <p className="whitespace-pre-wrap break-anywhere">{main || text || "No message body"}</p>
+            {quoted && (
+              <>
+                <button
+                  className={`mt-1 inline-flex items-center rounded px-1.5 text-xs font-semibold leading-5 ${outbound ? "bg-white/20 text-brand-50 hover:bg-white/30" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}
+                  onClick={() => setShowQuoted((v) => !v)}
+                  title={showQuoted ? "Hide quoted text" : "Show quoted text"}
+                >
+                  •••
+                </button>
+                {showQuoted && (
+                  <p className={`mt-2 whitespace-pre-wrap break-anywhere border-l-2 pl-3 text-xs opacity-70 ${outbound ? "border-white/30" : "border-hairline"}`}>{quoted}</p>
+                )}
+              </>
+            )}
+          </>
         )}
         {html && (
-          <button className={`mt-1 text-xs font-medium ${outbound ? "text-brand-100 hover:text-white" : "text-brand-700 hover:text-brand-800"}`} onClick={() => setShowHtml((v) => !v)}>
+          <button className={`mt-1 block text-xs font-medium ${outbound ? "text-brand-100 hover:text-white" : "text-brand-700 hover:text-brand-800"}`} onClick={() => setShowHtml((v) => !v)}>
             {showHtml ? "Show plain text" : "Show formatted email"}
           </button>
         )}
