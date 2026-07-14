@@ -21,6 +21,8 @@
   Linkedin,
   MapPin,
   MessageCircle,
+  Mic,
+  MicOff,
   PhoneOff,
   Phone,
   Send,
@@ -35,9 +37,8 @@
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import AppLoader from "../components/AppLoader.jsx";
-import robotHead from "../assets/voiceflow-theme/robot-head.png";
-import robotImage from "../assets/voiceflow-theme/robot.png";
+import robotHead from "../assets/voiceflow-theme/robot-head-themed.png";
+import robotImage from "../assets/voiceflow-theme/robot-themed.png";
 import { API_URL, api } from "../lib/api.js";
 import { startVapiWebCall } from "../utils/startVapiWebCall.js";
 import { requestMicrophoneAccess } from "../utils/microphone.js";
@@ -198,6 +199,7 @@ export default function PublicAgent() {
   const [loading, setLoading] = useState(true);
   const [chatLoading, setChatLoading] = useState(false);
   const [callStatus, setCallStatus] = useState("idle");
+  const [callMuted, setCallMuted] = useState(false);
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const vapiRef = useRef(null);
   const [error, setError] = useState("");
@@ -227,6 +229,7 @@ export default function PublicAgent() {
   const socialLinks = bio.socialLinks || {};
   const showAppointment = (bio.showAppointmentButton ?? bio.showAppointment) !== false;
   const showVoiceCall = (bio.showVoiceCallButton ?? bio.showWebCallButton ?? bio.showWebCall) !== false && Boolean(agent?.publicWebCallEnabled);
+  const chatEnabled = Boolean(agent?.publicChatEnabled);
   const showBusinessInfo = bio.showBusinessInfo !== false;
   const showSocialLinks = bio.showSocialLinks === true;
   const showQuickTopics = bio.showQuickTopics === true;
@@ -309,6 +312,7 @@ export default function PublicAgent() {
     showVoiceCall,
     showAgentImage,
     showLogo,
+    chatEnabled,
     quickTopics,
     coverImageUrl
   };
@@ -372,6 +376,7 @@ export default function PublicAgent() {
     }
     setError("");
     setNotice("");
+    setCallMuted(false);
     setCallStatus("connecting");
     setVoiceModalOpen(true);
   }
@@ -385,6 +390,7 @@ export default function PublicAgent() {
     vapiRef.current = null;
     setVoiceModalOpen(false);
     setCallStatus("idle");
+    setCallMuted(false);
   }
 
   async function startWebCall() {
@@ -408,7 +414,10 @@ export default function PublicAgent() {
         metadata: { publicSlug, channel: "web" },
         handlers: {
           onCallStart: () => setCallStatus("connected"),
-          onCallEnd: () => setCallStatus("ended"),
+          onCallEnd: () => {
+            setCallStatus("ended");
+            setCallMuted(false);
+          },
           onError: (err) => {
             setError(err?.message || "Web call failed.");
             setCallStatus("error");
@@ -426,23 +435,46 @@ export default function PublicAgent() {
       vapiRef.current?.stop();
     } finally {
       vapiRef.current = null;
+      setCallMuted(false);
       setCallStatus("ended");
     }
   }
 
-  if (loading) return <main className="grid min-h-screen place-items-center bg-[#f8fafc] text-[#64748b]"><AppLoader label="Loading assistant" /></main>;
+  function handleMuteToggle() {
+    const nextMuted = !callMuted;
+    try {
+      vapiRef.current?.setMuted?.(nextMuted);
+    } catch {
+      // Some providers may not expose a browser mute control; keep the UI state local.
+    }
+    setCallMuted(nextMuted);
+  }
+
+  if (loading) {
+    return (
+      <main className="vf-theme vf-public-profile-shell min-h-screen">
+        <style>{themeCss}</style>
+        <ProfileSkeleton />
+      </main>
+    );
+  }
 
   if (error && !agent) {
-    return <main className="grid min-h-screen place-items-center bg-[#f8fafc] p-4 text-center text-rose-700">{error}</main>;
+    return (
+      <main className="vf-theme vf-public-profile-shell min-h-screen">
+        <style>{themeCss}</style>
+        <ProfileErrorState message={error} />
+      </main>
+    );
   }
 
   return (
     <main
-      className={`vf-theme vf-template-${bio.template || "coaching_education"} vf-layout-${layoutVariant} vf-bg-${bio.backgroundStyle || "soft_gradient"} vf-space-${bio.spacingScale || "comfortable"} vf-shadow-${bio.cardShadow || "soft"} vf-border-${bio.cardBorder || "subtle"} vf-anim-${bio.animation || "fade_in"} min-h-screen`}
+      className={`vf-theme ${view === "landing" ? "vf-public-profile-shell " : "vf-public-dark-shell "}vf-template-${bio.template || "coaching_education"} vf-layout-${layoutVariant} vf-bg-${bio.backgroundStyle || "soft_gradient"} vf-space-${bio.spacingScale || "comfortable"} vf-shadow-${bio.cardShadow || "soft"} vf-border-${bio.cardBorder || "subtle"} vf-anim-${bio.animation || "fade_in"} min-h-screen`}
       style={pageStyle}
     >
       <style>{themeCss}</style>
-      {showTopBar && <TopBar profile={profile} view={view} showLogo={showLogo} onHome={() => setView("landing")} />}
+      {showTopBar && view !== "landing" && <TopBar profile={profile} view={view} showLogo={showLogo} onHome={() => setView("landing")} />}
 
       {view === "landing" && (
         <LandingRenderer
@@ -481,9 +513,11 @@ export default function PublicAgent() {
         <VoiceCallModal
           profile={profile}
           status={callStatus}
+          muted={callMuted}
           error={error}
           onStart={startWebCall}
           onEnd={endWebCall}
+          onMuteToggle={handleMuteToggle}
           onRetry={startWebCall}
           onClose={closeVoiceModal}
           onChat={() => {
@@ -523,7 +557,7 @@ function TopBar({ profile, view, showLogo = true, onHome }) {
             </button>
           )}
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
-            <GreenDot /> Online now
+            <GreenDot /> {profile.availability}
           </span>
         </div>
       </div>
@@ -536,20 +570,250 @@ function TopBar({ profile, view, showLogo = true, onHome }) {
 // template renders a genuinely different landing page, not just a recolor.
 // ---------------------------------------------------------------------------
 function LandingRenderer(props) {
-  switch (props.layoutVariant) {
-    case "split_saas": return <SplitSaasLanding {...props} />;
-    case "cover_service": return <CoverServiceLanding {...props} />;
-    case "education_advisor": return <EducationAdvisorLanding {...props} />;
-    case "clinic_trust": return <ClinicTrustLanding {...props} />;
-    case "real_estate_cover": return <RealEstateCoverLanding {...props} />;
-    case "booking_first": return <BookingFirstLanding {...props} />;
-    case "finance_trust": return <FinanceTrustLanding {...props} />;
-    case "centered_minimal":
-    default: return <CenteredMinimalLanding {...props} />;
-  }
+  return <PublicAgentProfile {...props} />;
 }
 
 // ---- Shared landing building blocks ---------------------------------------
+function isOnlineAvailability(value) {
+  return !/(offline|paused|closed|unavailable|away)/i.test(String(value || ""));
+}
+
+function isRestaurantProfile(profile) {
+  return /(restaurant|food|cafe|café|dining|hotel|bar|bakery|kitchen)/i.test(`${profile.category} ${profile.businessName} ${profile.title}`);
+}
+
+function chatCtaLabel(profile) {
+  if (isRestaurantProfile(profile)) return "Ask about reservations";
+  return profile.cta || "Start conversation";
+}
+
+function bookingCtaLabel(profile) {
+  if (isRestaurantProfile(profile)) return "Book Table";
+  return profile.secondaryCta || "Book Appointment";
+}
+
+function PublicAgentProfile({
+  profile,
+  showBusinessInfo,
+  showAppointment,
+  showVoiceCall,
+  showAgentImage,
+  showLogo,
+  chatEnabled,
+  onStart,
+  onCall,
+  onBook
+}) {
+  const online = isOnlineAvailability(profile.availability);
+  const chatLabel = chatCtaLabel(profile);
+  const bookingLabel = bookingCtaLabel(profile);
+  const visualImage = profile.agentImageUrl || profile.logoUrl;
+
+  return (
+    <div className="vf-public-wrap vf-enter">
+      <section className="vf-public-panel" aria-label={`${profile.title} public profile`}>
+        <ProfilePanelHeader profile={profile} showLogo={showLogo} online={online} />
+
+        <div className="vf-public-hero">
+          <section className="vf-public-visual-section">
+            <AgentVisualCard profile={profile} showAgentImage={showAgentImage} imageSrc={visualImage} />
+          </section>
+
+          <section className="vf-public-info-section">
+            <AiAssistantBadge />
+            <h1 className="vf-public-title">{profile.title}</h1>
+            <p className="vf-public-description">{profile.subtitle}</p>
+            <CapabilityPills profile={profile} online={online} showVoiceCall={showVoiceCall} />
+
+            <div className="vf-public-actions">
+              <button
+                className="vf-public-primary group"
+                onClick={onStart}
+                disabled={!chatEnabled}
+                title={chatEnabled ? chatLabel : "Chat is not enabled for this assistant."}
+              >
+                <span className="vf-action-icon"><MessageCircle size={25} /></span>
+                <span>{chatEnabled ? chatLabel : "Chat unavailable"}</span>
+                <ArrowRight className="vf-primary-arrow" size={30} />
+              </button>
+
+              <div className="vf-public-secondary-grid">
+                <button
+                  className="vf-public-secondary"
+                  onClick={onBook}
+                  disabled={!showAppointment}
+                  title={showAppointment ? bookingLabel : "Booking is not enabled for this page."}
+                >
+                  <span className="vf-action-icon"><CalendarDays size={24} /></span>
+                  <span>{bookingLabel}</span>
+                  {!showAppointment && <small>Unavailable</small>}
+                </button>
+
+                <button
+                  className="vf-public-secondary"
+                  onClick={onCall}
+                  disabled={!showVoiceCall}
+                  title={showVoiceCall ? "Start a voice call" : "Voice calling is not enabled for this assistant."}
+                >
+                  <span className="vf-action-icon"><Headphones size={25} /></span>
+                  <span>Talk to Assistant</span>
+                  {!showVoiceCall && <small>Unavailable</small>}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {showBusinessInfo && <BusinessInformationBar profile={profile} />}
+      </section>
+    </div>
+  );
+}
+
+function ProfilePanelHeader({ profile, showLogo, online }) {
+  return (
+    <header className="vf-public-header">
+      <button className="vf-public-identity" type="button" aria-label={profile.title}>
+        {showLogo && (
+          <span className="vf-public-avatar">
+            <Robot size={56} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
+          </span>
+        )}
+        <span className="vf-public-identity-copy">
+          <strong>{profile.businessName || profile.title}</strong>
+          <span>{profile.category}</span>
+        </span>
+      </button>
+
+      <span className={`vf-public-status-pill ${online ? "" : "is-offline"}`}>
+        <StatusDot online={online} />
+        {profile.availability}
+      </span>
+    </header>
+  );
+}
+
+function AgentVisualCard({ profile, showAgentImage, imageSrc }) {
+  return (
+    <div className="vf-agent-visual-card">
+      <Sparkles className="vf-sparkle vf-sparkle-a" size={25} />
+      <Sparkles className="vf-sparkle vf-sparkle-b" size={18} />
+      <Sparkles className="vf-sparkle vf-sparkle-c" size={15} />
+      {showAgentImage ? (
+        <span className="vf-agent-image-circle">
+          <Robot size={330} src={imageSrc} glow float />
+        </span>
+      ) : (
+        <span className="vf-missing-avatar">
+          <Sparkles size={42} />
+        </span>
+      )}
+
+      <div className="vf-agent-visual-note">
+        <span className="vf-note-icon"><Sparkles size={22} /></span>
+        <p>{profile.welcome || profile.subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function AiAssistantBadge() {
+  return (
+    <span className="vf-assistant-badge">
+      <Sparkles size={18} />
+      AI Assistant
+    </span>
+  );
+}
+
+function CapabilityPills({ profile, online, showVoiceCall }) {
+  const pills = [
+    { key: "response", Icon: Zap, label: profile.responseTime || "Fast response" },
+    { key: "assistant", Icon: Sparkles, label: "AI assistant" },
+    { key: "voice", Icon: Headphones, label: showVoiceCall ? "Voice enabled" : "Voice unavailable", disabled: !showVoiceCall }
+  ];
+
+  return (
+    <div className="vf-capability-pills" aria-label="Assistant capabilities">
+      {pills.map(({ key, Icon, icon, label, disabled }) => (
+        <span key={key} className={`vf-capability-pill ${disabled ? "is-disabled" : ""}`}>
+          {icon === "dot" ? <StatusDot online={online} /> : <Icon size={17} />}
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function BusinessInformationBar({ profile }) {
+  const hasLocation = profile.location && !/^unknown|not provided$/i.test(profile.location);
+
+  return (
+    <footer className="vf-business-bar">
+      <div className="vf-business-item">
+        <span className="vf-business-icon"><Utensils size={22} /></span>
+        <strong>{profile.category}</strong>
+      </div>
+      {hasLocation && (
+        <>
+          <span className="vf-business-divider" />
+          <div className="vf-business-item vf-business-location">
+            <span className="vf-business-icon"><MapPin size={22} /></span>
+            <span>{profile.location}</span>
+          </div>
+        </>
+      )}
+    </footer>
+  );
+}
+
+function StatusDot({ online = true }) {
+  return (
+    <span className={`vf-status-dot ${online ? "" : "is-offline"}`}>
+      <span />
+    </span>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <div className="vf-public-wrap">
+      <section className="vf-public-panel vf-profile-skeleton" aria-label="Loading assistant profile">
+        <div className="vf-public-header">
+          <div className="vf-skeleton-row">
+            <span className="vf-skeleton-avatar" />
+            <span className="vf-skeleton-stack"><i /><i /></span>
+          </div>
+          <span className="vf-skeleton-pill" />
+        </div>
+        <div className="vf-public-hero">
+          <div className="vf-skeleton-visual" />
+          <div className="vf-skeleton-copy">
+            <i className="short" />
+            <i className="title" />
+            <i />
+            <i />
+            <span />
+            <div className="vf-skeleton-buttons"><b /><b /></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProfileErrorState({ message }) {
+  return (
+    <div className="vf-public-wrap">
+      <section className="vf-public-panel vf-profile-error">
+        <span className="vf-note-icon"><PhoneOff size={24} /></span>
+        <h1>Assistant page unavailable</h1>
+        <p>{message || "This public profile could not be loaded."}</p>
+      </section>
+    </div>
+  );
+}
+
 function TrustChips({ showVoiceCall, align = "center" }) {
   const chips = [
     { icon: "dot", label: "Online now" },
@@ -981,25 +1245,25 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
   }, [messages, typing]);
 
   return (
-    <div className="vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
-      <div className="vf-glass flex h-[min(820px,calc(100vh-104px))] w-full max-w-[820px] flex-col overflow-hidden rounded-[26px]">
-        <div className="flex items-center gap-3 border-b border-[#d8e4f5] bg-[#ffffff] px-4 py-3.5 sm:px-5">
-          <button className="vf-btn vf-btn-ghost p-2.5" onClick={onBack} aria-label="Back">
+    <div className="vf-chat-page vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
+      <div className="vf-chat-panel flex h-[min(820px,calc(100vh-112px))] w-full max-w-[820px] flex-col overflow-hidden rounded-[26px]">
+        <div className="vf-chat-header flex items-center gap-3 px-4 py-3.5 sm:px-5">
+          <button className="vf-btn vf-chat-icon-btn p-2.5" onClick={onBack} aria-label="Back">
             <ArrowLeft size={18} />
           </button>
           <Robot size={42} src={profile.agentImageUrl || profile.logoUrl} glow={false} float={false} />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-[15px] font-extrabold">{profile.title}</div>
-            <div className="inline-flex items-center gap-1.5 text-[12.5px] text-[#64748b]">{typing ? "typing..." : <><GreenDot /> Online</>}</div>
+            <div className="vf-chat-status inline-flex items-center gap-1.5 text-[12.5px]">{typing ? "typing..." : <><GreenDot /> Online</>}</div>
           </div>
           <div className="ml-auto flex gap-2">
             {showVoiceCall && (
-              <button className="vf-btn vf-btn-soft px-3 py-2 text-sm" onClick={onCall}>
+              <button className="vf-btn vf-chat-action px-3 py-2 text-sm" onClick={onCall}>
                 <Headphones size={17} /> <span className="hidden sm:inline">Call</span>
               </button>
             )}
             {showAppointment && (
-              <button className="vf-btn vf-btn-ghost px-3 py-2 text-sm" onClick={onBook}>
+              <button className="vf-btn vf-chat-action px-3 py-2 text-sm" onClick={onBook}>
                 <CalendarDays size={17} /> <span className="hidden sm:inline">Book</span>
               </button>
             )}
@@ -1008,23 +1272,23 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
 
         {(error || notice) && (
           <div className="grid gap-2 px-4 pt-4 sm:px-6">
-            {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</div>}
-            {notice && <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">{notice}</div>}
+            {error && <div className="vf-chat-alert vf-chat-alert-error rounded-xl px-3 py-2 text-sm font-semibold">{error}</div>}
+            {notice && <div className="vf-chat-alert rounded-xl px-3 py-2 text-sm font-semibold">{notice}</div>}
           </div>
         )}
 
-        <div ref={scrollRef} className="vf-scroll flex flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-5 sm:px-6">
+        <div ref={scrollRef} className="vf-chat-scroll vf-scroll flex flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-5 sm:px-6">
           {messages.map((item) => (
             <Bubble key={item.id} message={item} profile={profile} />
           ))}
           {typing && <TypingBubble profile={profile} />}
           {messages.length <= 1 && !typing && (
             <div className="mt-1">
-              <div className="mb-2.5 text-[12.5px] font-bold text-[#64748b]">SUGGESTED</div>
+              <div className="vf-chat-suggested-label mb-2.5 text-[12.5px] font-bold">SUGGESTED</div>
               <div className="flex flex-wrap gap-2.5">
                 {quickTopics.map((cat, index) => {
                   return (
-                    <button key={cat.id || index} onClick={() => onSuggestion(cat.prompt || cat.title)} className="vf-card-solid vf-tile inline-flex items-center gap-2 rounded-[14px] px-3.5 py-2.5 text-sm font-semibold">
+                    <button key={cat.id || index} onClick={() => onSuggestion(cat.prompt || cat.title)} className="vf-chat-suggestion vf-tile inline-flex items-center gap-2 rounded-[14px] px-3.5 py-2.5 text-sm font-semibold">
                       <TopicIcon topic={cat} size={18} />
                       {cat.title}
                     </button>
@@ -1035,15 +1299,15 @@ function Chat({ profile, messages, input, setInput, onSubmit, typing, error, not
           )}
         </div>
 
-        <form className="flex items-center gap-2.5 border-t border-[#d8e4f5] bg-[#ffffff] px-3.5 py-3.5 sm:px-5" onSubmit={onSubmit}>
+        <form className="vf-chat-inputbar flex items-center gap-2.5 px-3.5 py-4 sm:px-5" onSubmit={onSubmit}>
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
             placeholder={chatEnabled ? "Ask about admissions, courses, fees..." : "Chat is not enabled for this agent."}
             disabled={!chatEnabled}
-            className="min-w-0 flex-1 rounded-[14px] border border-[#d8e4f5] bg-[#f8fafc] px-4 py-3 text-[15px] text-[#0f172a] outline-none placeholder:text-[#94a3b8] focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10"
+            className="vf-chat-input min-w-0 flex-1 rounded-[16px] px-4 py-3 text-[15px] outline-none"
           />
-          <button type="submit" className="vf-btn vf-btn-primary px-4 py-3" disabled={!input.trim() || typing || !chatEnabled} aria-label="Send">
+          <button type="submit" className="vf-btn vf-chat-send px-4 py-3" disabled={!input.trim() || typing || !chatEnabled} aria-label="Send">
             <Send size={18} />
           </button>
         </form>
@@ -1058,7 +1322,7 @@ const CALL_STEPS = [
   { icon: Headphones, label: "Starting voice call" }
 ];
 
-function VoiceCallModal({ profile, status, error, onStart, onEnd, onRetry, onClose, onChat }) {
+function VoiceCallModal({ profile, status, muted, error, onStart, onEnd, onMuteToggle, onRetry, onClose, onChat }) {
   const [step, setStep] = useState(0);
   const startRef = useRef(onStart);
   const startedRef = useRef(false);
@@ -1134,8 +1398,8 @@ function VoiceCallModal({ profile, status, error, onStart, onEnd, onRetry, onClo
           </div>
         ) : (
           <div className="flex flex-col items-center text-center">
-            <span className="inline-flex items-center gap-1.5 text-[11.5px] font-extrabold uppercase tracking-[.1em] text-[#64748b]">
-              <GreenDot /> {isLive ? "Live voice call" : "Connecting"}
+            <span className="vf-call-status-label">
+              <GreenDot /> {isLive ? (muted ? "Muted voice call" : "Live voice call") : "Connecting"}
             </span>
 
             <div className="relative my-5 grid h-[176px] w-[176px] place-items-center">
@@ -1148,8 +1412,8 @@ function VoiceCallModal({ profile, status, error, onStart, onEnd, onRetry, onClo
             </div>
 
             <h3 className="text-[20px] font-extrabold">{profile.title}</h3>
-            <p className="mt-1 text-[14px] text-[#64748b]">
-              {isLive ? "Voice line is active. Say hello!" : "Connecting to AI voice agent…"}
+            <p className="mt-1 text-[14px] text-[#a4ada7]">
+              {isLive ? (muted ? "Your microphone is muted." : "Voice line is active. Say hello!") : "Connecting to AI voice agent..."}
             </p>
 
             <div className="vf-eq vf-eq-lg mt-5">
@@ -1179,13 +1443,22 @@ function VoiceCallModal({ profile, status, error, onStart, onEnd, onRetry, onClo
 
             <div className="mt-6 flex w-full items-center justify-center gap-4">
               {isLive ? (
-                <button
-                  className="grid h-14 w-14 place-items-center rounded-full bg-rose-600 text-white shadow-[0_10px_26px_rgba(225,29,72,.35)] transition hover:bg-rose-700"
-                  onClick={onEnd}
-                  aria-label="End call"
-                >
-                  <PhoneOff size={22} />
-                </button>
+                <>
+                  <button
+                    className={`vf-call-control ${muted ? "is-muted" : ""}`}
+                    onClick={onMuteToggle}
+                    aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+                  >
+                    {muted ? <MicOff size={22} /> : <Mic size={22} />}
+                  </button>
+                  <button
+                    className="vf-call-end"
+                    onClick={onEnd}
+                    aria-label="End call"
+                  >
+                    <PhoneOff size={22} />
+                  </button>
+                </>
               ) : (
                 <button className="vf-btn vf-btn-ghost w-full px-4 py-3" onClick={onClose}>
                   Cancel
@@ -1253,23 +1526,23 @@ function Booking({ profile, agent, onBack, onChat }) {
 
   if (done) {
     return (
-      <div className="vf-enter grid w-full place-items-center px-4 py-7 sm:px-5">
-        <div className="vf-glass flex w-full max-w-[520px] flex-col items-center rounded-[28px] px-7 py-9 text-center sm:px-11">
+      <div className="vf-booking-page vf-enter grid w-full place-items-center px-4 py-7 sm:px-5">
+        <div className="vf-booking-card flex w-full max-w-[520px] flex-col items-center rounded-[28px] px-7 py-9 text-center sm:px-11">
           <Robot size={130} src={profile.agentImageUrl} glow float />
-          <span className="-mt-3 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-[0_10px_22px_rgba(37,99,235,.20)]">
+          <span className="vf-booking-success-icon -mt-3 grid h-12 w-12 place-items-center rounded-full">
             <Check size={24} strokeWidth={3} />
           </span>
           <h1 className="mt-4 text-[27px] font-extrabold tracking-normal">You're booked!</h1>
-          <p className="mt-2 text-[15px] text-[#64748b]">Your appointment is saved for {form.name.split(" ")[0] || "you"}.</p>
-          <div className="vf-card-solid mt-6 w-full rounded-[18px] px-5 py-1 text-left">
+          <p className="vf-booking-muted mt-2 text-[15px]">Your appointment is saved for {form.name.split(" ")[0] || "you"}.</p>
+          <div className="vf-booking-summary mt-6 w-full rounded-[18px] px-5 py-1 text-left">
             <InfoRow icon={CalendarDays} label="Date" value={days[day].label} first />
             <InfoRow icon={Clock} label="Time" value={time} />
             <InfoRow icon={MapPin} label="Mode" value={mode} />
             <InfoRow icon={User} label="Advisor" value="Senior Counsellor" />
           </div>
           <div className="mt-6 flex w-full gap-3">
-            <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Ask</button>
-            <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
+            <button className="vf-btn vf-booking-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Ask</button>
+            <button className="vf-btn vf-booking-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
           </div>
         </div>
       </div>
@@ -1277,23 +1550,23 @@ function Booking({ profile, agent, onBack, onChat }) {
   }
 
   return (
-    <div className="vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
-      <div className="vf-glass w-full max-w-[620px] rounded-[26px] p-[clamp(22px,3.5vw,34px)]">
+    <div className="vf-booking-page vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
+      <div className="vf-booking-card w-full max-w-[620px] rounded-[26px] p-[clamp(22px,3.5vw,34px)]">
         <div className="mb-1 flex items-center gap-3">
-          <button className="vf-btn vf-btn-ghost p-2.5" onClick={onBack} aria-label="Back"><ArrowLeft size={18} /></button>
+          <button className="vf-btn vf-booking-icon-btn p-2.5" onClick={onBack} aria-label="Back"><ArrowLeft size={18} /></button>
           <div>
             <h1 className="text-[22px] font-extrabold tracking-normal">Book a counselling session</h1>
-            <p className="text-[13.5px] text-[#64748b]">Free 1-on-1 with an advisor at {profile.businessName}</p>
+            <p className="vf-booking-muted text-[13.5px]">Free 1-on-1 with an advisor at {profile.businessName}</p>
           </div>
         </div>
-        {error && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
+        {error && <p className="vf-booking-error mt-4 rounded-xl px-3 py-2 text-sm font-semibold">{error}</p>}
 
         <Picker title="SELECT A DATE">
           <div className="flex gap-2.5 overflow-x-auto pb-1">
             {days.map((item, index) => {
               const active = index === day;
               return (
-                <button key={item.label} onClick={() => setDay(index)} className={`vf-slot flex h-[76px] w-16 flex-none flex-col items-center justify-center rounded-2xl ${active ? "bg-[#2563eb] text-white shadow-[0_10px_22px_rgba(37,99,235,.20)]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>
+                <button key={item.label} onClick={() => setDay(index)} className={`vf-slot vf-booking-date ${active ? "is-active" : ""} flex h-[76px] w-16 flex-none flex-col items-center justify-center rounded-2xl`}>
                   <span className="text-[11px] font-semibold opacity-80">{item.dow}</span>
                   <span className="mt-1 text-xl font-extrabold leading-none">{item.day}</span>
                   <span className="mt-0.5 text-[10.5px] opacity-75">{item.mon}</span>
@@ -1306,7 +1579,7 @@ function Booking({ profile, agent, onBack, onChat }) {
         <Picker title="AVAILABLE SLOTS">
           <div className="flex flex-wrap gap-2.5">
             {slots.map((item) => (
-              <button key={item} onClick={() => setTime(item)} className={`vf-slot rounded-xl px-4 py-2.5 text-sm font-bold ${item === time ? "bg-[#dbeafe] text-[#1d4ed8] ring-2 ring-[#2563eb]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>{item}</button>
+              <button key={item} onClick={() => setTime(item)} className={`vf-slot vf-booking-chip rounded-xl px-4 py-2.5 text-sm font-bold ${item === time ? "is-active" : ""}`}>{item}</button>
             ))}
           </div>
         </Picker>
@@ -1314,7 +1587,7 @@ function Booking({ profile, agent, onBack, onChat }) {
         <Picker title="MODE">
           <div className="flex gap-2.5">
             {["Online", "In-person"].map((item) => (
-              <button key={item} onClick={() => setMode(item)} className={`vf-slot flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold ${item === mode ? "bg-[#dbeafe] text-[#1d4ed8] ring-2 ring-[#2563eb]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>
+              <button key={item} onClick={() => setMode(item)} className={`vf-slot vf-booking-mode flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold ${item === mode ? "is-active" : ""}`}>
                 <MapPin size={16} /> {item}
               </button>
             ))}
@@ -1329,10 +1602,10 @@ function Booking({ profile, agent, onBack, onChat }) {
           <Field label="Requirement" value={form.requirement} onChange={(value) => setForm((current) => ({ ...current, requirement: value }))} placeholder="Course, class, exam or question" />
         </div>
 
-        <button className="vf-btn vf-btn-primary mt-7 w-full p-4" disabled={!valid || saving} onClick={submit}>
+        <button className="vf-btn vf-booking-submit mt-7 w-full p-4" disabled={!valid || saving} onClick={submit}>
           {saving ? "Confirming..." : "Confirm booking"} <ArrowRight size={18} className="ml-auto" />
         </button>
-        {!valid && <p className="mt-2.5 text-center text-[12.5px] text-[#64748b]">Pick a slot and add your details to confirm.</p>}
+        {!valid && <p className="vf-booking-muted mt-2.5 text-center text-[12.5px]">Pick a slot and add your details to confirm.</p>}
       </div>
     </div>
   );
@@ -1386,7 +1659,7 @@ function Bubble({ message, profile }) {
     <div className={`vf-msg flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && <Robot size={34} src={avatarImage} glow={false} float={false} />}
 
-      <div className={`${isUser ? "rounded-br-md bg-[#2563eb] text-white" : "vf-card-solid rounded-bl-md"} max-w-[78%] rounded-[18px] px-4 py-3 text-[15px] leading-normal ${message.error ? "text-rose-700" : ""}`}>
+      <div className={`${isUser ? "vf-user-bubble rounded-br-md" : "vf-assistant-bubble rounded-bl-md"} max-w-[78%] rounded-[18px] px-4 py-3 text-[15px] leading-normal ${message.error ? "vf-bubble-error" : ""}`}>
         {message.text}
       </div>
     </div>
@@ -1400,7 +1673,7 @@ function TypingBubble({ profile }) {
     <div className="vf-msg flex items-end gap-2.5">
       <Robot size={34} src={avatarImage} glow={false} float={false} />
 
-      <div className="vf-card-solid vf-typing flex items-center gap-1.5 rounded-[18px] rounded-bl-md px-4 py-3.5">
+      <div className="vf-assistant-bubble vf-typing flex items-center gap-1.5 rounded-[18px] rounded-bl-md px-4 py-3.5">
         <span /><span /><span />
       </div>
     </div>
@@ -1410,7 +1683,7 @@ function TypingBubble({ profile }) {
 function Picker({ title, children }) {
   return (
     <div className="mt-5">
-      <div className="mb-2.5 text-[13px] font-bold text-[#64748b]">{title}</div>
+      <div className="vf-picker-title mb-2.5 text-[13px] font-bold">{title}</div>
       {children}
     </div>
   );
@@ -1419,7 +1692,7 @@ function Picker({ title, children }) {
 function Field({ label, value, onChange, placeholder }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[13px] font-bold text-[#64748b]">{label}</span>
+      <span className="vf-field-label mb-1.5 block text-[13px] font-bold">{label}</span>
       <input className="vf-input" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
@@ -1552,6 +1825,138 @@ const themeCss = `
 .vf-step-active{color:var(--accent-d);background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 26%,var(--line))}.vf-step-active .vf-step-dot{background:var(--accent-soft);color:var(--accent-d)}
 .vf-step-done{color:var(--text)}.vf-step-done .vf-step-dot{background:#22c55e;color:#fff}
 .vf-step-spin{height:15px;width:15px;border-radius:999px;border:2px solid var(--accent-soft);border-top-color:var(--accent);animation:vfSpin .7s linear infinite}
+.vf-theme.vf-public-profile-shell{--background-main:#000301;--background-panel:#06100b;--background-card:rgba(8,22,14,.78);--background-glass:rgba(12,28,18,.62);--green-primary:#72ff68;--green-bright:#a6ff5f;--green-dark:#164c28;--text-primary:#f4f7f5;--text-secondary:#a4ada7;--text-muted:#6f7a73;--border-green:rgba(120,255,105,.32);--border-soft:rgba(255,255,255,.09);min-height:100vh;background-color:var(--background-main);background-image:radial-gradient(70% 64% at 76% 8%,rgba(67,91,7,.62),rgba(28,44,4,.28) 46%,rgba(0,0,0,0) 76%),radial-gradient(48% 42% at 50% 38%,rgba(34,45,21,.34),rgba(0,0,0,0) 72%),linear-gradient(180deg,rgba(0,0,0,.08) 0%,rgba(0,0,0,.7) 72%,#000 100%),linear-gradient(90deg,#000 0%,#020503 42%,#050b02 100%);background-repeat:no-repeat;background-attachment:fixed;color:var(--text-primary);font-family:"App Body Inter",Inter,ui-sans-serif,system-ui,sans-serif;display:grid;place-items:center;padding:clamp(10px,2vw,28px);overflow-x:hidden}
+.vf-theme.vf-public-dark-shell{--background-main:#000301;--background-panel:#06100b;--background-card:rgba(8,22,14,.78);--background-glass:rgba(12,28,18,.62);--green-primary:#72ff68;--green-bright:#a6ff5f;--green-dark:#164c28;--text-primary:#f4f7f5;--text-secondary:#a4ada7;--text-muted:#6f7a73;--border-green:rgba(120,255,105,.32);--border-soft:rgba(255,255,255,.09);min-height:100vh;background-color:var(--background-main);background-image:radial-gradient(70% 64% at 76% 8%,rgba(67,91,7,.62),rgba(28,44,4,.28) 46%,rgba(0,0,0,0) 76%),radial-gradient(42% 38% at 10% 24%,rgba(0,112,91,.22),rgba(0,0,0,0) 74%),linear-gradient(180deg,rgba(0,0,0,.08) 0%,rgba(0,0,0,.74) 74%,#000 100%),linear-gradient(90deg,#000 0%,#020503 42%,#050b02 100%);background-repeat:no-repeat;background-attachment:fixed;color:var(--text-primary);font-family:"App Body Inter",Inter,ui-sans-serif,system-ui,sans-serif;overflow-x:hidden}
+.vf-public-dark-shell .vf-topbar{border-bottom-color:rgba(255,255,255,.08);background:rgba(3,12,8,.86);box-shadow:0 16px 40px rgba(0,0,0,.28);color:var(--text-primary)}
+.vf-public-dark-shell .vf-topbar .vf-landing{max-width:1024px}
+.vf-public-dark-shell .vf-topbar .vf-muted{color:var(--text-secondary)}
+.vf-public-dark-shell .vf-topbar .vf-btn-ghost{border-color:rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-primary);box-shadow:none}
+.vf-public-dark-shell .vf-topbar .vf-btn-ghost:hover{border-color:rgba(120,255,105,.32);background:rgba(114,255,104,.08)}
+.vf-public-dark-shell .vf-topbar .bg-emerald-50{border-color:rgba(120,255,105,.26)!important;background:rgba(114,255,104,.1)!important;color:var(--green-primary)!important}
+.vf-chat-page{min-height:calc(100vh - 66px);padding-bottom:clamp(18px,3vh,34px)}
+.vf-chat-panel{border:1px solid rgba(117,255,104,.24);background:linear-gradient(180deg,rgba(4,15,10,.94),rgba(2,9,7,.96));box-shadow:0 0 0 1px rgba(255,255,255,.035) inset,0 24px 90px rgba(0,0,0,.5),0 0 70px rgba(86,255,88,.11);color:var(--text-primary);backdrop-filter:blur(22px)}
+.vf-chat-header{border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(90deg,rgba(33,112,40,.16),rgba(1,8,6,.24) 48%,rgba(1,8,6,.38))}
+.vf-chat-status,.vf-chat-suggested-label{color:var(--text-secondary)}
+.vf-chat-icon-btn,.vf-chat-action{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.vf-chat-icon-btn:hover,.vf-chat-action:hover{border-color:rgba(120,255,105,.34);background:rgba(114,255,104,.09);color:var(--green-primary)}
+.vf-chat-alert{border:1px solid rgba(96,165,250,.24);background:rgba(59,130,246,.1);color:#bfdbfe}
+.vf-chat-alert-error{border-color:rgba(244,63,94,.32);background:rgba(244,63,94,.1);color:#fecdd3}
+.vf-chat-scroll{background:radial-gradient(46% 36% at 50% 0%,rgba(114,255,104,.08),rgba(0,0,0,0) 70%)}
+.vf-chat-suggestion{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);color:var(--text-primary);box-shadow:0 10px 26px rgba(0,0,0,.18)}
+.vf-chat-suggestion:hover{border-color:rgba(120,255,105,.34);background:rgba(23,60,31,.36);box-shadow:0 0 26px rgba(114,255,104,.12)}
+.vf-assistant-bubble{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.055);color:var(--text-primary);box-shadow:0 16px 35px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.04)}
+.vf-user-bubble{border:1px solid rgba(120,255,105,.46);background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(6,25,14,.96) 46%,rgba(77,180,62,.9));color:#f4fff2;box-shadow:0 0 26px rgba(114,255,104,.16)}
+.vf-bubble-error{border-color:rgba(244,63,94,.32);color:#fecdd3}
+.vf-chat-inputbar{border-top:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(8,20,14,.9),rgba(2,9,7,.98));box-shadow:0 -18px 45px rgba(0,0,0,.34),0 -1px 0 rgba(120,255,105,.1) inset}
+.vf-chat-input{min-height:52px;border:1px solid rgba(120,255,105,.24);background:rgba(255,255,255,.055);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 0 0 1px rgba(0,0,0,.12)}
+.vf-chat-input::placeholder{color:rgba(164,173,167,.92)}
+.vf-chat-input:focus{border-color:rgba(120,255,105,.68);background:rgba(255,255,255,.08);box-shadow:0 0 0 4px rgba(114,255,104,.12),0 0 30px rgba(114,255,104,.14)}
+.vf-chat-input:disabled{cursor:not-allowed;opacity:.58}
+.vf-chat-send{min-width:56px;min-height:52px;border:1px solid rgba(120,255,105,.48);border-radius:16px;background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
+.vf-chat-send:hover:not(:disabled){border-color:rgba(166,255,95,.78);box-shadow:0 0 34px rgba(114,255,104,.28)}
+.vf-chat-send:disabled{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.07);color:rgba(255,255,255,.32);box-shadow:none}
+.vf-booking-page{min-height:calc(100vh - 66px)}
+.vf-booking-card{border:1px solid rgba(117,255,104,.24);background:linear-gradient(180deg,rgba(4,15,10,.94),rgba(2,9,7,.96));box-shadow:0 0 0 1px rgba(255,255,255,.035) inset,0 24px 90px rgba(0,0,0,.5),0 0 70px rgba(86,255,88,.11);color:var(--text-primary);backdrop-filter:blur(22px)}
+.vf-booking-muted{color:var(--text-secondary)}
+.vf-picker-title,.vf-field-label{color:var(--text-secondary);letter-spacing:.01em}
+.vf-booking-icon-btn,.vf-booking-ghost{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.vf-booking-icon-btn:hover,.vf-booking-ghost:hover{border-color:rgba(120,255,105,.34);background:rgba(114,255,104,.09);color:var(--green-primary)}
+.vf-booking-error{border:1px solid rgba(244,63,94,.32);background:rgba(244,63,94,.1);color:#fecdd3}
+.vf-booking-date,.vf-booking-chip,.vf-booking-mode{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.vf-booking-date:hover,.vf-booking-chip:hover,.vf-booking-mode:hover{border-color:rgba(120,255,105,.34);background:rgba(114,255,104,.08)}
+.vf-booking-date.is-active,.vf-booking-chip.is-active,.vf-booking-mode.is-active{border-color:rgba(120,255,105,.7);background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.82));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.18)}
+.vf-booking-card .vf-input{border-color:rgba(120,255,105,.22);background:rgba(255,255,255,.055);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.vf-booking-card .vf-input::placeholder{color:rgba(164,173,167,.86)}
+.vf-booking-card .vf-input:focus{border-color:rgba(120,255,105,.68);box-shadow:0 0 0 4px rgba(114,255,104,.12),0 0 26px rgba(114,255,104,.12)}
+.vf-booking-submit{min-height:56px;border:1px solid rgba(120,255,105,.48);border-radius:16px;background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
+.vf-booking-submit:hover:not(:disabled){border-color:rgba(166,255,95,.78);box-shadow:0 0 34px rgba(114,255,104,.28)}
+.vf-booking-submit:disabled{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.07);color:rgba(255,255,255,.32);box-shadow:none}
+.vf-booking-success-icon{border:1px solid rgba(120,255,105,.48);background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
+.vf-booking-summary{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+.vf-public-wrap{width:100%;display:grid;place-items:center}
+.vf-public-panel{width:min(calc(100% - 48px),1180px);max-width:1180px;overflow:hidden;border:1px solid rgba(117,255,104,.32);border-radius:28px;background:linear-gradient(180deg,rgba(3,14,9,.9),rgba(2,9,7,.9));box-shadow:0 0 0 1px rgba(255,255,255,.035) inset,0 24px 90px rgba(0,0,0,.52),0 0 70px rgba(86,255,88,.13);backdrop-filter:blur(22px)}
+.vf-public-header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 30px;border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(90deg,rgba(33,112,40,.18),rgba(1,8,6,.08) 45%,rgba(1,8,6,.3))}
+.vf-public-identity{display:flex;min-width:0;align-items:center;gap:18px;text-align:left;color:var(--text-primary)}
+.vf-public-avatar{display:grid;width:58px;height:58px;flex:0 0 auto;place-items:center;overflow:hidden;border:1px solid rgba(120,255,105,.45);border-radius:15px;background:radial-gradient(circle at 38% 28%,rgba(166,255,95,.32),rgba(13,44,21,.9));box-shadow:0 0 24px rgba(114,255,104,.18),inset 0 0 18px rgba(255,255,255,.06)}
+.vf-public-identity-copy{display:grid;min-width:0;gap:5px}
+.vf-public-identity-copy strong{overflow:hidden;font-size:24px;font-weight:800;line-height:1.05;text-overflow:ellipsis;white-space:nowrap}
+.vf-public-identity-copy span{display:flex;min-width:0;align-items:center;gap:8px;color:var(--text-secondary);font-size:17px;line-height:1.2}
+.vf-header-dot-separator{opacity:.55}
+.vf-public-status-pill{display:inline-flex;flex:0 0 auto;align-items:center;gap:10px;padding:11px 20px;border:1px solid rgba(255,255,255,.11);border-radius:999px;background:rgba(255,255,255,.035);color:var(--green-primary);font-size:16px;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .2s,box-shadow .2s,transform .2s}
+.vf-public-status-pill:hover{border-color:rgba(120,255,105,.38);box-shadow:0 0 24px rgba(114,255,104,.12)}
+.vf-public-status-pill.is-offline{color:#b8c2bc}
+.vf-status-dot{position:relative;display:inline-grid;width:14px;height:14px;flex:0 0 auto;place-items:center;border-radius:999px}
+.vf-status-dot::before{position:absolute;inset:-6px;border-radius:inherit;background:rgba(114,255,104,.26);content:"";animation:vfPulseRing 2s ease-out infinite}
+.vf-status-dot span{position:relative;width:14px;height:14px;border-radius:inherit;background:var(--green-primary);box-shadow:0 0 12px rgba(114,255,104,.75)}
+.vf-status-dot.is-offline::before{display:none}
+.vf-status-dot.is-offline span{background:#738077;box-shadow:none}
+.vf-public-hero{display:grid;width:calc(100% - 80px);max-width:1100px;margin:0 auto;grid-template-areas:"visual info";grid-template-columns:minmax(300px,41%) minmax(0,59%);align-items:center;gap:44px;padding:24px 0 16px}
+.vf-public-visual-section{grid-area:visual;min-width:0}
+.vf-public-info-section{grid-area:info;min-width:0}
+.vf-agent-visual-card{position:relative;display:grid;min-height:310px;place-items:center;overflow:visible;border:0;border-radius:0;background:transparent;box-shadow:none}
+.vf-agent-visual-card::before{position:absolute;width:72%;max-width:430px;aspect-ratio:1;border:1px solid rgba(114,255,104,.6);border-radius:999px;background:radial-gradient(circle,rgba(114,255,104,.16),rgba(114,255,104,.05) 45%,transparent 70%);box-shadow:0 0 44px rgba(114,255,104,.22);content:"";animation:vfGlowBreathe 4.4s ease-in-out infinite}
+.vf-agent-image-circle{position:relative;z-index:1;display:grid;width:min(78%,390px);aspect-ratio:1;place-items:center;overflow:hidden;border:1px solid rgba(120,255,105,.52);border-radius:999px;background:radial-gradient(circle at 50% 38%,rgba(114,255,104,.16),rgba(11,28,13,.86) 42%,rgba(0,3,1,.98) 100%);box-shadow:inset 0 0 36px rgba(255,255,255,.04),0 0 42px rgba(114,255,104,.18),0 28px 54px rgba(0,0,0,.42)}
+.vf-agent-image-circle .vf-robot-wrap{width:88%!important;height:88%!important;overflow:hidden;border-radius:999px;background:radial-gradient(circle at 50% 42%,rgba(20,116,50,.46),rgba(3,14,9,.86) 56%,rgba(0,3,1,.98) 100%)}
+.vf-agent-image-circle .vf-robot-glow{display:none}
+.vf-agent-image-circle .vf-robot-img{width:118%;height:118%;border-radius:999px;object-fit:cover;object-position:center 48%;background:transparent}
+.vf-agent-visual-card .vf-robot-wrap{z-index:1;max-width:min(74%,250px);max-height:250px}
+.vf-agent-visual-card .vf-robot-img{filter:drop-shadow(0 26px 36px rgba(0,0,0,.4)) drop-shadow(0 0 24px rgba(114,255,104,.18))}
+.vf-sparkle{position:absolute;z-index:2;color:#d7ffd0;filter:drop-shadow(0 0 8px rgba(114,255,104,.8));opacity:.95}
+.vf-sparkle-a{left:12%;top:18%}.vf-sparkle-b{right:12%;top:12%}.vf-sparkle-c{right:8%;bottom:30%}
+.vf-agent-visual-note{position:absolute;right:20px;bottom:18px;left:20px;z-index:3;display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(8,20,14,.74);box-shadow:0 14px 34px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.06);backdrop-filter:blur(18px)}
+.vf-note-icon{display:grid;width:42px;height:42px;flex:0 0 auto;place-items:center;border:1px solid rgba(120,255,105,.24);border-radius:999px;background:rgba(114,255,104,.12);color:var(--green-primary);box-shadow:0 0 22px rgba(114,255,104,.16)}
+.vf-agent-visual-note p{margin:0;color:var(--text-primary);font-size:14px;font-weight:650;line-height:1.38}
+.vf-missing-avatar{z-index:1;display:grid;width:180px;height:180px;place-items:center;border-radius:999px;background:rgba(114,255,104,.1);color:var(--green-primary)}
+.vf-assistant-badge{display:inline-flex;align-items:center;gap:9px;padding:10px 16px;border:1px solid rgba(255,255,255,.1);border-radius:999px;background:rgba(255,255,255,.035);color:#c8ff9c;font-size:14.5px;font-weight:800}
+.vf-assistant-badge svg,.vf-capability-pill svg,.vf-business-icon svg,.vf-action-icon svg{color:var(--green-primary)}
+.vf-public-title{margin:20px 0 0;color:var(--text-primary);font-size:clamp(34px,3.8vw,48px);font-weight:850;letter-spacing:0;line-height:1;text-wrap:balance}
+.vf-public-description{max-width:620px;margin:15px 0 0;color:var(--text-secondary);font-size:clamp(15px,1.15vw,17px);line-height:1.45}
+.vf-capability-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.vf-capability-pill{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:8px 14px;border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(255,255,255,.035);color:var(--text-primary);font-size:13.5px;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.vf-capability-pill.is-disabled{color:var(--text-muted);opacity:.78}
+.vf-public-actions{display:grid;gap:12px;margin-top:20px}
+.vf-public-primary,.vf-public-secondary{position:relative;display:flex;min-width:0;align-items:center;border:1px solid rgba(255,255,255,.09);color:var(--text-primary);transition:transform .18s,border-color .2s,box-shadow .2s,background .2s}
+.vf-public-primary{width:100%;height:58px;gap:14px;padding:0 18px;border-color:rgba(120,255,105,.58);border-radius:16px;background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(6,25,14,.96) 44%,rgba(77,180,62,.9));box-shadow:0 0 0 1px rgba(255,255,255,.04) inset,0 0 24px rgba(114,255,104,.18);font-size:18px;font-weight:800;text-align:left}
+.vf-public-primary:hover:not(:disabled){transform:translateY(-2px);border-color:rgba(166,255,95,.86);box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 20px 55px rgba(0,0,0,.34),0 0 38px rgba(114,255,104,.34)}
+.vf-public-primary:active:not(:disabled){transform:translateY(0)}
+.vf-public-primary:disabled,.vf-public-secondary:disabled{cursor:not-allowed;opacity:.52}
+.vf-primary-arrow{margin-left:auto;transition:transform .2s}
+.vf-public-primary:hover:not(:disabled) .vf-primary-arrow{transform:translateX(7px)}
+.vf-public-secondary-grid{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.vf-public-secondary{height:52px;justify-content:center;gap:12px;padding:0 16px;border-radius:16px;background:rgba(255,255,255,.035);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);font-size:15.5px;font-weight:800}
+.vf-public-secondary:hover:not(:disabled){transform:translateY(-2px);border-color:rgba(120,255,105,.34);background:rgba(23,60,31,.36);box-shadow:0 0 26px rgba(114,255,104,.12)}
+.vf-public-secondary small{display:block;margin-left:4px;color:var(--text-muted);font-size:12px;font-weight:700}
+.vf-action-icon{display:grid;width:32px;height:32px;flex:0 0 auto;place-items:center;border-radius:999px;background:rgba(114,255,104,.08);box-shadow:0 0 18px rgba(114,255,104,.08)}
+.vf-business-bar{display:flex;width:min(670px,calc(100% - 48px));align-items:center;justify-content:center;gap:12px;margin:0 auto 16px;padding:9px 14px;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(255,255,255,.035);color:var(--text-secondary);text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(16px)}
+.vf-business-item{display:flex;min-width:0;align-items:center;justify-content:center;gap:9px;font-size:14px;line-height:1.25}
+.vf-business-item strong{color:var(--text-primary);font-weight:800}
+.vf-business-location{flex:0 1 auto;max-width:min(430px,100%)}
+.vf-business-location span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vf-business-icon{display:grid;width:30px;height:30px;flex:0 0 auto;place-items:center;border-radius:999px;background:rgba(114,255,104,.08);box-shadow:0 0 18px rgba(114,255,104,.08)}
+.vf-business-icon svg{width:19px;height:19px}
+.vf-business-divider{width:1px;height:24px;background:rgba(255,255,255,.12)}
+.vf-profile-skeleton .vf-public-header,.vf-profile-skeleton .vf-public-hero{pointer-events:none}
+.vf-skeleton-row{display:flex;align-items:center;gap:18px}.vf-skeleton-avatar,.vf-skeleton-pill,.vf-skeleton-stack i,.vf-skeleton-visual,.vf-skeleton-copy i,.vf-skeleton-copy span,.vf-skeleton-buttons b{display:block;border-radius:16px;background:linear-gradient(100deg,rgba(255,255,255,.05),rgba(114,255,104,.13),rgba(255,255,255,.05));background-size:220% 100%;animation:vfShimmer 1.5s linear infinite}
+.vf-skeleton-avatar{width:68px;height:68px}.vf-skeleton-pill{width:172px;height:54px;border-radius:999px}.vf-skeleton-stack{display:grid;gap:10px}.vf-skeleton-stack i:first-child{width:240px;height:24px}.vf-skeleton-stack i:last-child{width:180px;height:18px}
+.vf-skeleton-visual{min-height:500px;border-radius:28px}.vf-skeleton-copy{display:grid;align-content:center;gap:18px}.vf-skeleton-copy i{width:70%;height:20px}.vf-skeleton-copy .short{width:180px;height:44px;border-radius:999px}.vf-skeleton-copy .title{width:86%;height:70px}.vf-skeleton-copy span{width:100%;height:84px;border-radius:22px}.vf-skeleton-buttons{display:grid;gap:20px;grid-template-columns:1fr 1fr}.vf-skeleton-buttons b{height:76px;border-radius:22px}
+.vf-profile-error{display:grid;min-height:420px;place-items:center;justify-items:center;padding:40px;text-align:center}.vf-profile-error h1{margin:18px 0 0;color:var(--text-primary);font-size:clamp(28px,4vw,44px);letter-spacing:0}.vf-profile-error p{max-width:520px;margin:10px 0 0;color:var(--text-secondary);font-size:17px;line-height:1.6}
+.vf-modal-overlay{background:rgba(0,7,5,.7)}
+.vf-modal{border-color:rgba(120,255,105,.22);background:linear-gradient(180deg,rgba(6,18,11,.98),rgba(2,8,6,.98));box-shadow:0 30px 90px rgba(0,0,0,.62),0 0 50px rgba(114,255,104,.14);color:var(--text-primary)}
+.vf-modal-x{background:rgba(255,255,255,.06);color:#a4ada7}.vf-modal-x:hover{background:rgba(114,255,104,.1);color:#f4f7f5}
+.vf-call-status-label{display:inline-flex;align-items:center;gap:8px;color:#a4ada7;font-size:11.5px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+.vf-call-orb{background:linear-gradient(160deg,rgba(16,54,25,.98),rgba(9,27,16,.96));border-color:rgba(120,255,105,.3);box-shadow:inset 0 2px 18px rgba(255,255,255,.08),0 0 34px rgba(114,255,104,.18)}
+.vf-step{background:rgba(255,255,255,.04)}.vf-step-active{color:var(--green-primary);background:rgba(114,255,104,.1);border-color:rgba(120,255,105,.22)}.vf-step-active .vf-step-dot{background:rgba(114,255,104,.14);color:var(--green-primary)}
+.vf-call-control,.vf-call-end{display:grid;width:56px;height:56px;place-items:center;border-radius:999px;color:#fff;transition:transform .18s,box-shadow .2s,background .2s}
+.vf-call-control{border:1px solid rgba(120,255,105,.32);background:rgba(114,255,104,.1);color:var(--green-primary);box-shadow:0 0 20px rgba(114,255,104,.12)}
+.vf-call-control.is-muted{border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#a4ada7}
+.vf-call-end{background:#e11d48;box-shadow:0 10px 26px rgba(225,29,72,.35)}
+.vf-call-control:hover,.vf-call-end:hover{transform:translateY(-2px)}
+.vf-call-end:hover{background:#be123c}
+@keyframes vfGlowBreathe{0%,100%{transform:scale(.96);opacity:.72}50%{transform:scale(1.04);opacity:1}}
+@keyframes vfShimmer{to{background-position:-220% 0}}
+@media (max-width:1180px){.vf-public-panel{width:calc(100% - 28px)}.vf-public-hero{width:100%;max-width:none;grid-template-columns:minmax(280px,41%) minmax(0,59%);gap:30px;padding:24px}.vf-public-title{font-size:clamp(32px,5.2vw,46px)}.vf-agent-visual-card{min-height:310px}.vf-agent-visual-card .vf-robot-wrap{max-width:min(74%,250px)}}
+@media (max-width:900px){.vf-theme.vf-public-profile-shell{align-items:start;padding:14px}.vf-public-panel{width:100%;border-radius:24px}.vf-public-header{padding:18px 20px}.vf-public-status-pill{padding:10px 14px;font-size:0}.vf-public-status-pill .vf-status-dot{margin:0}.vf-public-status-pill::after{content:"Online";font-size:14px}.vf-public-status-pill.is-offline::after{content:"Offline"}.vf-public-hero{grid-template-areas:"info" "visual";grid-template-columns:minmax(0,1fr);gap:28px;padding:28px 20px}.vf-public-visual-section{order:2}.vf-public-info-section{order:1}.vf-agent-visual-card{min-height:380px}.vf-public-description{font-size:17px}.vf-business-bar{width:calc(100% - 40px);margin-bottom:22px}}
+@media (max-width:640px){.vf-theme.vf-public-profile-shell{padding:10px}.vf-public-panel{border-radius:20px}.vf-public-header{align-items:flex-start;gap:14px;padding:16px}.vf-public-avatar{width:52px;height:52px;border-radius:14px}.vf-public-avatar .vf-robot-wrap{width:44px!important;height:44px!important}.vf-public-identity{gap:12px}.vf-public-identity-copy strong{font-size:18px}.vf-public-identity-copy span{font-size:13px;gap:6px}.vf-public-hero{padding:24px 16px 20px}.vf-assistant-badge{padding:10px 14px;font-size:14px}.vf-public-title{margin-top:22px;font-size:clamp(38px,12vw,42px);line-height:1.02}.vf-capability-pills{gap:8px}.vf-capability-pill{min-height:36px;padding:8px 12px;font-size:13px}.vf-agent-visual-card{min-height:330px;border-radius:22px}.vf-agent-visual-card .vf-robot-wrap{max-width:min(82%,270px)}.vf-sparkle-a{left:8%;top:14%}.vf-agent-visual-note{right:16px;bottom:16px;left:16px;padding:14px;border-radius:18px}.vf-agent-visual-note p{font-size:14.5px}.vf-note-icon{width:42px;height:42px}.vf-public-primary{height:72px;padding:0 18px;font-size:18px;border-radius:18px}.vf-public-secondary-grid{grid-template-columns:minmax(0,1fr);gap:12px}.vf-public-secondary{height:64px;justify-content:flex-start;padding:0 18px;font-size:17px;border-radius:18px}.vf-business-bar{flex-direction:column;align-items:flex-start;gap:14px;width:calc(100% - 32px);padding:16px;border-radius:18px}.vf-business-divider{width:100%;height:1px}.vf-business-item{font-size:15px}.vf-business-location span:last-child{white-space:normal}.vf-skeleton-pill{display:none}.vf-skeleton-stack i:first-child{width:170px}.vf-skeleton-stack i:last-child{width:130px}.vf-skeleton-copy .title{height:54px}.vf-skeleton-buttons{grid-template-columns:1fr}}
 /* Entrance / motion tokens (more specific selector wins over .vf-enter default) */
 .vf-anim-none .vf-enter{animation:none}
 .vf-anim-fade_in .vf-enter{animation:vfFadeIn .5s ease}
@@ -1567,6 +1972,6 @@ const themeCss = `
 @keyframes vfFadeIn{from{opacity:0}to{opacity:1}}
 @keyframes vfModalIn{from{opacity:0;transform:translateY(16px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media (max-width:640px){.vf-cover-hero{min-height:340px}}
-@media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge,.vf-agent-visual-card::before,.vf-status-dot::before,.vf-skeleton-avatar,.vf-skeleton-pill,.vf-skeleton-stack i,.vf-skeleton-visual,.vf-skeleton-copy i,.vf-skeleton-copy span,.vf-skeleton-buttons b{animation:none!important}.vf-public-primary:hover:not(:disabled),.vf-public-secondary:hover:not(:disabled),.vf-call-control:hover,.vf-call-end:hover{transform:none!important}}
 `;
 

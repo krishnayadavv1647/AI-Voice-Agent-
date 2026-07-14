@@ -8,6 +8,7 @@ import AppLoader from "./components/AppLoader.jsx";
 import { AuthProvider, useAuth } from "./state/AuthContext.jsx";
 import { CreditsProvider } from "./state/CreditsContext.jsx";
 import "./styles.css";
+import "./email-inbox.css";
 
 const AgentDetails = lazy(() => import("./pages/AgentDetails.jsx"));
 const Agents = lazy(() => import("./pages/Agents.jsx"));

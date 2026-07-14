@@ -6,6 +6,7 @@ import {
   generateEmail,
   generateThreadReply,
   getCampaignStatus,
+  getFolderCounts,
   getMessageAttachment,
   getThread,
   getThreadMessages,
@@ -40,6 +41,7 @@ router.post("/campaigns", createCampaign);
 router.get("/logs", listLogs);
 router.get("/providers", listProviders);
 router.get("/unread-count", getUnreadEmailCount);
+router.get("/folder-counts", getFolderCounts);
 router.get("/threads", listThreads);
 router.get("/gmail/search", searchGmail);
 router.post("/backfill-threads", backfillThreads);

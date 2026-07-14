@@ -1,4 +1,4 @@
-import { ChevronLeft, Download, Paperclip, RefreshCw, Reply, ReplyAll, Search, Send, Sparkles, Star, X } from "lucide-react";
+import { ChevronLeft, Download, Loader2, Paperclip, RefreshCw, Reply, ReplyAll, Search, Send, Settings, Sparkles, Star, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState.jsx";
@@ -62,6 +62,54 @@ function stripHtmlQuotes(html) {
   }
 }
 
+// True when the HTML is a real formatted email (tables/images/links/etc.) rather than a plain
+// message we wrapped in <html><body>…</body></html>. Rich emails render as HTML by default.
+function isRichHtml(html) {
+  return Boolean(html) && /<(table|div|img|a\s|ul|ol|h[1-6]|center|font|style|p[\s>])/i.test(html);
+}
+
+// Wraps the email HTML in a readable document: sane font, responsive images, links open in a new
+// tab, no referrer. Quoted reply history is stripped so the rendered email stays trimmed.
+function buildEmailSrcDoc(html) {
+  const cleaned = stripHtmlQuotes(html);
+  return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><meta name="referrer" content="no-referrer"><style>
+    html,body{margin:0;padding:0;}
+    body{padding:14px;background:#fff;color:#1f2937;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;word-break:break-word;overflow-wrap:anywhere;}
+    img{max-width:100%;height:auto;border:0;}
+    a{color:#2563eb;}
+    table{max-width:100%;}
+    blockquote{margin:8px 0;padding-left:10px;border-left:3px solid #e5e7eb;color:#6b7280;}
+  </style></head><body>${cleaned}</body></html>`;
+}
+
+// Renders an HTML email in a sandboxed iframe that auto-sizes to its content.
+// sandbox WITHOUT allow-scripts means no email JS ever executes; allow-same-origin only lets the
+// parent read the content height, and allow-popups lets links open in a new tab.
+function EmailFrame({ html }) {
+  const ref = useRef(null);
+  const srcDoc = useMemo(() => buildEmailSrcDoc(html), [html]);
+  function handleLoad() {
+    try {
+      const doc = ref.current?.contentDocument;
+      if (doc?.body) ref.current.style.height = `${Math.min(doc.body.scrollHeight + 28, 1400)}px`;
+    } catch {
+      /* cross-origin guard; keep the default height */
+    }
+  }
+  return (
+    <iframe
+      ref={ref}
+      title="Email content"
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      referrerPolicy="no-referrer"
+      srcDoc={srcDoc}
+      onLoad={handleLoad}
+      style={{ height: 240 }}
+      className="w-[min(74vw,640px)] rounded-lg border-0 bg-white"
+    />
+  );
+}
+
 function shortTime(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -116,6 +164,8 @@ export default function EmailInbox() {
   const [error, setError] = useState("");
   const selectedIdRef = useRef("");
 
+  const [folderCounts, setFolderCounts] = useState({});
+
   const localFiltered = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term || searchMode) return threads;
@@ -132,6 +182,14 @@ export default function EmailInbox() {
       setGmailConnected(Boolean(result.integration?.gmail?.connected));
     } catch {
       setGmailConnected(false);
+    }
+  }
+
+  async function loadFolderCounts() {
+    try {
+      setFolderCounts(await api("/email/folder-counts"));
+    } catch {
+      /* counts are non-critical; leave as-is */
     }
   }
 
@@ -186,6 +244,7 @@ export default function EmailInbox() {
       await api("/email-integrations/sync-now", { method: "POST" });
       refreshUnreadBadge();
       await loadThreads(folder, { pageNum: 1, keepSelected: selectedIdRef.current });
+      loadFolderCounts();
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -195,6 +254,7 @@ export default function EmailInbox() {
 
   useEffect(() => {
     loadConnection();
+    loadFolderCounts();
   }, []);
 
   useEffect(() => {
@@ -299,12 +359,14 @@ export default function EmailInbox() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="email-inbox-page">
       {notice && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
       {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="email-inbox-topbar">
+        <p>Inbox</p>
+        <div className="email-topbar-actions">
+          <div className="email-top-folders">
           {FOLDERS.map((item) => (
             <button
               key={item.key}
@@ -314,38 +376,67 @@ export default function EmailInbox() {
               {item.label}
             </button>
           ))}
+          </div>
+          <button className="email-compose-button" onClick={() => setComposeOpen(true)}><Send size={14} />Compose</button>
+          <button className="email-top-icon" aria-label="Email settings" title="Email settings"><Settings size={17} /></button>
         </div>
-        <button className="btn-accent ml-auto" onClick={() => setComposeOpen(true)}><Send size={16} />Compose</button>
       </div>
 
-      <div className="flex h-[calc(100vh-9rem)] min-h-[34rem] gap-4 overflow-hidden lg:grid lg:grid-cols-[22rem_minmax(0,1fr)]">
-        <aside className={`card min-h-0 w-full flex-col overflow-hidden p-0 lg:flex ${mobileView === "thread" ? "hidden" : "flex"}`}>
-          <div className="shrink-0 space-y-3 border-b border-hairline p-4">
-            <div className="flex items-center justify-between gap-2">
-              <h1 className="text-lg font-semibold tracking-tight text-ink capitalize">{FOLDERS.find((f) => f.key === folder)?.label}</h1>
-              <button
-                className="grid h-8 w-8 place-items-center rounded-lg border border-hairline text-neutral-600 transition hover:bg-neutral-50 hover:text-ink disabled:opacity-50"
-                disabled={syncing}
-                onClick={syncInbox}
-                aria-label="Sync"
-                title="Sync Gmail"
-              >
-                <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
-              </button>
-            </div>
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-              <input
-                className="pl-9"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter") runGmailSearch(); }}
-                placeholder="Search Gmail (press Enter)"
-              />
-            </div>
-            {searchMode && <button className="text-[13px] font-medium text-brand-700 hover:text-brand-800" onClick={() => { setSearch(""); setSearchMode(false); loadThreads(folder, { pageNum: 1 }); }}>Clear search</button>}
+      <div className="email-inbox-workspace" data-view={selected && mobileView === "thread" ? "thread" : "list"}>
+        <aside className="email-folder-panel">
+          <div className="email-panel-heading">
+            <h1>Inbox</h1>
+            <button
+              className="email-icon-button"
+              disabled={syncing}
+              onClick={syncInbox}
+              aria-label="Sync"
+              title="Sync Gmail"
+            >
+              <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
+            </button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+
+          <div className="email-search-box">
+            <Search size={14} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") runGmailSearch(); }}
+              placeholder="Search Gmail (press Enter)"
+            />
+            {loading || syncing ? <Loader2 size={14} className="animate-spin" /> : null}
+          </div>
+
+          {searchMode && (
+            <button className="email-clear-search" onClick={() => { setSearch(""); setSearchMode(false); loadThreads(folder, { pageNum: 1 }); }}>
+              Clear search
+            </button>
+          )}
+
+          <nav className="email-folder-list">
+            {FOLDERS.map((item, index) => {
+              const count = folderCounts[item.key] || (item.key === folder ? threads.length : 0);
+              return (
+                <button
+                  key={item.key}
+                  className={`email-folder-item ${folder === item.key ? "is-active" : ""}`}
+                  onClick={() => setFolder(item.key)}
+                >
+                  <span className={`email-folder-dot email-folder-dot-${index % 3}`} />
+                  <span>{item.label}</span>
+                  {count > 0 && <strong>{count}</strong>}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <aside className="email-list-panel">
+          <div className="email-list-header">
+            <h2>Email List</h2>
+          </div>
+          <div className="email-list-scroll">
             {loading ? (
               <PageLoader label="Loading" />
             ) : !localFiltered.length ? (
@@ -389,7 +480,7 @@ export default function EmailInbox() {
           </div>
         </aside>
 
-        <section className={`card min-h-0 w-full flex-1 flex-col overflow-hidden p-0 lg:flex ${mobileView === "list" ? "hidden" : "flex"}`}>
+        <section className="email-message-panel">
           {!selected ? (
             <div className="grid h-full min-h-[28rem] place-items-center p-6">
               <EmptyState title="Select a conversation" description="Choose an email to read the full thread and reply." />
@@ -438,12 +529,17 @@ export default function EmailInbox() {
 }
 
 function MessageBubble({ message }) {
-  const [showHtml, setShowHtml] = useState(false);
   const [showQuoted, setShowQuoted] = useState(false);
+  // null = use the smart default (formatted for rich HTML, plain text otherwise).
+  const [formattedOverride, setFormattedOverride] = useState(null);
   const outbound = message.direction === "outbound";
   const html = message.htmlBody || message.html || "";
   const text = messageText(message);
   const { main, quoted } = splitQuotedText(text);
+  const showFormatted = Boolean(html) && (formattedOverride === null ? isRichHtml(html) : formattedOverride);
+  const senderName = message.from?.[0]?.name || "";
+  const senderEmail = message.fromEmail || message.from?.[0]?.email || "";
+  const dateLabel = shortTime(message.sentAt || message.receivedAt || message.gmailInternalDate || message.createdAt);
   const attachments = (message.attachments || []).filter((att) => att.filename && !att.inline);
 
   async function downloadAttachment(att) {
@@ -464,21 +560,20 @@ function MessageBubble({ message }) {
 
   return (
     <div className={`flex flex-col ${outbound ? "items-end" : "items-start"}`}>
-      <div className={`max-w-[90%] rounded-2xl px-4 py-2.5 text-sm leading-6 sm:max-w-[80%] ${outbound ? "rounded-br-md bg-brand-600 text-white" : "rounded-bl-md bg-white text-neutral-800 border border-hairline"}`}>
-        <div className="mb-1 flex items-center gap-2 text-[11px] opacity-70">
-          <span className="truncate">{message.fromEmail}</span>
-          {message.isStarred && <Star size={12} className="fill-current" />}
+      <div className={`w-full max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[86%] ${outbound ? "rounded-br-md bg-brand-600 text-white" : "rounded-bl-md border border-hairline bg-white text-neutral-800"}`}>
+        <div className={`mb-2 flex items-center gap-2 border-b pb-2 text-[11px] ${outbound ? "border-white/20" : "border-hairline"}`}>
+          <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold uppercase ${outbound ? "bg-white/20 text-white" : "bg-neutral-100 text-neutral-600"}`}>
+            {(senderName || senderEmail || "?").slice(0, 1)}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+            {senderName ? <span className="font-semibold">{senderName} </span> : null}
+            <span className="opacity-70">{senderName ? `<${senderEmail}>` : senderEmail}</span>
+          </span>
+          {message.isStarred && <Star size={12} className="shrink-0 fill-current" />}
+          <span className="shrink-0 tabular-nums opacity-60">{dateLabel}</span>
         </div>
-        {showHtml && html ? (
-          // Sandboxed iframe (no allow-scripts) neutralizes any script/JS in the email HTML.
-          // Quoted reply history is stripped so the formatted view stays trimmed too.
-          <iframe
-            title="Email content"
-            sandbox=""
-            referrerPolicy="no-referrer"
-            srcDoc={stripHtmlQuotes(html)}
-            className="h-72 w-[min(70vw,640px)] rounded-lg border-0 bg-white"
-          />
+        {showFormatted ? (
+          <EmailFrame html={html} />
         ) : (
           <>
             <p className="whitespace-pre-wrap break-anywhere">{main || text || "No message body"}</p>
@@ -499,8 +594,8 @@ function MessageBubble({ message }) {
           </>
         )}
         {html && (
-          <button className={`mt-1 block text-xs font-medium ${outbound ? "text-brand-100 hover:text-white" : "text-brand-700 hover:text-brand-800"}`} onClick={() => setShowHtml((v) => !v)}>
-            {showHtml ? "Show plain text" : "Show formatted email"}
+          <button className={`mt-2 block text-xs font-medium ${outbound ? "text-brand-100 hover:text-white" : "text-brand-700 hover:text-brand-800"}`} onClick={() => setFormattedOverride(!showFormatted)}>
+            {showFormatted ? "Show plain text" : "Show formatted email"}
           </button>
         )}
         {attachments.length > 0 && (
@@ -518,7 +613,6 @@ function MessageBubble({ message }) {
           </div>
         )}
       </div>
-      <span className="mt-1 px-1 text-[11px] tabular-nums text-neutral-400">{shortTime(message.sentAt || message.receivedAt || message.gmailInternalDate || message.createdAt)}</span>
     </div>
   );
 }

@@ -638,6 +638,37 @@ export const getUnreadEmailCount = asyncHandler(async (req, res) => {
   res.json({ count });
 });
 
+// Per-folder thread counts for the inbox sidebar (distinct threads per Gmail label).
+export const getFolderCounts = asyncHandler(async (req, res) => {
+  const base = filter(req);
+  const perLabel = await EmailMessage.aggregate([
+    { $match: { ...base, provider: "gmail" } },
+    { $unwind: "$labelIds" },
+    { $group: { _id: { label: "$labelIds", thread: "$threadId" } } },
+    { $group: { _id: "$_id.label", count: { $sum: 1 } } }
+  ]);
+  const byLabel = perLabel.reduce((acc, item) => ({ ...acc, [item._id]: item.count }), {});
+  const unreadThreads = await EmailMessage.distinct("threadId", {
+    ...base,
+    provider: "gmail",
+    direction: "inbound",
+    isRead: false
+  });
+  const all = await EmailThread.countDocuments({ ...base });
+
+  res.json({
+    inbox: byLabel.INBOX || 0,
+    unread: unreadThreads.length,
+    sent: byLabel.SENT || 0,
+    drafts: byLabel.DRAFT || 0,
+    starred: byLabel.STARRED || 0,
+    important: byLabel.IMPORTANT || 0,
+    spam: byLabel.SPAM || 0,
+    trash: byLabel.TRASH || 0,
+    all
+  });
+});
+
 export const generateEmail = asyncHandler(async (req, res) => {
   const { agentId, goal = "", offer = "", tone = "Professional", selectedLeadIds = [] } = req.body;
   const agent = await ensureAgentAccess(req, agentId);
