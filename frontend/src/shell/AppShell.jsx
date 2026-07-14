@@ -23,7 +23,7 @@
   Users,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import { useAuth } from "../state/AuthContext.jsx";
@@ -92,9 +92,11 @@ function NavItem({ item, onClick, unreadEmailCount = 0, collapsed = false }) {
   );
 }
 
+// Paths intentionally kept out of the sidebar because they now live in the header avatar menu.
+const SIDEBAR_HIDDEN_PATHS = new Set(["/credits", "/billing", "/settings", "/admin"]);
+
 function NavItems({ onClick, unreadEmailCount = 0, collapsed = false }) {
-  const { user } = useAuth();
-  const items = ["admin", "super_admin"].includes(user?.role) ? [...links, { to: "/admin", label: "Admin", icon: Shield }] : links;
+  const items = links.filter((item) => !SIDEBAR_HIDDEN_PATHS.has(item.to));
   const itemByPath = new Map(items.map((item) => [item.to, item]));
   const groupedPaths = new Set(navSections.flatMap((section) => section.items));
   const groupedSections = navSections.map((section) => ({
@@ -330,22 +332,107 @@ function SidebarContent({ initials, user, unreadEmailCount, onNavigate, onClose,
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
         <NavItems onClick={onNavigate} unreadEmailCount={unreadEmailCount} collapsed={collapsed} />
       </nav>
+    </>
+  );
+}
 
-      <div className={`mt-4 rounded-2xl border border-hairline bg-neutral-50 p-3 ${collapsed ? "flex flex-col items-center gap-2" : ""}`}>
-        <div className="mb-3 flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</div>
-          <div className={`min-w-0 ${collapsed ? "hidden" : ""}`}>
-            <p className="truncate text-sm font-semibold text-ink">{user?.name || "User"}</p>
-            <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "—"} plan</p>
+function ProfileMenu({ initials, user, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const { balance, loading } = useCredits();
+  const ref = useRef(null);
+  const isAdmin = ["admin", "super_admin"].includes(user?.role);
+
+  const menuLinks = [
+    { to: "/credits", label: "Credits & Usage", icon: Coins },
+    { to: "/billing", label: "Plans & Billing", icon: CreditCard },
+    { to: "/settings", label: "Settings", icon: Settings },
+    ...(isAdmin ? [{ to: "/admin", label: "Admin", icon: Shield }] : [])
+  ];
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function onPointerDown(event) {
+      if (!ref.current?.contains(event.target)) setOpen(false);
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-xs font-semibold text-white transition hover:opacity-90"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Account menu"
+        title="Account"
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-64 overflow-hidden rounded-2xl border border-hairline bg-white shadow-pop" role="menu">
+          <div className="flex items-center gap-3 border-b border-hairline p-4">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink text-sm font-semibold text-white">{initials}</div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink">{user?.name || user?.email || "User"}</p>
+              <p className="truncate text-xs uppercase tracking-wide text-neutral-500">{user?.plan || "—"} plan</p>
+            </div>
+          </div>
+
+          <Link
+            to="/credits"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-between px-4 py-3 hover:bg-neutral-50"
+            role="menuitem"
+          >
+            <span className="flex items-center gap-2.5 text-sm font-medium text-ink"><Coins size={16} />Credits</span>
+            <span className="text-sm font-semibold text-ink">{loading ? "…" : balance.toLocaleString()}</span>
+          </Link>
+
+          <div className="border-t border-hairline py-1">
+            {menuLinks.map(({ to, label, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 hover:text-ink"
+                role="menuitem"
+              >
+                <Icon size={16} className="shrink-0" />
+                {label}
+              </Link>
+            ))}
+          </div>
+
+          <div className="border-t border-hairline py-1">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onLogout();
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-neutral-700 hover:bg-neutral-50 hover:text-ink"
+              role="menuitem"
+            >
+              <LogOut size={16} className="shrink-0" />
+              Logout
+            </button>
           </div>
         </div>
-        {!collapsed && <CreditsChip onNavigate={onNavigate} />}
-        <button onClick={onLogout} className={`${collapsed ? "" : "mt-2 w-full"} flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-neutral-600 hover:bg-white hover:text-ink`} title="Logout">
-          <LogOut size={16} />
-          {!collapsed && "Logout"}
-        </button>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 
@@ -428,7 +515,7 @@ export default function AppShell() {
             <button className="hidden rounded-xl border border-hairline bg-white p-2 text-neutral-600 hover:bg-neutral-50 sm:block" aria-label="Notifications">
               <Bell size={18} />
             </button>
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink text-xs font-semibold text-white">{initials}</div>
+            <ProfileMenu initials={initials} user={user} onLogout={signOut} />
           </div>
         </header>
 
