@@ -681,7 +681,12 @@ function ProfilePanelHeader({ profile, showLogo, online }) {
         )}
         <span className="vf-public-identity-copy">
           <strong>{profile.businessName || profile.title}</strong>
-          <span>{profile.category}</span>
+          <span>
+            {profile.category}
+            <span className="vf-header-dot-separator">·</span>
+            <StatusDot online={online} />
+            {profile.availability}
+          </span>
         </span>
       </button>
 
@@ -728,6 +733,7 @@ function AiAssistantBadge() {
 
 function CapabilityPills({ profile, online, showVoiceCall }) {
   const pills = [
+    { key: "online", icon: "dot", label: online ? profile.availability : "Offline" },
     { key: "response", Icon: Zap, label: profile.responseTime || "Fast response" },
     { key: "assistant", Icon: Sparkles, label: "AI assistant" },
     { key: "voice", Icon: Headphones, label: showVoiceCall ? "Voice enabled" : "Voice unavailable", disabled: !showVoiceCall }
@@ -1526,23 +1532,23 @@ function Booking({ profile, agent, onBack, onChat }) {
 
   if (done) {
     return (
-      <div className="vf-booking-page vf-enter grid w-full place-items-center px-4 py-7 sm:px-5">
-        <div className="vf-booking-card flex w-full max-w-[520px] flex-col items-center rounded-[28px] px-7 py-9 text-center sm:px-11">
+      <div className="vf-enter grid w-full place-items-center px-4 py-7 sm:px-5">
+        <div className="vf-glass flex w-full max-w-[520px] flex-col items-center rounded-[28px] px-7 py-9 text-center sm:px-11">
           <Robot size={130} src={profile.agentImageUrl} glow float />
-          <span className="vf-booking-success-icon -mt-3 grid h-12 w-12 place-items-center rounded-full">
+          <span className="-mt-3 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-[0_10px_22px_rgba(37,99,235,.20)]">
             <Check size={24} strokeWidth={3} />
           </span>
           <h1 className="mt-4 text-[27px] font-extrabold tracking-normal">You're booked!</h1>
-          <p className="vf-booking-muted mt-2 text-[15px]">Your appointment is saved for {form.name.split(" ")[0] || "you"}.</p>
-          <div className="vf-booking-summary mt-6 w-full rounded-[18px] px-5 py-1 text-left">
+          <p className="mt-2 text-[15px] text-[#64748b]">Your appointment is saved for {form.name.split(" ")[0] || "you"}.</p>
+          <div className="vf-card-solid mt-6 w-full rounded-[18px] px-5 py-1 text-left">
             <InfoRow icon={CalendarDays} label="Date" value={days[day].label} first />
             <InfoRow icon={Clock} label="Time" value={time} />
             <InfoRow icon={MapPin} label="Mode" value={mode} />
             <InfoRow icon={User} label="Advisor" value="Senior Counsellor" />
           </div>
           <div className="mt-6 flex w-full gap-3">
-            <button className="vf-btn vf-booking-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Ask</button>
-            <button className="vf-btn vf-booking-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
+            <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onChat}><MessageCircle size={17} /> Ask</button>
+            <button className="vf-btn vf-btn-ghost flex-1 p-3" onClick={onBack}><ArrowLeft size={17} /> Home</button>
           </div>
         </div>
       </div>
@@ -1550,23 +1556,23 @@ function Booking({ profile, agent, onBack, onChat }) {
   }
 
   return (
-    <div className="vf-booking-page vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
-      <div className="vf-booking-card w-full max-w-[620px] rounded-[26px] p-[clamp(22px,3.5vw,34px)]">
+    <div className="vf-enter grid w-full place-items-center px-4 py-5 sm:px-5 sm:py-7">
+      <div className="vf-glass w-full max-w-[620px] rounded-[26px] p-[clamp(22px,3.5vw,34px)]">
         <div className="mb-1 flex items-center gap-3">
-          <button className="vf-btn vf-booking-icon-btn p-2.5" onClick={onBack} aria-label="Back"><ArrowLeft size={18} /></button>
+          <button className="vf-btn vf-btn-ghost p-2.5" onClick={onBack} aria-label="Back"><ArrowLeft size={18} /></button>
           <div>
             <h1 className="text-[22px] font-extrabold tracking-normal">Book a counselling session</h1>
-            <p className="vf-booking-muted text-[13.5px]">Free 1-on-1 with an advisor at {profile.businessName}</p>
+            <p className="text-[13.5px] text-[#64748b]">Free 1-on-1 with an advisor at {profile.businessName}</p>
           </div>
         </div>
-        {error && <p className="vf-booking-error mt-4 rounded-xl px-3 py-2 text-sm font-semibold">{error}</p>}
+        {error && <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p>}
 
         <Picker title="SELECT A DATE">
           <div className="flex gap-2.5 overflow-x-auto pb-1">
             {days.map((item, index) => {
               const active = index === day;
               return (
-                <button key={item.label} onClick={() => setDay(index)} className={`vf-slot vf-booking-date ${active ? "is-active" : ""} flex h-[76px] w-16 flex-none flex-col items-center justify-center rounded-2xl`}>
+                <button key={item.label} onClick={() => setDay(index)} className={`vf-slot flex h-[76px] w-16 flex-none flex-col items-center justify-center rounded-2xl ${active ? "bg-[#2563eb] text-white shadow-[0_10px_22px_rgba(37,99,235,.20)]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>
                   <span className="text-[11px] font-semibold opacity-80">{item.dow}</span>
                   <span className="mt-1 text-xl font-extrabold leading-none">{item.day}</span>
                   <span className="mt-0.5 text-[10.5px] opacity-75">{item.mon}</span>
@@ -1579,7 +1585,7 @@ function Booking({ profile, agent, onBack, onChat }) {
         <Picker title="AVAILABLE SLOTS">
           <div className="flex flex-wrap gap-2.5">
             {slots.map((item) => (
-              <button key={item} onClick={() => setTime(item)} className={`vf-slot vf-booking-chip rounded-xl px-4 py-2.5 text-sm font-bold ${item === time ? "is-active" : ""}`}>{item}</button>
+              <button key={item} onClick={() => setTime(item)} className={`vf-slot rounded-xl px-4 py-2.5 text-sm font-bold ${item === time ? "bg-[#dbeafe] text-[#1d4ed8] ring-2 ring-[#2563eb]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>{item}</button>
             ))}
           </div>
         </Picker>
@@ -1587,7 +1593,7 @@ function Booking({ profile, agent, onBack, onChat }) {
         <Picker title="MODE">
           <div className="flex gap-2.5">
             {["Online", "In-person"].map((item) => (
-              <button key={item} onClick={() => setMode(item)} className={`vf-slot vf-booking-mode flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold ${item === mode ? "is-active" : ""}`}>
+              <button key={item} onClick={() => setMode(item)} className={`vf-slot flex flex-1 items-center justify-center gap-2 rounded-xl p-3 text-sm font-bold ${item === mode ? "bg-[#dbeafe] text-[#1d4ed8] ring-2 ring-[#2563eb]" : "border border-[#d8e4f5] bg-[#ffffff]"}`}>
                 <MapPin size={16} /> {item}
               </button>
             ))}
@@ -1602,10 +1608,10 @@ function Booking({ profile, agent, onBack, onChat }) {
           <Field label="Requirement" value={form.requirement} onChange={(value) => setForm((current) => ({ ...current, requirement: value }))} placeholder="Course, class, exam or question" />
         </div>
 
-        <button className="vf-btn vf-booking-submit mt-7 w-full p-4" disabled={!valid || saving} onClick={submit}>
+        <button className="vf-btn vf-btn-primary mt-7 w-full p-4" disabled={!valid || saving} onClick={submit}>
           {saving ? "Confirming..." : "Confirm booking"} <ArrowRight size={18} className="ml-auto" />
         </button>
-        {!valid && <p className="vf-booking-muted mt-2.5 text-center text-[12.5px]">Pick a slot and add your details to confirm.</p>}
+        {!valid && <p className="mt-2.5 text-center text-[12.5px] text-[#64748b]">Pick a slot and add your details to confirm.</p>}
       </div>
     </div>
   );
@@ -1683,7 +1689,7 @@ function TypingBubble({ profile }) {
 function Picker({ title, children }) {
   return (
     <div className="mt-5">
-      <div className="vf-picker-title mb-2.5 text-[13px] font-bold">{title}</div>
+      <div className="mb-2.5 text-[13px] font-bold text-[#64748b]">{title}</div>
       {children}
     </div>
   );
@@ -1692,7 +1698,7 @@ function Picker({ title, children }) {
 function Field({ label, value, onChange, placeholder }) {
   return (
     <label className="block">
-      <span className="vf-field-label mb-1.5 block text-[13px] font-bold">{label}</span>
+      <span className="mb-1.5 block text-[13px] font-bold text-[#64748b]">{label}</span>
       <input className="vf-input" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
@@ -1855,24 +1861,6 @@ const themeCss = `
 .vf-chat-send{min-width:56px;min-height:52px;border:1px solid rgba(120,255,105,.48);border-radius:16px;background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
 .vf-chat-send:hover:not(:disabled){border-color:rgba(166,255,95,.78);box-shadow:0 0 34px rgba(114,255,104,.28)}
 .vf-chat-send:disabled{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.07);color:rgba(255,255,255,.32);box-shadow:none}
-.vf-booking-page{min-height:calc(100vh - 66px)}
-.vf-booking-card{border:1px solid rgba(117,255,104,.24);background:linear-gradient(180deg,rgba(4,15,10,.94),rgba(2,9,7,.96));box-shadow:0 0 0 1px rgba(255,255,255,.035) inset,0 24px 90px rgba(0,0,0,.5),0 0 70px rgba(86,255,88,.11);color:var(--text-primary);backdrop-filter:blur(22px)}
-.vf-booking-muted{color:var(--text-secondary)}
-.vf-picker-title,.vf-field-label{color:var(--text-secondary);letter-spacing:.01em}
-.vf-booking-icon-btn,.vf-booking-ghost{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-.vf-booking-icon-btn:hover,.vf-booking-ghost:hover{border-color:rgba(120,255,105,.34);background:rgba(114,255,104,.09);color:var(--green-primary)}
-.vf-booking-error{border:1px solid rgba(244,63,94,.32);background:rgba(244,63,94,.1);color:#fecdd3}
-.vf-booking-date,.vf-booking-chip,.vf-booking-mode{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
-.vf-booking-date:hover,.vf-booking-chip:hover,.vf-booking-mode:hover{border-color:rgba(120,255,105,.34);background:rgba(114,255,104,.08)}
-.vf-booking-date.is-active,.vf-booking-chip.is-active,.vf-booking-mode.is-active{border-color:rgba(120,255,105,.7);background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.82));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.18)}
-.vf-booking-card .vf-input{border-color:rgba(120,255,105,.22);background:rgba(255,255,255,.055);color:var(--text-primary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-.vf-booking-card .vf-input::placeholder{color:rgba(164,173,167,.86)}
-.vf-booking-card .vf-input:focus{border-color:rgba(120,255,105,.68);box-shadow:0 0 0 4px rgba(114,255,104,.12),0 0 26px rgba(114,255,104,.12)}
-.vf-booking-submit{min-height:56px;border:1px solid rgba(120,255,105,.48);border-radius:16px;background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
-.vf-booking-submit:hover:not(:disabled){border-color:rgba(166,255,95,.78);box-shadow:0 0 34px rgba(114,255,104,.28)}
-.vf-booking-submit:disabled{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.07);color:rgba(255,255,255,.32);box-shadow:none}
-.vf-booking-success-icon{border:1px solid rgba(120,255,105,.48);background:linear-gradient(135deg,rgba(18,72,31,.98),rgba(77,180,62,.92));color:#f4fff2;box-shadow:0 0 24px rgba(114,255,104,.2)}
-.vf-booking-summary{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
 .vf-public-wrap{width:100%;display:grid;place-items:center}
 .vf-public-panel{width:min(calc(100% - 48px),1180px);max-width:1180px;overflow:hidden;border:1px solid rgba(117,255,104,.32);border-radius:28px;background:linear-gradient(180deg,rgba(3,14,9,.9),rgba(2,9,7,.9));box-shadow:0 0 0 1px rgba(255,255,255,.035) inset,0 24px 90px rgba(0,0,0,.52),0 0 70px rgba(86,255,88,.13);backdrop-filter:blur(22px)}
 .vf-public-header{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 30px;border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(90deg,rgba(33,112,40,.18),rgba(1,8,6,.08) 45%,rgba(1,8,6,.3))}
@@ -1927,14 +1915,12 @@ const themeCss = `
 .vf-public-secondary:hover:not(:disabled){transform:translateY(-2px);border-color:rgba(120,255,105,.34);background:rgba(23,60,31,.36);box-shadow:0 0 26px rgba(114,255,104,.12)}
 .vf-public-secondary small{display:block;margin-left:4px;color:var(--text-muted);font-size:12px;font-weight:700}
 .vf-action-icon{display:grid;width:32px;height:32px;flex:0 0 auto;place-items:center;border-radius:999px;background:rgba(114,255,104,.08);box-shadow:0 0 18px rgba(114,255,104,.08)}
-.vf-business-bar{display:flex;width:min(670px,calc(100% - 48px));align-items:center;justify-content:center;gap:12px;margin:0 auto 16px;padding:9px 14px;border:1px solid rgba(255,255,255,.09);border-radius:16px;background:rgba(255,255,255,.035);color:var(--text-secondary);text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(16px)}
-.vf-business-item{display:flex;min-width:0;align-items:center;justify-content:center;gap:9px;font-size:14px;line-height:1.25}
+.vf-business-bar{display:flex;width:min(700px,calc(100% - 48px));align-items:center;justify-content:center;gap:18px;margin:0 auto 16px;padding:11px 20px;border:1px solid rgba(255,255,255,.09);border-radius:18px;background:rgba(255,255,255,.035);color:var(--text-secondary);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);backdrop-filter:blur(16px)}
+.vf-business-item{display:flex;min-width:0;align-items:center;gap:12px;font-size:16px;line-height:1.35}
 .vf-business-item strong{color:var(--text-primary);font-weight:800}
-.vf-business-location{flex:0 1 auto;max-width:min(430px,100%)}
 .vf-business-location span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vf-business-icon{display:grid;width:30px;height:30px;flex:0 0 auto;place-items:center;border-radius:999px;background:rgba(114,255,104,.08);box-shadow:0 0 18px rgba(114,255,104,.08)}
-.vf-business-icon svg{width:19px;height:19px}
-.vf-business-divider{width:1px;height:24px;background:rgba(255,255,255,.12)}
+.vf-business-icon{display:grid;width:34px;height:34px;flex:0 0 auto;place-items:center;border-radius:999px;background:rgba(114,255,104,.08);box-shadow:0 0 18px rgba(114,255,104,.08)}
+.vf-business-divider{width:1px;height:28px;background:rgba(255,255,255,.12)}
 .vf-profile-skeleton .vf-public-header,.vf-profile-skeleton .vf-public-hero{pointer-events:none}
 .vf-skeleton-row{display:flex;align-items:center;gap:18px}.vf-skeleton-avatar,.vf-skeleton-pill,.vf-skeleton-stack i,.vf-skeleton-visual,.vf-skeleton-copy i,.vf-skeleton-copy span,.vf-skeleton-buttons b{display:block;border-radius:16px;background:linear-gradient(100deg,rgba(255,255,255,.05),rgba(114,255,104,.13),rgba(255,255,255,.05));background-size:220% 100%;animation:vfShimmer 1.5s linear infinite}
 .vf-skeleton-avatar{width:68px;height:68px}.vf-skeleton-pill{width:172px;height:54px;border-radius:999px}.vf-skeleton-stack{display:grid;gap:10px}.vf-skeleton-stack i:first-child{width:240px;height:24px}.vf-skeleton-stack i:last-child{width:180px;height:18px}
@@ -1974,4 +1960,3 @@ const themeCss = `
 @media (max-width:640px){.vf-cover-hero{min-height:340px}}
 @media (prefers-reduced-motion:reduce){.vf-enter,.vf-robot-float,.vf-btn-primary,.vf-hero-visual,.vf-advisor-visual,.vf-tile,.vf-badge,.vf-agent-visual-card::before,.vf-status-dot::before,.vf-skeleton-avatar,.vf-skeleton-pill,.vf-skeleton-stack i,.vf-skeleton-visual,.vf-skeleton-copy i,.vf-skeleton-copy span,.vf-skeleton-buttons b{animation:none!important}.vf-public-primary:hover:not(:disabled),.vf-public-secondary:hover:not(:disabled),.vf-call-control:hover,.vf-call-end:hover{transform:none!important}}
 `;
-

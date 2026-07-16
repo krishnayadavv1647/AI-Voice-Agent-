@@ -8,7 +8,7 @@
   Headphones,
   Mail,
   MailOpen,
-  Megaphone,
+  PhoneOutgoing,
   Languages,
   LayoutTemplate,
   LogOut,
@@ -33,7 +33,7 @@ const links = [
   { to: "/dashboard", label: "Dashboard", icon: Gauge },
   { to: "/agents", label: "Agents", icon: Bot },
   { to: "/calls", label: "Call Logs", icon: PhoneCall },
-  { to: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { to: "/outbound", label: "Outbound", icon: PhoneOutgoing },
   { to: "/leads", label: "Leads", icon: Users },
   { to: "/lead-finder", label: "Lead Finder", icon: Search },
   { to: "/email-outreach", label: "Email Campaign", icon: Mail },
@@ -57,7 +57,7 @@ const navSections = [
   },
   {
     label: "BUILD",
-    items: ["/agents", "/campaigns", "/leads", "/lead-finder", "/templates", "/voice-language"]
+    items: ["/agents", "/outbound", "/leads", "/lead-finder", "/templates", "/voice-language"]
   },
   {
     label: "TEST",

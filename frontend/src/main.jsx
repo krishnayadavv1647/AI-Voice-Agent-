@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "./state/AuthContext.jsx";
 import { CreditsProvider } from "./state/CreditsContext.jsx";
 import "./styles.css";
 import "./email-inbox.css";
+import "./outbound.css";
 
 const AgentDetails = lazy(() => import("./pages/AgentDetails.jsx"));
 const Agents = lazy(() => import("./pages/Agents.jsx"));
@@ -18,7 +19,9 @@ const AuthSuccess = lazy(() => import("./pages/AuthSuccess.jsx"));
 const Billing = lazy(() => import("./pages/Billing.jsx"));
 const BioPageBuilder = lazy(() => import("./pages/BioPageBuilder.jsx"));
 const CallLogs = lazy(() => import("./pages/CallLogs.jsx"));
-const Campaigns = lazy(() => import("./pages/Campaigns.jsx"));
+const Outbound = lazy(() => import("./pages/Outbound.jsx"));
+const OutboundNewCampaign = lazy(() => import("./pages/OutboundNewCampaign.jsx"));
+const OutboundCampaignDetail = lazy(() => import("./pages/OutboundCampaignDetail.jsx"));
 const CreateAgent = lazy(() => import("./pages/CreateAgent.jsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const EditAgent = lazy(() => import("./pages/EditAgent.jsx"));
@@ -81,7 +84,10 @@ function Router() {
           <Route path="agents/:id/test" element={<TestAgent />} />
           <Route path="create-agent" element={<CreateAgent />} />
           <Route path="calls" element={<CallLogs />} />
-          <Route path="campaigns" element={<Campaigns />} />
+          <Route path="outbound" element={<Outbound />} />
+          <Route path="outbound/new" element={<OutboundNewCampaign />} />
+          <Route path="outbound/:id" element={<OutboundCampaignDetail />} />
+          <Route path="campaigns" element={<Navigate to="/outbound" replace />} />
           <Route path="leads" element={<Leads />} />
           <Route path="lead-finder" element={<LeadFinder />} />
           <Route path="email-outreach" element={<EmailOutreach />} />
