@@ -157,6 +157,20 @@ export async function updateAssistant(assistantId, agent) {
   }
 }
 
+// Fetch a Vapi assistant by id; returns null if Vapi no longer has it (404). Used to confirm a
+// stale providerAgentId is really gone before recreating it.
+export async function getAssistant(assistantId) {
+  try {
+    const client = getVapiClient();
+    const response = await client.get(`/assistant/${assistantId}`);
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) return null;
+    if (error instanceof ApiError) throw error;
+    handleVapiError(error, "get assistant");
+  }
+}
+
 export async function deleteAssistant(assistantId) {
   try {
     const client = getVapiClient();

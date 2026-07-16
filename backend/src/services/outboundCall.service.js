@@ -2,7 +2,7 @@ import Agent from "../models/Agent.js";
 import CallLog from "../models/CallLog.js";
 import TelephonyConfig from "../models/TelephonyConfig.js";
 import { decryptSecret } from "../utils/secretCrypto.js";
-import { ensureVapiPhoneNumber } from "./vapi.service.js";
+import { ensureVapiPhoneNumber, getAssistant } from "./vapi.service.js";
 import { applyCallOutcomeToLog } from "./callOutcome.service.js";
 import { reserveVoiceCallBilling, releaseVoiceReservation } from "./billing/voiceCallBilling.service.js";
 import { assertByokKeyUsableOrThrow } from "./apiKeyMode.service.js";
@@ -52,6 +52,42 @@ async function ensureProviderAssistant(agent) {
   );
 }
 
+// When Vapi 404s a call, the stored providerAgentId is stale — the assistant was deleted, or created
+// under a different VAPI_PRIVATE_KEY. VapiProvider.create no-ops while an id is present and
+// VapiProvider.update PATCHes the missing id (also 404), so a stale id can never self-correct through
+// the normal sync paths. Confirm the assistant is really gone, then clear the id, recreate it, and
+// persist the fresh one. Returns true only when a new assistant id was provisioned.
+async function recreateStaleProviderAssistant(agent) {
+  if ((agent.provider || "vapi") !== "vapi") return false;
+
+  const previousId = agent.providerAgentId;
+  if (previousId) {
+    const existing = await getAssistant(previousId).catch(() => null);
+    if (existing) return false; // assistant still exists — the 404 was about something else
+  }
+
+  agent.providerAgentId = null;
+  const created = await getProvider(agent.provider || "vapi").create(agent);
+  const providerAgentId = created?.providerAgentId;
+  if (!providerAgentId) {
+    agent.providerAgentId = previousId;
+    return false;
+  }
+
+  agent.providerAgentId = providerAgentId;
+  agent.providerWorkflowId = created.providerWorkflowId || providerAgentId;
+  await Agent.updateOne(
+    { _id: agent._id },
+    { $set: { providerAgentId, providerWorkflowId: agent.providerWorkflowId } }
+  );
+  console.log("[Outbound] Recreated stale Vapi assistant", {
+    localAgentId: agent._id.toString(),
+    previousProviderAgentId: previousId || null,
+    providerAgentId
+  });
+  return true;
+}
+
 const VAPI_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Auto-provision the Vapi phone-number id: if the agent has no valid UUID yet, import its Twilio
@@ -83,6 +119,33 @@ async function ensureVapiPhoneNumberId(agent) {
   agent.vapiPhoneNumberId = id;
   await Agent.updateOne({ _id: agent._id }, { $set: { vapiPhoneNumberId: id } });
   console.log("[Vapi phone number provisioned]", { localAgentId: agent._id.toString(), number, vapiPhoneNumberId: id });
+}
+
+// The Vapi phone-number id goes stale the same way the assistant does (imported under a previous VAPI
+// key/account). ensureVapiPhoneNumberId SKIPS re-resolution when a well-formed UUID is already stored,
+// so a stale id would 404 on every /call forever. Clear it and re-resolve under the current key.
+// Returns true only when a different id was provisioned.
+async function refreshStaleVapiPhoneNumberId(agent) {
+  if (agent.provider !== "vapi") return false;
+
+  const previousId = agent.vapiPhoneNumberId;
+  agent.vapiPhoneNumberId = null;
+  try {
+    await ensureVapiPhoneNumberId(agent);
+  } catch (error) {
+    agent.vapiPhoneNumberId = previousId;
+    throw error;
+  }
+
+  const changed = Boolean(agent.vapiPhoneNumberId) && agent.vapiPhoneNumberId !== previousId;
+  if (changed) {
+    console.log("[Outbound] Refreshed stale Vapi phone number id", {
+      localAgentId: agent._id.toString(),
+      previousVapiPhoneNumberId: previousId || null,
+      vapiPhoneNumberId: agent.vapiPhoneNumberId
+    });
+  }
+  return changed;
 }
 
 // Outbound calls go through the provider abstraction (Vapi is the live path). Signature,
@@ -123,24 +186,47 @@ export async function triggerOutboundCallForAgent({
   }
 
   const provider = getProvider(agent.provider || "vapi");
+  const startCallPayload = {
+    phoneNumber,
+    metadata: {
+      localAgentId: agent._id.toString(),
+      userId: effectiveUserId.toString(),
+      leadId: leadId ? String(leadId) : undefined,
+      campaignId: metadata.campaignId ? String(metadata.campaignId) : undefined,
+      campaignRecipientId: metadata.campaignRecipientId ? String(metadata.campaignRecipientId) : undefined,
+      firstMessage: firstSpokenMessage(agent),
+      ...metadata
+    }
+  };
+
   let providerResult;
   try {
-    providerResult = await provider.startCall(agent, {
-      phoneNumber,
-      metadata: {
-        localAgentId: agent._id.toString(),
-        userId: effectiveUserId.toString(),
-        leadId: leadId ? String(leadId) : undefined,
-        campaignId: metadata.campaignId ? String(metadata.campaignId) : undefined,
-        campaignRecipientId: metadata.campaignRecipientId ? String(metadata.campaignRecipientId) : undefined,
-        firstMessage: firstSpokenMessage(agent),
-        ...metadata
-      }
-    });
+    providerResult = await provider.startCall(agent, startCallPayload);
   } catch (error) {
-    // The call never started — return the held credits.
-    if (billing.enforced) await releaseVoiceReservation(billing.billingCallId);
-    throw error;
+    // Vapi 404s when agent.providerAgentId (assistant) or agent.vapiPhoneNumberId (imported number)
+    // point at resources it no longer has — e.g. both were created under a previous VAPI key. Neither
+    // self-corrects through the normal paths, so refresh whichever is stale and retry the call once.
+    const status = error?.statusCode || error?.response?.status;
+    let healed = null;
+    if (status === 404 && (agent.provider || "vapi") === "vapi") {
+      let assistantHealed = false;
+      let phoneHealed = false;
+      try { assistantHealed = await recreateStaleProviderAssistant(agent); } catch { assistantHealed = false; }
+      try { phoneHealed = await refreshStaleVapiPhoneNumberId(agent); } catch { phoneHealed = false; }
+      if (assistantHealed || phoneHealed) {
+        try {
+          healed = await provider.startCall(agent, startCallPayload);
+        } catch {
+          healed = null;
+        }
+      }
+    }
+    if (!healed) {
+      // The call never started — return the held credits.
+      if (billing.enforced) await releaseVoiceReservation(billing.billingCallId);
+      throw error;
+    }
+    providerResult = healed;
   }
 
   const providerCallId = providerResult?.providerCallId ? String(providerResult.providerCallId) : null;
