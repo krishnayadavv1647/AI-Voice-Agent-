@@ -1058,6 +1058,7 @@ export const updateAgent = asyncHandler(async (req, res) => {
   await agent.save();
 
   let providerResult = null;
+  let syncWarning = null;
 
   if (agent.apiKeyMode !== "default_system" && voiceConfigurationInput) {
     voiceConfiguration = await upsertAgentVoiceConfiguration({ userId: agent.userId, agent, input: voiceConfigurationInput });
@@ -1069,23 +1070,32 @@ export const updateAgent = asyncHandler(async (req, res) => {
   }
 
   // Voice/LLM selections are baked into the Vapi assistant at sync time, so refresh the assistant
-  // when they change. An explicit syncProvider request always syncs; a config-only change refreshes
-  // best-effort so a transient Vapi error does not fail the save.
+  // when they change. An explicit syncProvider request always syncs; a config-only change also
+  // refreshes (and creates the assistant if it is missing) so the new voice/model actually reaches
+  // the calling system. A failure is surfaced as a warning — never swallowed — otherwise a wrong
+  // voice silently persists and the caller keeps hearing the previously-synced default.
   const configChanged = Boolean(voiceConfigurationInput || llmConfigurationInput);
   if (body.syncProvider === true) {
     providerResult = await syncProvider(agent, "update", { createIfMissing: Boolean(body.createIfMissing) });
-  } else if (configChanged && agent.provider === "vapi" && agent.providerAgentId) {
+  } else if (configChanged && agent.provider === "vapi") {
+    console.log("[Agent update] Refreshing Vapi assistant after voice/LLM change:", {
+      agentId: agent._id.toString(),
+      providerAgentId: agent.providerAgentId || null,
+      ttsProvider: agent.ttsProvider,
+      voiceId: agent.voiceId || null
+    });
     try {
-      providerResult = await syncProvider(agent, "update", { createIfMissing: false });
+      providerResult = await syncProvider(agent, "update", { createIfMissing: true });
     } catch (error) {
       console.error("[Agent update] Vapi assistant refresh failed:", error.message);
+      syncWarning = `Agent saved, but the new voice/model could not be applied to the calling system: ${error.message}`;
     }
   }
 
   res.json({
     success: true,
     message: providerResult ? "Agent saved locally and provider synced successfully." : "Agent saved.",
-    warning: null,
+    warning: syncWarning,
     providerResult: publicProviderResult(providerResult),
     voiceConfiguration,
     llmConfiguration,
