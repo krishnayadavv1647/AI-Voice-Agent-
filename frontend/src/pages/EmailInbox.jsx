@@ -384,35 +384,18 @@ export default function EmailInbox() {
 
       <div className="email-inbox-workspace" data-view={selected && mobileView === "thread" ? "thread" : "list"}>
         <aside className="email-folder-panel">
-          <div className="email-panel-heading">
-            <h1>Inbox</h1>
-            <button
-              className="email-icon-button"
-              disabled={syncing}
-              onClick={syncInbox}
-              aria-label="Sync"
-              title="Sync Gmail"
-            >
-              <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-            </button>
-          </div>
-
-          <div className="email-search-box">
-            <Search size={14} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") runGmailSearch(); }}
-              placeholder="Search Gmail (press Enter)"
-            />
-            {loading || syncing ? <Loader2 size={14} className="animate-spin" /> : null}
-          </div>
-
-          {searchMode && (
-            <button className="email-clear-search" onClick={() => { setSearch(""); setSearchMode(false); loadThreads(folder, { pageNum: 1 }); }}>
-              Clear search
-            </button>
-          )}
+          <button className="email-side-compose" onClick={() => setComposeOpen(true)}>
+            <Send size={15} />Compose
+          </button>
+          <button
+            className="email-side-sync"
+            disabled={syncing}
+            onClick={syncInbox}
+            title="Sync Gmail"
+          >
+            <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
+            {syncing ? "Syncing…" : "Sync Gmail"}
+          </button>
 
           <nav className="email-folder-list">
             {FOLDERS.map((item, index) => {
@@ -434,7 +417,21 @@ export default function EmailInbox() {
 
         <aside className="email-list-panel">
           <div className="email-list-header">
-            <h2>Email List</h2>
+            <div className="email-search-box">
+              <Search size={14} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") runGmailSearch(); }}
+                placeholder="Search mail…"
+              />
+              {loading || syncing ? <Loader2 size={14} className="animate-spin" /> : null}
+            </div>
+            {searchMode && (
+              <button className="email-clear-search" onClick={() => { setSearch(""); setSearchMode(false); loadThreads(folder, { pageNum: 1 }); }}>
+                Clear search
+              </button>
+            )}
           </div>
           <div className="email-list-scroll">
             {loading ? (

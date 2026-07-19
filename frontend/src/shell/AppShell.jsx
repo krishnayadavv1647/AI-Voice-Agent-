@@ -50,26 +50,34 @@ const links = [
   { to: "/settings", label: "Settings", icon: Settings }
 ];
 
+// Navigation grouped by user intent (build → reach out → what came back → contacts → setup),
+// not by an abstract lifecycle. Each visible link belongs to exactly one group so nothing
+// falls into an "overflow" bucket. Credits/Billing/Settings stay in the profile menu only
+// (see SIDEBAR_HIDDEN_PATHS) so they are never duplicated in the sidebar.
 const navSections = [
   {
-    label: "WORKSPACE",
+    label: "OVERVIEW",
     items: ["/dashboard"]
   },
   {
     label: "BUILD",
-    items: ["/agents", "/outbound", "/leads", "/lead-finder", "/templates", "/voice-language"]
+    items: ["/agents", "/templates"]
   },
   {
-    label: "TEST",
-    items: ["/calls"]
+    label: "CAMPAIGNS",
+    items: ["/outbound", "/email-outreach", "/lead-finder"]
   },
   {
-    label: "OBSERVE",
-    items: ["/messages", "/email-inbox", "/followups", "/appointments", "/import-calls"]
+    label: "INBOX",
+    items: ["/calls", "/email-inbox", "/appointments", "/followups"]
   },
   {
-    label: "MANAGE",
-    items: ["/email-outreach", "/integrations", "/telephony-configuration", "/credits", "/billing", "/settings"]
+    label: "CONTACTS",
+    items: ["/leads", "/import-calls"]
+  },
+  {
+    label: "SETTINGS",
+    items: ["/integrations", "/telephony-configuration", "/voice-language"]
   }
 ];
 

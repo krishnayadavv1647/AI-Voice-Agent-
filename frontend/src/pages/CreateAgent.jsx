@@ -77,6 +77,20 @@ function Field({ label, name, value, onChange, type = "text", textarea = false, 
   );
 }
 
+// Presentational sub-section: a labelled heading + description above a 2-column field grid.
+// Purely structural — groups related fields so a step reads as clear clusters instead of one flat list.
+function Group({ title, description, children }) {
+  return (
+    <section className="space-y-3">
+      <div className="min-w-0">
+        <h3 className="font-semibold text-ink">{title}</h3>
+        {description && <p className="text-sm text-neutral-500">{description}</p>}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">{children}</div>
+    </section>
+  );
+}
+
 export default function CreateAgent() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(initialForm);
@@ -200,33 +214,37 @@ export default function CreateAgent() {
         )}
 
         {step === 1 && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Provider" name="provider" value={form.provider} onChange={setField} options={[
-              { label: "Custom Engine", value: "custom" },
-              { label: "Vapi", value: "vapi" }
-            ]} />
-            <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} onChange={setField} options={[
-              { label: "No telephony config", value: "" },
-              ...telephonyConfigs.map((config) => ({
-                label: `${config.name} (${config.provider} · ${config.phoneNumber})`,
-                value: config._id
-              }))
-            ]} />
-            <Field label="Image Mode" name="imageMode" value={form.imageMode} onChange={setField} options={[
-              { label: "Auto Generate", value: "auto_generate" },
-              { label: "Upload Custom Image", value: "upload_custom" },
-              { label: "Use Default Avatar", value: "default_avatar" }
-            ]} />
-            {form.imageMode === "upload_custom" && (
-              <Field label="Custom Image URL" name="imageUrl" value={form.imageUrl} onChange={setField} />
-            )}
-            <Field label="Agent Name" name="agentName" value={form.agentName} onChange={setField} />
-            <Field label="Business Name" name="businessName" value={form.businessName} onChange={setField} />
-            <Field label="Business Category" name="businessCategory" value={form.businessCategory} onChange={setField} />
-            <Field label="Business Website" name="businessWebsite" value={form.businessWebsite} onChange={setField} />
-            <Field label="Location" name="businessLocation" value={form.businessLocation} onChange={setField} />
-            <Field label="Contact Number" name="contactNumber" value={form.contactNumber} onChange={setField} />
-            <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} onChange={setField} textarea /></div>
+          <div className="space-y-6">
+            <Group title="Business details" description="Used in the agent's answers and its public profile.">
+              <Field label="Agent Name" name="agentName" value={form.agentName} onChange={setField} />
+              <Field label="Business Name" name="businessName" value={form.businessName} onChange={setField} />
+              <Field label="Business Category" name="businessCategory" value={form.businessCategory} onChange={setField} />
+              <Field label="Business Website" name="businessWebsite" value={form.businessWebsite} onChange={setField} />
+              <Field label="Location" name="businessLocation" value={form.businessLocation} onChange={setField} />
+              <Field label="Contact Number" name="contactNumber" value={form.contactNumber} onChange={setField} />
+              <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} onChange={setField} textarea /></div>
+            </Group>
+            <Group title="Setup & provider" description="Calling system, phone number, and how the agent's image is created.">
+              <Field label="Provider" name="provider" value={form.provider} onChange={setField} options={[
+                { label: "Custom Engine", value: "custom" },
+                { label: "Vapi", value: "vapi" }
+              ]} />
+              <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} onChange={setField} options={[
+                { label: "No telephony config", value: "" },
+                ...telephonyConfigs.map((config) => ({
+                  label: `${config.name} (${config.provider} · ${config.phoneNumber})`,
+                  value: config._id
+                }))
+              ]} />
+              <Field label="Image Mode" name="imageMode" value={form.imageMode} onChange={setField} options={[
+                { label: "Auto Generate", value: "auto_generate" },
+                { label: "Upload Custom Image", value: "upload_custom" },
+                { label: "Use Default Avatar", value: "default_avatar" }
+              ]} />
+              {form.imageMode === "upload_custom" && (
+                <Field label="Custom Image URL" name="imageUrl" value={form.imageUrl} onChange={setField} />
+              )}
+            </Group>
           </div>
         )}
 
@@ -240,16 +258,22 @@ export default function CreateAgent() {
 
         {step === 3 && (
           <div>
-            <div className="mb-5 grid gap-4 md:grid-cols-2">
-              <Field label="Main Goal" name="mainGoal" value={form.mainGoal} onChange={setField} textarea />
-              <Field label="Secondary Goal" name="secondaryGoal" value={form.secondaryGoal} onChange={setField} textarea />
-              <Field label="Avoid Instructions" name="avoidInstructions" value={form.avoidInstructions} onChange={setField} textarea />
-              <Field label="Confused Instructions" name="confusedInstructions" value={form.confusedInstructions} onChange={setField} textarea />
-              <Field label="Fallback Message" name="fallbackMessage" value={form.fallbackMessage} onChange={setField} textarea />
-              <Field label="First Message" name="firstMessage" value={form.firstMessage} onChange={setField} textarea />
-              <Field label="Ending Message" name="endingMessage" value={form.endingMessage} onChange={setField} textarea />
-              <Field label="Human Transfer Message" name="humanTransferMessage" value={form.humanTransferMessage} onChange={setField} textarea />
-              <Field label="Call Summary Format" name="summaryFormat" value={form.summaryFormat} onChange={setField} textarea />
+            <div className="mb-5 space-y-6">
+              <Group title="Goals & guardrails" description="What the agent should achieve, and what to avoid on a call.">
+                <Field label="Main Goal" name="mainGoal" value={form.mainGoal} onChange={setField} textarea />
+                <Field label="Secondary Goal" name="secondaryGoal" value={form.secondaryGoal} onChange={setField} textarea />
+                <Field label="Avoid Instructions" name="avoidInstructions" value={form.avoidInstructions} onChange={setField} textarea />
+                <Field label="Confused Instructions" name="confusedInstructions" value={form.confusedInstructions} onChange={setField} textarea />
+              </Group>
+              <Group title="Call messages" description="What the agent says at key moments during the call.">
+                <Field label="First Message" name="firstMessage" value={form.firstMessage} onChange={setField} textarea />
+                <Field label="Fallback Message" name="fallbackMessage" value={form.fallbackMessage} onChange={setField} textarea />
+                <Field label="Ending Message" name="endingMessage" value={form.endingMessage} onChange={setField} textarea />
+                <Field label="Human Transfer Message" name="humanTransferMessage" value={form.humanTransferMessage} onChange={setField} textarea />
+              </Group>
+              <Group title="Call summary" description="How each call is summarized after it ends.">
+                <div className="md:col-span-2"><Field label="Call Summary Format" name="summaryFormat" value={form.summaryFormat} onChange={setField} textarea /></div>
+              </Group>
             </div>
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="font-semibold text-ink">Lead Capture Questions</h3>

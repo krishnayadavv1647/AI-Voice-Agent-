@@ -86,6 +86,48 @@
   padding: 24px;
 }
 
+/* Prominent Compose + Sync at the top of the folder rail (image-style sidebar). */
+.email-side-compose {
+  display: inline-flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--gradient-button);
+  color: #061006;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 0 22px rgba(200, 255, 46, 0.24);
+}
+
+.email-side-sync {
+  display: inline-flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid rgba(193, 224, 134, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-hi);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.email-side-sync:hover {
+  background: rgba(184, 213, 119, 0.08);
+}
+
+.email-side-sync:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .email-panel-heading,
 .email-list-header {
   display: flex;
@@ -192,8 +234,8 @@
 }
 
 .email-list-header {
-  min-height: 59px;
-  padding: 0 18px;
+  display: block;
+  padding: 12px 14px;
 }
 
 .email-list-scroll {
@@ -323,5 +365,13 @@
   .email-compose-button {
     min-height: 34px;
     padding-inline: 12px;
+  }
+}
+
+/* Desktop: Compose + Sync live in the folder sidebar, so the inbox-level topbar
+   (which still carries the mobile folder chips + compose) is hidden on wide screens. */
+@media (min-width: 1024px) {
+  .email-inbox-topbar {
+    display: none;
   }
 }
