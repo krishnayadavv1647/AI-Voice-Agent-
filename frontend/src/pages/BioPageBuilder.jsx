@@ -482,7 +482,7 @@ export default function BioPageBuilder() {
         </div>
         <div className="bio-toolbar-actions">
           <button className="btn-secondary" disabled={!publicUrl} onClick={copyLink}><Copy size={16} />Copy</button>
-          <a className={`btn-secondary ${!publicUrl ? "pointer-events-none opacity-50" : ""}`} href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Preview</a>
+          <a className={`btn-secondary ${!publicUrl ? "pointer-events-none opacity-50" : ""}`} href={publicUrl} target="_blank" rel="noreferrer"><Eye size={16} />Live Preview</a>
           <button className="btn-primary" disabled={saving} onClick={() => save()}><Save size={16} />{saving ? "Saving..." : "Save Changes"}</button>
         </div>
       </div>
@@ -675,26 +675,19 @@ export default function BioPageBuilder() {
                 )}
               </Panel>
 
-              <Panel title="Danger Zone" icon={RefreshCw}>
+              <Panel title="Publishing" icon={Eye} hint="Control whether the public bio page is live.">
                 <div className="flex flex-wrap gap-2">
                   <button className="btn-secondary" onClick={() => action("publish")}>Publish</button>
                   <button className="btn-secondary" onClick={() => action("unpublish")}>Unpublish</button>
-                  <button className="btn-secondary" onClick={() => action("reset")}><RefreshCw size={16} />Reset to default</button>
                 </div>
+              </Panel>
+
+              <Panel title="Danger Zone" icon={RefreshCw} hint="Resets every customization back to the template default.">
+                <button className="btn-secondary" onClick={() => action("reset")}><RefreshCw size={16} />Reset to default</button>
               </Panel>
             </>
           )}
         </section>
-
-        <aside className="bio-builder-preview">
-          <div className="bio-preview-sticky">
-            <div className="bio-preview-head">
-              <span>Live preview</span>
-              <a className={`bio-preview-open ${!publicUrl ? "pointer-events-none opacity-50" : ""}`} href={publicUrl} target="_blank" rel="noreferrer"><Eye size={14} /> Open</a>
-            </div>
-            <BioPageMiniPreview form={form} />
-          </div>
-        </aside>
       </div>
     </div>
   );

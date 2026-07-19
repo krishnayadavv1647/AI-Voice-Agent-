@@ -1683,7 +1683,7 @@ button {
   opacity: 0.82;
 }
 
-/* Upload badge — visible on hover in bottom-right of icon area */
+/* Upload badge ï¿½ visible on hover in bottom-right of icon area */
 .agent-card-upload-badge {
   position: absolute;
   z-index: 4;
@@ -2655,7 +2655,7 @@ pre {
 }
 
 /* ====================================================================
-   DARK THEME — all surfaces dark, light text, subtle borders.
+   DARK THEME ï¿½ all surfaces dark, light text, subtle borders.
    Scoped to .app-shell so auth/public pages are unaffected.
    ==================================================================== */
 
@@ -2853,7 +2853,15 @@ pre {
 .bio-template-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* Fixed 4 template cards per row on desktop, stepping down to 2 on narrower widths
+   (and 1 column under 640px via the existing rule below). */
+@media (max-width: 1160px) {
+  .bio-template-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .bio-template-card {
@@ -3258,7 +3266,7 @@ pre {
   display: grid;
   align-items: start;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .bio-builder-controls {

@@ -342,41 +342,45 @@ export default function EditAgent() {
           <p className="section-description">Edit this section without leaving the agent editor.</p>
         </div>
         {tab === "Basic Info" && (
-          <div className="field-grid">
-            <Field label="Calling System" name="provider" value={form.provider} setField={setField} options={[
-              { label: "Custom Engine", value: "custom" },
-              { label: "Web Calling", value: "vapi" }
-            ]} />
-            <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} setField={setField} options={[
-              { label: "No telephony config", value: "" },
-              ...telephonyConfigs.map((config) => ({
-                label: `${config.name} (${config.phoneNumber})`,
-                value: config._id
-              }))
-            ]} />
-            {form.provider === "vapi" && (
+          <div className="space-y-6">
+            <Group title="Agent basics" description="The agent's identity and business profile.">
+              <Field label="Agent Name" name="agentName" value={form.agentName} setField={setField} />
+              <Field label="Agent Type" name="agentType" value={form.agentType} setField={setField} options={agentTypes} />
+              <Field label="Business Name" name="businessName" value={form.businessName} setField={setField} />
+              <Field label="Business Category" name="businessCategory" value={form.businessCategory} setField={setField} />
+              <Field label="Contact Number" name="contactNumber" value={form.contactNumber} setField={setField} placeholder="e.g. +91 98765 43210" />
+              <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} setField={setField} textarea /></div>
               <div className="md:col-span-2">
-                <Field
-                  label="Web Calling Phone Number ID"
-                  name="vapiPhoneNumberId"
-                  value={form.vapiPhoneNumberId}
-                  setField={setField}
-                  placeholder="e.g. 95d51f79-c397-46f9-b49a-23763d3eaa2d"
-                />
-                <p className="mt-1 text-xs text-neutral-500">
-                  Use the phone number ID from your calling system settings, not the phone number itself.
-                </p>
+                <BioField value={form.bio ?? ""} onChange={(v) => setField("bio", v)} disabled={saving} />
               </div>
-            )}
-            <Field label="Agent Name" name="agentName" value={form.agentName} setField={setField} />
-            <Field label="Agent Type" name="agentType" value={form.agentType} setField={setField} options={agentTypes} />
-            <Field label="Business Name" name="businessName" value={form.businessName} setField={setField} />
-            <Field label="Business Category" name="businessCategory" value={form.businessCategory} setField={setField} />
-            <Field label="Contact Number" name="contactNumber" value={form.contactNumber} setField={setField} placeholder="e.g. +91 98765 43210" />
-            <div className="md:col-span-2"><Field label="Business Description" name="businessDescription" value={form.businessDescription} setField={setField} textarea /></div>
-            <div className="md:col-span-2">
-              <BioField value={form.bio ?? ""} onChange={(v) => setField("bio", v)} disabled={saving} />
-            </div>
+            </Group>
+            <Group title="Calling system" description="Which system places calls, and the phone number it uses.">
+              <Field label="Calling System" name="provider" value={form.provider} setField={setField} options={[
+                { label: "Custom Engine", value: "custom" },
+                { label: "Web Calling", value: "vapi" }
+              ]} />
+              <Field label="Telephony Configuration" name="telephonyConfigId" value={form.telephonyConfigId} setField={setField} options={[
+                { label: "No telephony config", value: "" },
+                ...telephonyConfigs.map((config) => ({
+                  label: `${config.name} (${config.phoneNumber})`,
+                  value: config._id
+                }))
+              ]} />
+              {form.provider === "vapi" && (
+                <div className="md:col-span-2">
+                  <Field
+                    label="Web Calling Phone Number ID"
+                    name="vapiPhoneNumberId"
+                    value={form.vapiPhoneNumberId}
+                    setField={setField}
+                    placeholder="e.g. 95d51f79-c397-46f9-b49a-23763d3eaa2d"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Use the phone number ID from your calling system settings, not the phone number itself.
+                  </p>
+                </div>
+              )}
+            </Group>
           </div>
         )}
 
@@ -398,17 +402,21 @@ export default function EditAgent() {
         )}
 
         {tab === "Call Behavior" && (
-          <div className="field-grid">
-            <Field label="Greeting Message" name="greetingMessage" value={form.greetingMessage} setField={setField} textarea />
-            <Field label="First Message" name="firstMessage" value={form.firstMessage} setField={setField} textarea />
-            <Field label="Fallback Message" name="fallbackMessage" value={form.fallbackMessage} setField={setField} textarea />
-            <Field label="Ending Message" name="endingMessage" value={form.endingMessage} setField={setField} textarea />
-            <Field label="Human Transfer Message" name="humanTransferMessage" value={form.humanTransferMessage} setField={setField} textarea />
-            <Field label="Response Style" name="responseStyle" value={form.responseStyle} setField={setField} options={["short_clear", "friendly", "formal", "sales_focused", "supportive"]} />
-            <Field label="Call Mode" name="callMode" value={form.callMode} setField={setField} options={["outbound", "test", "callback"]} />
-            <Toggle label="Allow Interruption" name="allowInterruption" value={form.allowInterruption} setField={setField} />
-            <Toggle label="Fast Reply Mode" name="fastReplyMode" value={form.fastReplyMode} setField={setField} />
-            <Toggle label="Lead Capture Enabled" name="leadCaptureEnabled" value={form.leadCaptureEnabled} setField={setField} />
+          <div className="space-y-6">
+            <Group title="Call messages" description="What the agent says at each stage of the call.">
+              <Field label="Greeting Message" name="greetingMessage" value={form.greetingMessage} setField={setField} textarea />
+              <Field label="First Message" name="firstMessage" value={form.firstMessage} setField={setField} textarea />
+              <Field label="Fallback Message" name="fallbackMessage" value={form.fallbackMessage} setField={setField} textarea />
+              <Field label="Ending Message" name="endingMessage" value={form.endingMessage} setField={setField} textarea />
+              <Field label="Human Transfer Message" name="humanTransferMessage" value={form.humanTransferMessage} setField={setField} textarea />
+            </Group>
+            <Group title="Behavior & mode" description="How the agent responds, and what it captures.">
+              <Field label="Response Style" name="responseStyle" value={form.responseStyle} setField={setField} options={["short_clear", "friendly", "formal", "sales_focused", "supportive"]} />
+              <Field label="Call Mode" name="callMode" value={form.callMode} setField={setField} options={["outbound", "test", "callback"]} />
+              <Toggle label="Allow Interruption" name="allowInterruption" value={form.allowInterruption} setField={setField} />
+              <Toggle label="Fast Reply Mode" name="fastReplyMode" value={form.fastReplyMode} setField={setField} />
+              <Toggle label="Lead Capture Enabled" name="leadCaptureEnabled" value={form.leadCaptureEnabled} setField={setField} />
+            </Group>
           </div>
         )}
 
@@ -526,6 +534,20 @@ function VoiceLanguageEditor({ form, setField, activeSection, setActiveSection, 
         </>
       )}
     </div>
+  );
+}
+
+// Presentational sub-section: a labelled heading + description above the standard field grid.
+// Purely structural — turns a flat list of fields inside a tab into clear, named clusters.
+function Group({ title, description, children }) {
+  return (
+    <section className="space-y-3">
+      <div className="min-w-0">
+        <h3 className="text-base font-semibold text-ink">{title}</h3>
+        {description && <p className="text-sm text-neutral-500">{description}</p>}
+      </div>
+      <div className="field-grid">{children}</div>
+    </section>
   );
 }
 
